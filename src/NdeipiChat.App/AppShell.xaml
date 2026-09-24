@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+       x:Class="NdeipiChat.App.AppShell"
+       Shell.FlyoutBehavior="Disabled">
+
+    <ShellContent Route="signin"
+                  Shell.NavBarIsVisible="False"
+                  Shell.TabBarIsVisible="False"
+                  ContentTemplate="{DataTemplate pages:SignInPage}" />
+
+    <TabBar Route="main">
+        <Tab Title="Chats" Route="chats" Icon="tab_chats.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:ChatsPage}" />
+        </Tab>
+        <Tab Title="Contacts" Route="contacts" Icon="tab_contacts.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:ContactsPage}" />
+        </Tab>
+        <Tab Title="Herd" Route="herd" Icon="tab_herd.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:HerdPage}" />
+        </Tab>
+        <Tab Title="Me" Route="me" Icon="tab_me.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:MePage}" />
+        </Tab>
+    </TabBar>
+</Shell>

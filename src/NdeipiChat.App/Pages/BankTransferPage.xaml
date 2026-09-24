@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     xmlns:contracts="clr-namespace:NdeipiChat.Contracts;assembly=NdeipiChat.Contracts"
+                     x:Class="NdeipiChat.App.Pages.BankTransferPage"
+                     x:DataType="vm:BankTransferViewModel"
+                     Title="Send money"
+                     Shell.TabBarIsVisible="False">
+    <ScrollView>
+        <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+
+            <Border IsVisible="{Binding NeedsVerification}" Margin="12,4" Padding="16" StrokeThickness="0" StrokeShape="RoundRectangle 8" BackgroundColor="#FFF4E5">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Verify your identity to send money." FontSize="15" />
+                    <Button Text="Go to Wallet" Command="{Binding OpenWalletCommand}" Style="{StaticResource Secondary}" HeightRequest="40" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="TO" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource Card}">
+                <Grid>
+                    <Label Text="{Binding Recipient.DisplayName}" FontSize="17" Padding="0,12" IsVisible="{Binding ShowRecipientPicker, Converter={StaticResource Not}}" />
+                    <Picker ItemsSource="{Binding Recipients}"
+                            ItemDisplayBinding="{Binding DisplayName, x:DataType=contracts:UserDto}"
+                            SelectedItem="{Binding Recipient}"
+                            Title="Choose who to pay"
+                            IsVisible="{Binding ShowRecipientPicker}" />
+                </Grid>
+            </Border>
+
+            <Label Text="AMOUNT" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <Label Text="{Binding Currency}" FontSize="20" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Entry Grid.Column="1" Text="{Binding Amount}" Placeholder="0.00" Keyboard="Numeric" FontSize="32" Style="{StaticResource FormEntry}" />
+                    </Grid>
+                    <Entry Text="{Binding Memo}" Placeholder="What's it for? (optional)" MaxLength="280" Style="{StaticResource FormEntry}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" Margin="16,4" />
+
+            <Button Text="Send" Command="{Binding SendCommand}" Style="{StaticResource Primary}" Margin="16,16,16,4" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Brand}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:ViewModelPage>

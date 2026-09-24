@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.SignInPage"
+                     x:DataType="vm:SignInViewModel"
+                     BackgroundColor="{StaticResource Surface}">
+    <Grid RowDefinitions="*,Auto" Padding="32,0,32,48">
+        <VerticalStackLayout VerticalOptions="Center" Spacing="16">
+            <Border WidthRequest="88" HeightRequest="88" StrokeThickness="0" StrokeShape="RoundRectangle 22" BackgroundColor="{StaticResource Brand}" HorizontalOptions="Center">
+                <Image Source="appiconfg.png" WidthRequest="64" HeightRequest="64" />
+            </Border>
+            <Label Text="Ndeipi Chat" FontSize="28" FontAttributes="Bold" HorizontalOptions="Center" />
+            <Label Text="Chat, send tokens and pay the people you talk to."
+                   Style="{StaticResource Muted}" FontSize="15" HorizontalTextAlignment="Center" />
+        </VerticalStackLayout>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="12">
+            <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" HorizontalTextAlignment="Center"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Brand}" />
+            <Button Text="Sign in or create account" Command="{Binding SignInCommand}" Style="{StaticResource Primary}" />
+        </VerticalStackLayout>
+    </Grid>
+</pages:ViewModelPage>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.CowDetailPage"
+                     x:DataType="vm:CowDetailViewModel"
+                     Title="{Binding Title}"
+                     Shell.TabBarIsVisible="False">
+    <RefreshView Command="{Binding RefreshCommand}" RefreshColor="{StaticResource Brand}">
+        <ScrollView>
+            <VerticalStackLayout Spacing="8" Padding="0,0,0,32">
+                <Image Source="{Binding FacePhoto, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" HeightRequest="260" BackgroundColor="#E5E5E5" />
+
+                <VerticalStackLayout Padding="16,8" Spacing="4" BackgroundColor="{StaticResource Surface}">
+                    <Label Text="{Binding Title}" FontSize="22" FontAttributes="Bold" />
+                    <Label Text="{Binding BreedText}" />
+                    <Label Text="{Binding SexAgeText}" Style="{StaticResource Muted}" FontSize="14" />
+                    <Label Text="{Binding TraitsText}" Style="{StaticResource Muted}" FontSize="14" />
+                </VerticalStackLayout>
+
+                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Padding="16,8" ColumnSpacing="16" RowSpacing="6" BackgroundColor="{StaticResource Surface}">
+                    <Label Text="Ranch" Style="{StaticResource Muted}" />
+                    <Label Grid.Column="1" Text="{Binding RanchText}" />
+                    <Label Grid.Row="1" Text="Registered" Style="{StaticResource Muted}" />
+                    <Label Grid.Row="1" Grid.Column="1" Text="{Binding RegisteredText}" />
+                    <Label Grid.Row="2" Text="Location" Style="{StaticResource Muted}" />
+                    <Label Grid.Row="2" Grid.Column="1" Text="{Binding LocationText}" />
+                    <Label Grid.Row="3" Text="Identity" Style="{StaticResource Muted}" />
+                    <Label Grid.Row="3" Grid.Column="1" Text="{Binding IdentityText}" />
+                </Grid>
+
+                <Button Text="New health check" Command="{Binding HealthCheckCommand}" Style="{StaticResource Primary}" Margin="16,8" />
+                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" Margin="16,0"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+
+                <Label Text="HEALTH HISTORY" Style="{StaticResource SectionHeader}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Audits}" Spacing="1">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AuditItemViewModel">
+                            <VerticalStackLayout Padding="16,10" Spacing="2" BackgroundColor="{StaticResource Surface}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Text="{Binding DateText}" FontAttributes="Bold" />
+                                    <Label Grid.Column="1" Text="Vet needed" TextColor="{StaticResource Danger}" FontSize="12" FontAttributes="Bold" IsVisible="{Binding RequiresVet}" />
+                                </Grid>
+                                <Label Text="{Binding ConditionText}" FontSize="14" />
+                                <Label Text="{Binding HealthText}" FontSize="14" />
+                                <Label Text="{Binding FindingsText}" Style="{StaticResource Muted}" />
+                                <Label Text="{Binding AttestationText}" Style="{StaticResource Muted}" FontSize="11" />
+                            </VerticalStackLayout>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</pages:ViewModelPage>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.ContactsPage"
+                     x:DataType="vm:ContactsViewModel"
+                     Title="Contacts">
+    <ContentPage.Resources>
+        <DataTemplate x:Key="ContactTemplate" x:DataType="vm:ContactItemViewModel">
+            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12" BackgroundColor="{StaticResource Surface}">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding SelectCommand, Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, x:DataType=vm:ContactsViewModel}"
+                                          CommandParameter="{Binding .}" />
+                </Grid.GestureRecognizers>
+                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="40" />
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                    <Label Text="{Binding Name}" />
+                    <Label Text="{Binding Username}" Style="{StaticResource Muted}" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
+                </VerticalStackLayout>
+                <Label Grid.Column="2" Text="✓" TextColor="{StaticResource Brand}" FontSize="20" VerticalOptions="Center" IsVisible="{Binding IsSelected}" />
+            </Grid>
+        </DataTemplate>
+    </ContentPage.Resources>
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Group" Command="{Binding ToggleGroupModeCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <SearchBar Text="{Binding Query}" Placeholder="Search by name, username or email" />
+
+        <Entry Grid.Row="1"
+               Text="{Binding GroupTitle}"
+               Placeholder="Group name (optional)"
+               IsVisible="{Binding IsGroupMode}"
+               Style="{StaticResource FormEntry}"
+               Margin="16,4" />
+
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout>
+                <Label Text="SEARCH RESULTS" Style="{StaticResource SectionHeader}" IsVisible="{Binding HasResults}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Results}" BindableLayout.ItemTemplate="{StaticResource ContactTemplate}" />
+                <Label Text="PEOPLE YOU CHAT WITH" Style="{StaticResource SectionHeader}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Recent}" BindableLayout.ItemTemplate="{StaticResource ContactTemplate}" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <Button Grid.Row="3"
+                Text="{Binding SelectedCount, StringFormat='Start group chat ({0})'}"
+                Command="{Binding CreateGroupCommand}"
+                IsVisible="{Binding IsGroupMode}"
+                Style="{StaticResource Primary}"
+                Margin="16" />
+    </Grid>
+</pages:ViewModelPage>

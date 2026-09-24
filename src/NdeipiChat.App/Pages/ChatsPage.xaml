@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.ChatsPage"
+                     x:DataType="vm:ChatsViewModel"
+                     Title="Chats">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="＋" Clicked="OnNewChat" />
+    </ContentPage.ToolbarItems>
+
+    <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}" RefreshColor="{StaticResource Brand}">
+        <CollectionView ItemsSource="{Binding Conversations}" SelectionMode="None" BackgroundColor="{StaticResource Surface}">
+            <CollectionView.EmptyView>
+                <VerticalStackLayout Padding="32,80" Spacing="8">
+                    <Label Text="No chats yet" FontSize="17" HorizontalOptions="Center" />
+                    <Label Text="Find someone under Contacts to start one." Style="{StaticResource Muted}" HorizontalOptions="Center" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:ConversationItemViewModel">
+                    <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Padding="16,12" ColumnSpacing="12" RowSpacing="4" BackgroundColor="{StaticResource Surface}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenCommand, Source={RelativeSource AncestorType={x:Type vm:ChatsViewModel}}, x:DataType=vm:ChatsViewModel}"
+                                                  CommandParameter="{Binding .}" />
+                        </Grid.GestureRecognizers>
+
+                        <Grid Grid.RowSpan="2" WidthRequest="48" HeightRequest="48" VerticalOptions="Center">
+                            <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="48" />
+                            <Border IsVisible="{Binding HasUnread}"
+                                    BackgroundColor="{StaticResource Badge}"
+                                    StrokeThickness="0"
+                                    StrokeShape="RoundRectangle 9"
+                                    HeightRequest="18"
+                                    MinimumWidthRequest="18"
+                                    Padding="5,0"
+                                    HorizontalOptions="End"
+                                    VerticalOptions="Start"
+                                    Margin="0,-6,-6,0">
+                                <Label Text="{Binding UnreadText}" TextColor="White" FontSize="11" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                        </Grid>
+
+                        <Label Grid.Column="1" Text="{Binding Title}" FontSize="17" LineBreakMode="TailTruncation" />
+                        <Label Grid.Column="2" Text="{Binding TimeText}" Style="{StaticResource Muted}" FontSize="12" />
+                        <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                               Text="{Binding Preview}" Style="{StaticResource Muted}" FontSize="14"
+                               LineBreakMode="TailTruncation" MaxLines="1" />
+                    </Grid>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </RefreshView>
+</pages:ViewModelPage>

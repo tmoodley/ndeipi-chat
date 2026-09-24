@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:converters="clr-namespace:NdeipiChat.App.Converters"
+             x:Class="NdeipiChat.App.App">
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- WeChat's palette -->
+            <Color x:Key="Brand">#07C160</Color>
+            <Color x:Key="BrandPressed">#06AD56</Color>
+            <Color x:Key="Page">#EDEDED</Color>
+            <Color x:Key="Surface">#FFFFFF</Color>
+            <Color x:Key="BubbleMine">#95EC69</Color>
+            <Color x:Key="BubbleTheirs">#FFFFFF</Color>
+            <Color x:Key="Transfer">#FA9D3B</Color>
+            <Color x:Key="TransferDone">#FBD3A6</Color>
+            <Color x:Key="Money">#F37B1D</Color>
+            <Color x:Key="Text">#191919</Color>
+            <Color x:Key="TextMuted">#888888</Color>
+            <Color x:Key="Divider">#E5E5E5</Color>
+            <Color x:Key="Badge">#FA5151</Color>
+            <Color x:Key="Danger">#FA5151</Color>
+
+            <converters:NotConverter x:Key="Not" />
+            <converters:HasTextConverter x:Key="HasText" />
+            <converters:IsBlankConverter x:Key="IsBlank" />
+            <converters:IsNotNullConverter x:Key="IsNotNull" />
+            <converters:BytesToImageConverter x:Key="BytesToImage" />
+
+            <Style TargetType="ContentPage" ApplyToDerivedTypes="True">
+                <Setter Property="BackgroundColor" Value="{StaticResource Page}" />
+                <Setter Property="Shell.BackgroundColor" Value="{StaticResource Page}" />
+                <Setter Property="Shell.ForegroundColor" Value="{StaticResource Text}" />
+                <Setter Property="Shell.TitleColor" Value="{StaticResource Text}" />
+                <Setter Property="Shell.TabBarBackgroundColor" Value="#F7F7F7" />
+                <Setter Property="Shell.TabBarForegroundColor" Value="{StaticResource Brand}" />
+                <Setter Property="Shell.TabBarTitleColor" Value="{StaticResource Brand}" />
+                <Setter Property="Shell.TabBarUnselectedColor" Value="{StaticResource Text}" />
+            </Style>
+
+            <Style TargetType="Label">
+                <Setter Property="TextColor" Value="{StaticResource Text}" />
+                <Setter Property="FontSize" Value="16" />
+            </Style>
+
+            <Style x:Key="Muted" TargetType="Label">
+                <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <Style x:Key="SectionHeader" TargetType="Label">
+                <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                <Setter Property="FontSize" Value="13" />
+                <Setter Property="Margin" Value="16,16,16,6" />
+            </Style>
+
+            <Style x:Key="Error" TargetType="Label">
+                <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                <Setter Property="FontSize" Value="14" />
+            </Style>
+
+            <Style x:Key="Primary" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{StaticResource Brand}" />
+                <Setter Property="TextColor" Value="White" />
+                <Setter Property="FontSize" Value="17" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="HeightRequest" Value="48" />
+            </Style>
+
+            <Style x:Key="Secondary" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="#F2F2F2" />
+                <Setter Property="TextColor" Value="{StaticResource Brand}" />
+                <Setter Property="FontSize" Value="17" />
+                <Setter Property="CornerRadius" Value="8" />
+                <Setter Property="HeightRequest" Value="48" />
+            </Style>
+
+            <Style x:Key="Card" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{StaticResource Surface}" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="Padding" Value="16,4" />
+            </Style>
+
+            <Style x:Key="FormEntry" TargetType="Entry">
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="TextColor" Value="{StaticResource Text}" />
+                <Setter Property="PlaceholderColor" Value="#B2B2B2" />
+            </Style>
+
+            <Style x:Key="Timestamp" TargetType="Label">
+                <Setter Property="TextColor" Value="#B2B2B2" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="HorizontalOptions" Value="Center" />
+                <Setter Property="Margin" Value="0,8,0,4" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

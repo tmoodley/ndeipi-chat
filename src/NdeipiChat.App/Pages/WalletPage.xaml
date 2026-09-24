@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     xmlns:contracts="clr-namespace:NdeipiChat.Contracts;assembly=NdeipiChat.Contracts"
+                     x:Class="NdeipiChat.App.Pages.WalletPage"
+                     x:DataType="vm:WalletViewModel"
+                     Title="Wallet"
+                     Shell.TabBarIsVisible="False">
+    <RefreshView Command="{Binding RefreshCommand}" IsRefreshing="{Binding IsBusy}" RefreshColor="{StaticResource Brand}">
+        <ScrollView>
+            <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+
+                <!-- Bridge banking: verification, then a wallet and a balance. -->
+                <Border Margin="12,4" Padding="20" StrokeThickness="0" StrokeShape="RoundRectangle 12" BackgroundColor="{StaticResource Brand}">
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Money" TextColor="White" FontSize="14" />
+                        <Label Text="{Binding StatusText}" TextColor="White" FontSize="22" FontAttributes="Bold" />
+                        <Label Text="{Binding WalletText}" TextColor="White" FontSize="13" IsVisible="{Binding IsVerified}" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Balances}" Margin="0,8,0,0">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="contracts:BalanceDto">
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="{Binding Amount}" TextColor="White" FontSize="28" FontAttributes="Bold" />
+                                        <Label Text="{Binding Currency}" TextColor="White" FontSize="15" VerticalOptions="End" Margin="0,0,0,4" />
+                                    </HorizontalStackLayout>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Button Text="{Binding VerifyButtonText}"
+                        Command="{Binding VerifyCommand}"
+                        IsVisible="{Binding CanVerify}"
+                        Style="{StaticResource Primary}"
+                        Margin="16,8" />
+                <Label Text="Identity checks are run by Bridge. Pull down to refresh once you're done."
+                       Style="{StaticResource Muted}"
+                       IsVisible="{Binding CanVerify}"
+                       HorizontalTextAlignment="Center"
+                       Margin="24,0" />
+
+                <!-- Where Ndeipi sends tokens you receive, one address per chain. -->
+                <Label Text="TOKEN RECEIVING ADDRESSES" Style="{StaticResource SectionHeader}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding ReceivingWallets}" BackgroundColor="{StaticResource Surface}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="contracts:UserWalletDto">
+                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
+                                <VerticalStackLayout>
+                                    <Label Text="{Binding Chain}" FontAttributes="Bold" />
+                                    <Label Text="{Binding Address}" Style="{StaticResource Muted}" LineBreakMode="MiddleTruncation" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1" Text="Remove" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource Danger}"
+                                        Command="{Binding RemoveWalletCommand, Source={RelativeSource AncestorType={x:Type vm:WalletViewModel}}, x:DataType=vm:WalletViewModel}"
+                                        CommandParameter="{Binding .}" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout>
+                        <Entry Text="{Binding NewWalletChain}" Placeholder="Chain, e.g. polygon" Style="{StaticResource FormEntry}" />
+                        <Entry Text="{Binding NewWalletAddress}" Placeholder="Wallet address" Style="{StaticResource FormEntry}" />
+                    </VerticalStackLayout>
+                </Border>
+                <Button Text="Save address" Command="{Binding SaveWalletCommand}" Style="{StaticResource Secondary}" Margin="16,4" />
+
+                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" Margin="16,0" />
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</pages:ViewModelPage>

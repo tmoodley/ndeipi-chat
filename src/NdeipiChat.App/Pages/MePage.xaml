@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.MePage"
+                     x:DataType="vm:MeViewModel"
+                     Title="Me"
+                     Shell.NavBarIsVisible="False">
+    <ScrollView>
+        <VerticalStackLayout Spacing="8">
+            <Grid ColumnDefinitions="Auto,*" Padding="24,64,24,32" ColumnSpacing="16" BackgroundColor="{StaticResource Surface}">
+                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="64" />
+                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="4">
+                    <Label Text="{Binding DisplayName}" FontSize="22" FontAttributes="Bold" />
+                    <Label Text="{Binding Username}" Style="{StaticResource Muted}" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
+                    <Label Text="{Binding Email}" Style="{StaticResource Muted}" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,14" ColumnSpacing="12" BackgroundColor="{StaticResource Surface}">
+                <Grid.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding OpenWalletCommand}" />
+                </Grid.GestureRecognizers>
+                <Label Text="💳" FontSize="20" VerticalOptions="Center" />
+                <Label Grid.Column="1" Text="Wallet" VerticalOptions="Center" />
+                <Label Grid.Column="2" Text="›" FontSize="22" TextColor="#B2B2B2" VerticalOptions="Center" />
+            </Grid>
+
+            <Button Text="Sign out"
+                    Command="{Binding SignOutCommand}"
+                    Style="{StaticResource Secondary}"
+                    TextColor="{StaticResource Danger}"
+                    Margin="16,32" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:ViewModelPage>

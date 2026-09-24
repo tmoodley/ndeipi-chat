@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+	<!-- Provide MAUI variables to help projects resolve versions on machines where they may be absent -->
+	<MauiVersion>8.0.0</MauiVersion>
+	<MauiAndroidPlatformVersion>24.0</MauiAndroidPlatformVersion>
+	<MauiIosPlatformVersion>15.0</MauiIosPlatformVersion>
+	<MauiMacCatalystPlatformVersion>15.0</MauiMacCatalystPlatformVersion>
+	  <!-- Fallback: ensure TargetFramework is never empty to avoid NETSDK1013 during evaluation -->
+	<TargetFramework Condition="'$(TargetFramework)' == ''">net10.0</TargetFramework>
+  </PropertyGroup>
+</Project>

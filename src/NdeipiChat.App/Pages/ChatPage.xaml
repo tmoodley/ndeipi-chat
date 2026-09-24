@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.ChatPage"
+                     x:DataType="vm:ChatViewModel"
+                     Title="{Binding Title}"
+                     Shell.TabBarIsVisible="False">
+    <Grid RowDefinitions="*,Auto,Auto,Auto">
+
+        <CollectionView x:Name="MessageList"
+                        ItemsSource="{Binding Messages}"
+                        SelectionMode="None"
+                        ItemsUpdatingScrollMode="KeepLastItemInView">
+            <CollectionView.Header>
+                <Button Text="Earlier messages"
+                        Command="{Binding LoadOlderCommand}"
+                        IsVisible="{Binding HasMore}"
+                        BackgroundColor="Transparent"
+                        TextColor="{StaticResource TextMuted}"
+                        FontSize="13"
+                        HorizontalOptions="Center" />
+            </CollectionView.Header>
+            <CollectionView.Footer>
+                <BoxView HeightRequest="8" Color="Transparent" />
+            </CollectionView.Footer>
+        </CollectionView>
+
+        <Label Grid.Row="1"
+               Text="{Binding TypingText}"
+               IsVisible="{Binding TypingText, Converter={StaticResource IsNotNull}}"
+               Style="{StaticResource Muted}"
+               Margin="16,0,16,4" />
+
+        <!-- Input bar: "+" opens the extension panel; it turns into Send once there's text. -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Padding="8" ColumnSpacing="8" BackgroundColor="#F7F7F7">
+            <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 4" Padding="8,0" MinimumHeightRequest="40">
+                <Editor Text="{Binding Draft}" AutoSize="TextChanges" MaximumHeightRequest="120" FontSize="16" BackgroundColor="Transparent" />
+            </Border>
+            <Grid Grid.Column="1" VerticalOptions="End">
+                <Button Text="+"
+                        Command="{Binding ToggleExtensionPanelCommand}"
+                        IsVisible="{Binding Draft, Converter={StaticResource IsBlank}}"
+                        WidthRequest="40" HeightRequest="40" CornerRadius="20" Padding="0"
+                        BackgroundColor="Transparent" BorderColor="{StaticResource Text}" BorderWidth="1.5"
+                        TextColor="{StaticResource Text}" FontSize="24" />
+                <Button Text="Send"
+                        Command="{Binding SendTextCommand}"
+                        IsVisible="{Binding Draft, Converter={StaticResource HasText}}"
+                        Style="{StaticResource Primary}"
+                        HeightRequest="40" FontSize="15" Padding="14,0" />
+            </Grid>
+        </Grid>
+
+        <!-- Extension panel: one tile per registered IComposerAction. -->
+        <CollectionView Grid.Row="3"
+                        ItemsSource="{Binding Actions}"
+                        IsVisible="{Binding IsExtensionPanelOpen}"
+                        SelectionMode="None"
+                        HeightRequest="200"
+                        BackgroundColor="#F7F7F7">
+            <CollectionView.ItemsLayout>
+                <GridItemsLayout Orientation="Vertical" Span="4" />
+            </CollectionView.ItemsLayout>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="ext:IComposerAction">
+                    <VerticalStackLayout Padding="8,16" Spacing="6">
+                        <VerticalStackLayout.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding RunActionCommand, Source={RelativeSource AncestorType={x:Type vm:ChatViewModel}}, x:DataType=vm:ChatViewModel}"
+                                                  CommandParameter="{Binding .}" />
+                        </VerticalStackLayout.GestureRecognizers>
+                        <Border WidthRequest="60" HeightRequest="60" BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 12" HorizontalOptions="Center">
+                            <Label Text="{Binding Glyph}" FontSize="26" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="12" HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </Grid>
+</pages:ViewModelPage>

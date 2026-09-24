@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Two overlapping speech bubbles, WeChat-style. -->
+<svg width="456" height="456" viewBox="0 0 456 456" xmlns="http://www.w3.org/2000/svg">
+  <g fill="#FFFFFF">
+    <ellipse cx="190" cy="200" rx="112" ry="94"/>
+    <path d="M128 266 L112 320 L170 284 Z"/>
+  </g>
+  <g fill="#FFFFFF" stroke="#07C160" stroke-width="14">
+    <ellipse cx="286" cy="262" rx="92" ry="78"/>
+  </g>
+  <path d="M330 322 L346 366 L300 336 Z" fill="#FFFFFF"/>
+  <g fill="#07C160">
+    <circle cx="152" cy="176" r="14"/>
+    <circle cx="222" cy="176" r="14"/>
+    <circle cx="258" cy="248" r="11"/>
+    <circle cx="314" cy="248" r="11"/>
+  </g>
+</svg>

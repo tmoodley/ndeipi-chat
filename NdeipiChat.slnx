@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="Ndeipi.Api/Ndeipi.Api.csproj" Id="a0b28123-3f9a-4be1-9b23-726e6115843a" />
+    <Project Path="NdeipiChat/NdeipiChat.csproj" Id="636d6f98-d623-46d4-b685-c2dd1f3742b3" />
+    <Project Path="src/NdeipiChat.App/NdeipiChat.App.csproj" />
+    <Project Path="src/NdeipiChat.Client.Core/NdeipiChat.Client.Core.csproj" />
+    <Project Path="src/NdeipiChat.Contracts/NdeipiChat.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NdeipiChat.Tests/NdeipiChat.Tests.csproj" />
+  </Folder>
+</Solution>

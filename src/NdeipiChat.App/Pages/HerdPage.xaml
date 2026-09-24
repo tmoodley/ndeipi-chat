@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.HerdPage"
+                     x:DataType="vm:HerdViewModel"
+                     Title="Herd">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="＋" Command="{Binding RegisterCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <RefreshView Command="{Binding RefreshCommand}" IsRefreshing="{Binding IsRefreshing}" RefreshColor="{StaticResource Brand}">
+        <ScrollView>
+            <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+
+                <Border Margin="12,4" Padding="20,16" StrokeThickness="0" StrokeShape="RoundRectangle 12" BackgroundColor="{StaticResource Brand}">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding RegisterCommand}" />
+                    </Border.GestureRecognizers>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="Register a cow" TextColor="White" FontSize="19" FontAttributes="Bold" />
+                            <Label Text="Photograph the face, then the side. Works without signal." TextColor="White" FontSize="13" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="1" Text="📷" FontSize="30" VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" Margin="16,0"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+
+                <!-- Captures still on the phone. -->
+                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding HasPending}" Margin="0,8,8,0">
+                    <Label Text="WAITING TO UPLOAD" Style="{StaticResource SectionHeader}" />
+                    <Button Grid.Column="1" Text="Upload now" Command="{Binding SyncCommand}" FontSize="13"
+                            BackgroundColor="Transparent" TextColor="{StaticResource Brand}" />
+                </Grid>
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Pending}" BackgroundColor="{StaticResource Surface}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:PendingCaptureViewModel">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12">
+                                <Border WidthRequest="48" HeightRequest="48" StrokeThickness="0" StrokeShape="RoundRectangle 6">
+                                    <Image Source="{Binding FacePath}" Aspect="AspectFill" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                    <Label Text="{Binding Label}" />
+                                    <Label Text="{Binding StatusText}" Style="{StaticResource Muted}" LineBreakMode="WordWrap">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label" Binding="{Binding IsRejected}" Value="True">
+                                                <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
+                                    <Label Text="{Binding TimeText}" Style="{StaticResource Muted}" FontSize="11" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="2" Text="Discard" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource TextMuted}"
+                                        Command="{Binding DiscardCommand, Source={RelativeSource AncestorType={x:Type vm:HerdViewModel}}, x:DataType=vm:HerdViewModel}"
+                                        CommandParameter="{Binding .}" />
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+
+                <Label Text="MY ANIMALS" Style="{StaticResource SectionHeader}" />
+                <Label Text="No animals registered yet." Style="{StaticResource Muted}" Margin="16,0" IsVisible="{Binding IsEmpty}" />
+                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Cows}" BackgroundColor="{StaticResource Surface}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:CowItemViewModel">
+                            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding OpenCommand, Source={RelativeSource AncestorType={x:Type vm:HerdViewModel}}, x:DataType=vm:HerdViewModel}"
+                                                          CommandParameter="{Binding .}" />
+                                </Grid.GestureRecognizers>
+                                <Border WidthRequest="56" HeightRequest="56" StrokeThickness="0" StrokeShape="RoundRectangle 6" BackgroundColor="#E5E5E5">
+                                    <Image Source="{Binding Thumbnail, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                    <Label Text="{Binding ShortId}" FontAttributes="Bold" />
+                                    <Label Text="{Binding Title}" FontSize="14" />
+                                    <Label Text="{Binding Subtitle}" Style="{StaticResource Muted}" />
+                                </VerticalStackLayout>
+                                <Border Grid.Column="2" IsVisible="{Binding RequiresVet}" BackgroundColor="#FFF0F0" Stroke="{StaticResource Danger}"
+                                        StrokeShape="RoundRectangle 10" Padding="8,2" VerticalOptions="Center">
+                                    <Label Text="Vet" TextColor="{StaticResource Danger}" FontSize="12" FontAttributes="Bold" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</pages:ViewModelPage>

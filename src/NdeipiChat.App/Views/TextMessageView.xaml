@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:views="clr-namespace:NdeipiChat.App.Views"
+                  xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                  x:Class="NdeipiChat.App.Views.TextMessageView"
+                  x:DataType="ext:TextMessageViewModel">
+    <views:MessageRow.Bubble>
+        <Border StrokeThickness="0"
+                StrokeShape="RoundRectangle 6"
+                Padding="12,9"
+                MaximumWidthRequest="270"
+                BackgroundColor="{StaticResource BubbleTheirs}">
+            <Border.Triggers>
+                <DataTrigger TargetType="Border" Binding="{Binding IsMine}" Value="True">
+                    <Setter Property="BackgroundColor" Value="{StaticResource BubbleMine}" />
+                </DataTrigger>
+            </Border.Triggers>
+            <Label Text="{Binding Text}" FontSize="16" LineBreakMode="WordWrap" />
+        </Border>
+    </views:MessageRow.Bubble>
+</views:MessageRow>

@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.RegisterCowPage"
+                     x:DataType="vm:RegisterCowViewModel"
+                     Title="{Binding Title}"
+                     Shell.TabBarIsVisible="False">
+    <Grid>
+
+        <!-- Steps 1 and 2: camera with a guide frame for the shot. -->
+        <Grid IsVisible="{Binding IsCapturing}" RowDefinitions="Auto,*,Auto" BackgroundColor="Black">
+            <VerticalStackLayout Padding="16,12" Spacing="4">
+                <Label Text="{Binding StepText}" TextColor="{StaticResource Brand}" FontSize="13" FontAttributes="Bold" />
+                <Label Text="{Binding Instruction}" TextColor="White" FontSize="15" />
+            </VerticalStackLayout>
+
+            <Grid x:Name="CameraArea" Grid.Row="1">
+                <toolkit:CameraView x:Name="Camera" />
+                <Border x:Name="Reticle"
+                        InputTransparent="True"
+                        Stroke="White"
+                        StrokeThickness="3"
+                        StrokeDashArray="6,4"
+                        StrokeShape="RoundRectangle 18"
+                        BackgroundColor="Transparent"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center" />
+                <Label Text="{Binding PhotoWarning}"
+                       IsVisible="{Binding PhotoWarning, Converter={StaticResource IsNotNull}}"
+                       BackgroundColor="#E6FA5151"
+                       TextColor="White"
+                       Padding="12"
+                       Margin="16"
+                       VerticalOptions="Start" />
+            </Grid>
+
+            <Grid Grid.Row="2" ColumnDefinitions="*,Auto,*" Padding="16,16,16,28">
+                <Button Text="Gallery" Clicked="OnPickFromGallery" BackgroundColor="Transparent" TextColor="White" FontSize="14" HorizontalOptions="Start" />
+                <Button Grid.Column="1"
+                        x:Name="Shutter"
+                        Clicked="OnShutter"
+                        WidthRequest="72"
+                        HeightRequest="72"
+                        CornerRadius="36"
+                        BackgroundColor="White"
+                        BorderColor="{StaticResource Brand}"
+                        BorderWidth="5" />
+                <Button Grid.Column="2" Text="Camera app" Clicked="OnSystemCamera" BackgroundColor="Transparent" TextColor="White" FontSize="14" HorizontalOptions="End" />
+            </Grid>
+        </Grid>
+
+        <!-- Step 3: check the photos, add what the farmer knows. -->
+        <ScrollView IsVisible="{Binding IsDetailsStep}" BackgroundColor="{StaticResource Page}">
+            <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+                <Label Text="{Binding StepText}" Style="{StaticResource SectionHeader}" />
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Padding="12,0">
+                    <VerticalStackLayout Spacing="4">
+                        <Border HeightRequest="140" StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                            <Image Source="{Binding FacePhoto, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" />
+                        </Border>
+                        <Button Text="Retake face" Command="{Binding RetakeFaceCommand}" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource Brand}" />
+                    </VerticalStackLayout>
+                    <VerticalStackLayout Grid.Column="1" Spacing="4">
+                        <Border HeightRequest="140" StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                            <Image Source="{Binding FlankPhoto, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" />
+                        </Border>
+                        <Button Text="Retake side" Command="{Binding RetakeFlankCommand}" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource Brand}" />
+                    </VerticalStackLayout>
+                </Grid>
+
+                <Label Text="RANCH" Style="{StaticResource SectionHeader}" />
+                <Border Style="{StaticResource Card}">
+                    <Entry Text="{Binding RanchCode}" Placeholder="Ranch code, e.g. zm-st-041" Style="{StaticResource FormEntry}" />
+                </Border>
+
+                <Label Text="WHAT YOU KNOW (OPTIONAL)" Style="{StaticResource SectionHeader}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout>
+                        <Picker Title="Breed" ItemsSource="{Binding Breeds}" SelectedItem="{Binding ClaimedBreed}" />
+                        <Picker Title="Sex" ItemsSource="{Binding Sexes}" SelectedItem="{Binding Sex}" />
+                        <Entry Text="{Binding AgeMonths}" Placeholder="Age in months" Keyboard="Numeric" Style="{StaticResource FormEntry}" />
+                        <Entry Text="{Binding OperatorWallet}" Placeholder="Owner wallet (0x…)" Style="{StaticResource FormEntry}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" Margin="16,4"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+                <Button Text="Register" Command="{Binding SubmitCommand}" Style="{StaticResource Primary}" Margin="16,12,16,4" />
+                <Label Text="The photos are checked for breed, body condition and visible health problems. Your location is recorded with the registration."
+                       Style="{StaticResource Muted}" HorizontalTextAlignment="Center" Margin="24,4" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <VerticalStackLayout IsVisible="{Binding IsSubmitting}" VerticalOptions="Center" Spacing="12">
+            <ActivityIndicator IsRunning="{Binding IsSubmitting}" Color="{StaticResource Brand}" />
+            <Label Text="Checking the photos…" HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+        <!-- Outcome. -->
+        <ScrollView IsVisible="{Binding IsDone}" BackgroundColor="{StaticResource Page}">
+            <VerticalStackLayout Spacing="8" Padding="0,24,0,32">
+                <Border Margin="12,4" Padding="20" StrokeThickness="0" StrokeShape="RoundRectangle 12" BackgroundColor="{StaticResource Surface}">
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="{Binding Result.Headline}" FontSize="24" FontAttributes="Bold" />
+                        <Label Text="{Binding Result.Detail}" Style="{StaticResource Muted}" FontSize="15" />
+                        <Label Text="{Binding Result.BreedText}" IsVisible="{Binding Result.Succeeded}" />
+                        <Label Text="{Binding Result.ConditionText}" IsVisible="{Binding Result.Succeeded}" />
+                        <Label Text="{Binding Result.HealthText}" IsVisible="{Binding Result.Succeeded}" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Result.Findings}" IsVisible="{Binding Result.HasFindings}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <Label Text="{Binding .}" TextColor="{StaticResource Danger}" />
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                        <Border IsVisible="{Binding Result.RequiresVet}" BackgroundColor="#FFF0F0" StrokeThickness="0" StrokeShape="RoundRectangle 8" Padding="12">
+                            <Label Text="Have a vet look at this animal." TextColor="{StaticResource Danger}" FontAttributes="Bold" />
+                        </Border>
+                        <Label Text="{Binding Result.AttestationText}" Style="{StaticResource Muted}" FontSize="11" IsVisible="{Binding Result.Succeeded}" />
+                    </VerticalStackLayout>
+                </Border>
+                <Button Text="Done" Command="{Binding FinishCommand}" Style="{StaticResource Primary}" Margin="16,12" />
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</pages:ViewModelPage>

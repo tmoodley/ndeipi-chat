@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     xmlns:contracts="clr-namespace:NdeipiChat.Contracts;assembly=NdeipiChat.Contracts"
+                     x:Class="NdeipiChat.App.Pages.AssetTransferPage"
+                     x:DataType="vm:AssetTransferViewModel"
+                     Title="Transfer"
+                     Shell.TabBarIsVisible="False">
+    <ScrollView>
+        <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+
+            <Label Text="TO" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource Card}">
+                <Grid>
+                    <Label Text="{Binding Recipient.DisplayName}" FontSize="17" Padding="0,12" IsVisible="{Binding ShowRecipientPicker, Converter={StaticResource Not}}" />
+                    <Picker ItemsSource="{Binding Recipients}"
+                            ItemDisplayBinding="{Binding DisplayName, x:DataType=contracts:UserDto}"
+                            SelectedItem="{Binding Recipient}"
+                            Title="Choose who to send to"
+                            IsVisible="{Binding ShowRecipientPicker}" />
+                </Grid>
+            </Border>
+
+            <Label Text="TOKEN" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout>
+                    <Picker ItemsSource="{Binding Tokens}"
+                            ItemDisplayBinding="{Binding Label, x:DataType=vm:TokenChoice}"
+                            SelectedItem="{Binding SelectedToken}"
+                            Title="Choose a token" />
+
+                    <!-- Any other token: say exactly which one. -->
+                    <VerticalStackLayout IsVisible="{Binding IsCustom}">
+                        <Entry Text="{Binding Chain}" Placeholder="Chain, e.g. polygon" Style="{StaticResource FormEntry}" />
+                        <Picker ItemsSource="{Binding Standards}" SelectedItem="{Binding Standard}" Title="Standard" />
+                        <Entry Text="{Binding Symbol}" Placeholder="Symbol, e.g. AGD" Style="{StaticResource FormEntry}" />
+                        <Entry Text="{Binding ContractAddress}" Placeholder="Contract address" Style="{StaticResource FormEntry}" IsVisible="{Binding NeedsContract}" />
+                        <Entry Text="{Binding Decimals}" Placeholder="Decimals (optional)" Keyboard="Numeric" Style="{StaticResource FormEntry}" IsVisible="{Binding IsNonFungible, Converter={StaticResource Not}}" />
+                    </VerticalStackLayout>
+
+                    <Entry Text="{Binding TokenId}" Placeholder="Token id" Keyboard="Numeric" Style="{StaticResource FormEntry}" IsVisible="{Binding IsNonFungible}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="AMOUNT" Style="{StaticResource SectionHeader}" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout>
+                    <Entry Text="{Binding Amount}" Placeholder="{Binding AmountPlaceholder}" Keyboard="Numeric" FontSize="28" Style="{StaticResource FormEntry}" />
+                    <Entry Text="{Binding Memo}" Placeholder="Add a note (optional)" MaxLength="280" Style="{StaticResource FormEntry}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" Margin="16,4" />
+
+            <Button Text="Transfer" Command="{Binding SendCommand}" Style="{StaticResource Primary}" Margin="16,16,16,4" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Brand}" />
+            <Label Text="Ndeipi records the transfer on-chain. Once confirmed it can't be reversed."
+                   Style="{StaticResource Muted}" HorizontalTextAlignment="Center" Margin="24,4" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:ViewModelPage>

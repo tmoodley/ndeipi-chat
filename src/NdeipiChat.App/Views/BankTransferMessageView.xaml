@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:views="clr-namespace:NdeipiChat.App.Views"
+                  xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                  x:Class="NdeipiChat.App.Views.BankTransferMessageView"
+                  x:DataType="ext:BankTransferMessageViewModel">
+    <views:MessageRow.Bubble>
+        <Border StrokeThickness="0"
+                StrokeShape="RoundRectangle 8"
+                Padding="0"
+                WidthRequest="240"
+                BackgroundColor="{StaticResource Money}">
+            <Border.Triggers>
+                <DataTrigger TargetType="Border" Binding="{Binding IsConfirmed}" Value="True">
+                    <Setter Property="BackgroundColor" Value="{StaticResource TransferDone}" />
+                </DataTrigger>
+                <DataTrigger TargetType="Border" Binding="{Binding IsFailedTransfer}" Value="True">
+                    <Setter Property="BackgroundColor" Value="#C8C8C8" />
+                </DataTrigger>
+            </Border.Triggers>
+            <VerticalStackLayout>
+                <Grid ColumnDefinitions="Auto,*" Padding="14,12" ColumnSpacing="12">
+                    <Border WidthRequest="40" HeightRequest="40" StrokeShape="RoundRectangle 20" Stroke="White" StrokeThickness="2" VerticalOptions="Center">
+                        <Label Text="$" TextColor="White" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                        <Label Text="{Binding AmountText}" TextColor="White" FontSize="17" FontAttributes="Bold" />
+                        <Label Text="{Binding Headline}" TextColor="White" FontSize="13" />
+                        <Label Text="{Binding Memo}" IsVisible="{Binding HasMemo}" TextColor="White" FontSize="13" LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                </Grid>
+                <BoxView HeightRequest="0.5" Color="#55FFFFFF" Margin="14,0" />
+                <Grid ColumnDefinitions="*,Auto" Padding="14,6">
+                    <Label Text="Money · Bridge" TextColor="White" FontSize="11" />
+                    <Label Grid.Column="1" Text="{Binding StatusText}" TextColor="White" FontSize="11" />
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+    </views:MessageRow.Bubble>
+</views:MessageRow>
