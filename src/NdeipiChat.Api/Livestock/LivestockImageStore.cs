@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Livestock;
+namespace NdeipiChat.Api.Livestock;
 
 public interface ILivestockImageStore
 {

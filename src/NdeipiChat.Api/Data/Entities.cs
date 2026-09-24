@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Data;
+namespace NdeipiChat.Api.Data;
 
 /// <summary>A Clerk user, mirrored locally on first sign-in so chats can join and search on it.</summary>
 public sealed class User

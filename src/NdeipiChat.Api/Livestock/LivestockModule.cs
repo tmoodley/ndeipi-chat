@@ -2,7 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Ndeipi.Api.Auth;
+using NdeipiChat.Api.Auth;
 using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;

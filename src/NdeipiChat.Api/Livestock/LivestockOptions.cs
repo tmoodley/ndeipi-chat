@@ -1,4 +1,4 @@
-namespace Ndeipi.Api.Livestock;
+namespace NdeipiChat.Api.Livestock;
 
 public sealed class LivestockOptions
 {

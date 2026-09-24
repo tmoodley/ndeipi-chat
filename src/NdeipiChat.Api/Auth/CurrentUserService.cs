@@ -1,9 +1,9 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 /// <summary>
 /// Resolves the signed-in Clerk user to a local <see cref="User"/>, creating it on first sight and

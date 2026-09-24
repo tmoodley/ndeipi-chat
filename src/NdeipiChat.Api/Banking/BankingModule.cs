@@ -3,12 +3,12 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Ndeipi.Api.Auth;
-using Ndeipi.Api.Chat;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Auth;
+using NdeipiChat.Api.Chat;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Banking;
+namespace NdeipiChat.Api.Banking;
 
 public static class BankingModule
 {

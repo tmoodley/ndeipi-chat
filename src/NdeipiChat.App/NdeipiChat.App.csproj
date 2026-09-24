@@ -1,61 +1,34 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Default: make the project build as a plain net10.0 app so solution builds succeed on machines without MAUI workloads installed.
-       To build the MAUI app (mobile targets), pass -p:BuildingForMaui=true to msbuild/dotnet build or enable the property in your IDE. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
     <OutputType>Exe</OutputType>
     <RootNamespace>NdeipiChat.App</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
 
     <ApplicationTitle>Ndeipi Chat</ApplicationTitle>
     <ApplicationId>com.ndeipi.chat</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
-  </PropertyGroup>
 
-  <!-- MAUI-specific configuration is applied only when BuildingForMaui is true -->
-  <PropertyGroup Condition="'$(BuildingForMaui)' == 'true'">
-    <TargetFrameworks>net10.0-android24.0;net10.0-ios15.0;net10.0-maccatalyst15.0</TargetFrameworks>
-    <UseMaui>true</UseMaui>
-    <SingleProject>true</SingleProject>
-    <MauiEnableXamlCBindingWithSourceCompilation>true</MauiEnableXamlCBindingWithSourceCompilation>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(BuildingForMaui)' == 'true'">
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
-  <ItemGroup Condition="'$(BuildingForMaui)' == 'true'">
+  <ItemGroup>
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#07C160" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#07C160" BaseSize="128,128" />
     <MauiImage Include="Resources\Images\*" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Common packages usable in non-MAUI builds -->
-    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.*" />
-  </ItemGroup>
-
-  <!-- When not building for MAUI, exclude MAUI-specific source files so the project can compile as net10.0 -->
-  <ItemGroup Condition="'$(BuildingForMaui)' != 'true'">
-    <Compile Remove="Platforms\**\*.cs" />
-    <Compile Remove="Views\*.cs" />
-    <Compile Remove="Views\**\*.cs" />
-    <Compile Remove="Pages\**\*.xaml.cs" />
-    <Compile Remove="Pages\**\*.cs" />
-    <Compile Remove="Extensions\**\*.cs" />
-    <Compile Remove="Converters\**\*.cs" />
-    <Compile Remove="Controls\**\*.cs" />
-    <Compile Remove="MauiProgram.cs" />
-    <Compile Remove="AppShell.xaml.cs" />
-    <Compile Remove="App.xaml.cs" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(BuildingForMaui)' == 'true'">
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.60" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.12" />
     <PackageReference Include="CommunityToolkit.Maui.Camera" Version="6.1.0" />
   </ItemGroup>
 

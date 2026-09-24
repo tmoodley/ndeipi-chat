@@ -4,10 +4,10 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 /// <summary>
 /// Signs the app in with Clerk. Clerk has no .NET MAUI SDK, so the app signs in through Clerk's

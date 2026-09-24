@@ -1,6 +1,6 @@
 using SkiaSharp;
 
-namespace Ndeipi.Api.Livestock;
+namespace NdeipiChat.Api.Livestock;
 
 /// <summary>A region of an image as fractions of its width and height, origin top-left.</summary>
 public sealed record NormalizedBox(double X, double Y, double Width, double Height);

@@ -2,7 +2,7 @@ using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 /// <summary>The parts of Clerk's Backend API this server uses.</summary>
 public interface IClerkBackendApi

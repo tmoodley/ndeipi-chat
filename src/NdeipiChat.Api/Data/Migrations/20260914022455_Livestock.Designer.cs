@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 
 #nullable disable
 
-namespace Ndeipi.Api.Data.Migrations
+namespace NdeipiChat.Api.Data.Migrations
 {
     [DbContext(typeof(ChatDbContext))]
     [Migration("20260914022455_Livestock")]

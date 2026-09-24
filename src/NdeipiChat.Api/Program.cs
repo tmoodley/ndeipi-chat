@@ -1,10 +1,10 @@
 using Microsoft.EntityFrameworkCore;
-using Ndeipi.Api.Assets;
-using Ndeipi.Api.Auth;
-using Ndeipi.Api.Banking;
-using Ndeipi.Api.Chat;
-using Ndeipi.Api.Data;
-using Ndeipi.Api.Livestock;
+using NdeipiChat.Api.Assets;
+using NdeipiChat.Api.Auth;
+using NdeipiChat.Api.Banking;
+using NdeipiChat.Api.Chat;
+using NdeipiChat.Api.Data;
+using NdeipiChat.Api.Livestock;
 using NdeipiChat.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);

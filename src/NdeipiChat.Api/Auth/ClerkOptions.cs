@@ -1,4 +1,4 @@
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 public sealed class ClerkOptions
 {

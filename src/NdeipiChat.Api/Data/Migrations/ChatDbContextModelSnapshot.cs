@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 
 #nullable disable
 
-namespace Ndeipi.Api.Data.Migrations
+namespace NdeipiChat.Api.Data.Migrations
 {
     [DbContext(typeof(ChatDbContext))]
     partial class ChatDbContextModelSnapshot : ModelSnapshot
