@@ -26,4 +26,7 @@ public interface IChatClient
     Task Typing(TypingDto typing);
     Task ReadReceipt(ReadReceiptDto receipt);
     Task BankingStatusChanged(BankingStatusDto status);
+
+    /// <summary>Someone sent, accepted, declined or cancelled a Shamwari request, or unfriended you.</summary>
+    Task ShamwarisChanged();
 }

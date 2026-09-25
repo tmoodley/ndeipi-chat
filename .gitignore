@@ -480,3 +480,6 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Server-only settings with secrets; published with the API, never committed.
+src/NdeipiChat.Api/appsettings.Production.json

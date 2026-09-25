@@ -11,6 +11,13 @@ public sealed class User
     public string DisplayName { get; set; } = "";
     public string? Username { get; set; }
     public string? Email { get; set; }
+
+    /// <summary>Whether Clerk has verified <see cref="Email"/>; only then can Shamwaris find you by it.</summary>
+    public bool EmailVerified { get; set; }
+
+    /// <summary>Verified phone number in E.164 form (+263771234567), for finding Shamwaris by number.</summary>
+    public string? Phone { get; set; }
+
     public string? AvatarUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ProfileSyncedAt { get; set; }
@@ -186,4 +193,28 @@ public sealed class ProcessedWebhookEvent
 {
     public required string EventId { get; set; }
     public DateTimeOffset ReceivedAt { get; set; }
+}
+
+/// <summary>
+/// A Shamwari request, or once <see cref="Accepted"/>, the friendship itself. An invite to
+/// someone not on Ndeipi yet has no <see cref="AddresseeId"/>, only <see cref="InviteContact"/>,
+/// until they sign up with that email or number.
+/// </summary>
+public sealed class ShamwariLink
+{
+    public Guid Id { get; set; }
+    public Guid RequesterId { get; set; }
+    public User Requester { get; set; } = null!;
+    public Guid? AddresseeId { get; set; }
+    public User? Addressee { get; set; }
+
+    /// <summary>The invited lower-case email or E.164 number, while no user has it yet.</summary>
+    public string? InviteContact { get; set; }
+
+    /// <summary>Both user ids in a fixed order, so a pair can only ever have one link.</summary>
+    public string? PairKey { get; set; }
+
+    public bool Accepted { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? AcceptedAt { get; set; }
 }

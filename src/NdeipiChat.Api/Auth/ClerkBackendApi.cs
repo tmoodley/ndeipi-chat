@@ -22,7 +22,14 @@ public interface IClerkBackendApi
 public sealed class ClerkSessionEndedException(string sessionId)
     : Exception($"Clerk session {sessionId} is no longer active.");
 
-public sealed record ClerkEmailAddress(string Id, string EmailAddress);
+public sealed record ClerkVerification(string? Status)
+{
+    public bool IsVerified => Status == "verified";
+}
+
+public sealed record ClerkEmailAddress(string Id, string EmailAddress, ClerkVerification? Verification = null);
+
+public sealed record ClerkPhoneNumber(string Id, string PhoneNumber, ClerkVerification? Verification = null);
 
 public sealed record ClerkUser(
     string Id,
@@ -31,11 +38,24 @@ public sealed record ClerkUser(
     string? Username,
     string? ImageUrl,
     string? PrimaryEmailAddressId,
-    List<ClerkEmailAddress>? EmailAddresses)
+    List<ClerkEmailAddress>? EmailAddresses,
+    string? PrimaryPhoneNumberId = null,
+    List<ClerkPhoneNumber>? PhoneNumbers = null)
 {
-    public string? PrimaryEmail =>
-        EmailAddresses?.FirstOrDefault(e => e.Id == PrimaryEmailAddressId)?.EmailAddress
-        ?? EmailAddresses?.FirstOrDefault()?.EmailAddress;
+    public string? PrimaryEmail => PrimaryEmailAddress?.EmailAddress;
+
+    ClerkEmailAddress? PrimaryEmailAddress =>
+        EmailAddresses?.FirstOrDefault(e => e.Id == PrimaryEmailAddressId) ?? EmailAddresses?.FirstOrDefault();
+
+    /// <summary>
+    /// Only a verified address or number can claim Shamwari invites or be found by one; otherwise
+    /// anyone could sign up with someone else's email and collect their requests.
+    /// </summary>
+    public bool PrimaryEmailVerified => PrimaryEmailAddress?.Verification?.IsVerified == true;
+
+    public string? VerifiedPhone =>
+        (PhoneNumbers?.FirstOrDefault(p => p.Id == PrimaryPhoneNumberId && p.Verification?.IsVerified == true)
+            ?? PhoneNumbers?.FirstOrDefault(p => p.Verification?.IsVerified == true))?.PhoneNumber;
 
     public string? FullName
     {

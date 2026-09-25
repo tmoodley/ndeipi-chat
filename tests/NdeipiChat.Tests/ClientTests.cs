@@ -119,6 +119,42 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
+    public async Task Shamwaris_add_accept_and_open_a_chat_to_send_money()
+    {
+        var alice = await app.CreateUserAsync("Alice Contacts");
+        var bobEmail = $"bob.{Guid.NewGuid():N}@example.test";
+        var bob = await app.CreateUserAsync("Bob Contacts", bobEmail);
+        await using var aliceApp = await ClientHarness.SignInAsync(app, alice);
+        await using var bobApp = await ClientHarness.SignInAsync(app, bob);
+        var aliceContacts = aliceApp.Contacts();
+        var bobContacts = bobApp.Contacts();
+        await aliceContacts.LoadCommand.ExecuteAsync(null);
+        await bobContacts.LoadCommand.ExecuteAsync(null);
+
+        Assert.False(aliceContacts.AddShamwariCommand.CanExecute(null));
+        aliceContacts.NewContact = bobEmail;
+        await aliceContacts.AddShamwariCommand.ExecuteAsync(null);
+        Assert.Equal(("Request sent to Bob Contacts.", ""), (aliceContacts.AddStatus, aliceContacts.NewContact));
+        Assert.Equal("Bob Contacts", Assert.Single(aliceContacts.Outgoing).Name);
+
+        await Wait.UntilAsync(() => bobApp.Ui.Read(() => bobContacts.HasIncoming), "Bob's list shows the request live");
+        var request = bobApp.Ui.Read(() => Assert.Single(bobContacts.Incoming));
+        Assert.Equal("Alice Contacts", request.Name);
+        await bobContacts.AcceptCommand.ExecuteAsync(request);
+        Assert.Equal("Alice Contacts", Assert.Single(bobContacts.Shamwaris).Name);
+
+        await Wait.UntilAsync(() => aliceApp.Ui.Read(() => aliceContacts.HasShamwaris && !aliceContacts.HasOutgoing), "Alice's list shows Bob as a Shamwari live");
+        var shamwari = aliceApp.Ui.Read(() => Assert.Single(aliceContacts.Shamwaris));
+        await aliceContacts.SelectCommand.ExecuteAsync(shamwari);
+        Assert.Equal([Routes.Chat], aliceApp.Navigator.Routes);
+
+        var chat = Assert.Single(await aliceApp.Api.GetConversationsAsync());
+        var aliceChat = aliceApp.Chat();
+        await aliceChat.OnNavigatedToAsync(Open(chat.Id));
+        Assert.Contains("Send money", aliceChat.Actions.Select(a => a.Title));
+    }
+
+    [Fact]
     public void Kinds_this_build_does_not_know_render_as_a_placeholder()
     {
         var extensions = new ChatExtensions([new TextMessageRenderer()], []);
@@ -178,6 +214,7 @@ public sealed class ClientHarness : IAsyncDisposable
     public ChatsViewModel Chats() => new(Api, Session, Extensions, Navigator, Ui, Dialogs, TimeProvider.System);
     public ChatViewModel Chat() => new(Api, Session, Extensions, Ui, Dialogs, TimeProvider.System);
     public AssetTransferViewModel AssetTransfer() => new(Api, Session, Navigator);
+    public ContactsViewModel Contacts() => new(Api, Session, Navigator, Dialogs, Ui);
 
     public async ValueTask DisposeAsync()
     {

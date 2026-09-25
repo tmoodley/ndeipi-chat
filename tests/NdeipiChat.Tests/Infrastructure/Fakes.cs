@@ -175,4 +175,20 @@ public static class Wait
         timeout.Token.Register(() => tcs.TrySetException(new TimeoutException($"No {method} event arrived.")));
         return tcs.Task;
     }
+
+    /// <summary>The next hub event of the given name, for events that carry no arguments.</summary>
+    public static Task ForEventAsync(HubConnection hub, string method, int timeoutMs = 10_000)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDisposable? subscription = null;
+        subscription = hub.On(method, () =>
+        {
+            tcs.TrySetResult();
+            subscription?.Dispose();
+        });
+
+        var timeout = new CancellationTokenSource(timeoutMs);
+        timeout.Token.Register(() => tcs.TrySetException(new TimeoutException($"No {method} event arrived.")));
+        return tcs.Task;
+    }
 }

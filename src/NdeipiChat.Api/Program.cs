@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
+using NdeipiChat.Api;
 using NdeipiChat.Api.Assets;
 using NdeipiChat.Api.Auth;
 using NdeipiChat.Api.Banking;
 using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Data;
 using NdeipiChat.Api.Livestock;
+using NdeipiChat.Api.Shamwaris;
 using NdeipiChat.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,9 +16,11 @@ builder.Services.AddDbContext<ChatDbContext>((sp, o) =>
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.ConfigureHttpJsonOptions(o => ContractJson.Configure(o.SerializerOptions));
 builder.Services.AddProblemDetails();
+builder.Services.AddApiDocs();
 
 builder.Services.AddClerkAuthentication(builder.Configuration);
 builder.Services.AddChat();
+builder.Services.AddShamwaris();
 builder.Services.AddTokenTransfers(builder.Configuration);
 builder.Services.AddBridgeBanking(builder.Configuration);
 builder.Services.AddLivestock(builder.Configuration);
@@ -34,9 +38,11 @@ app.UseStatusCodePages();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapApiDocs();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapMobileAuth();
 app.MapChat();
+app.MapShamwaris();
 app.MapTokenTransfers();
 app.MapBanking();
 app.MapLivestock();

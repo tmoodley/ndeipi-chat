@@ -8,6 +8,8 @@ talk to, right in the conversation.
 - **Sign-in:** Clerk.
 - **Token transfers:** queued in SQL Server for **Ndeipi Enterprise Server** to mint on-chain.
 - **Banking:** runs on **Bridge**, which handles KYC, custodial wallets and user-to-user transfers.
+- **Shamwaris (friends):** add people by email or phone number. They accept, and then you can chat
+  and send money. See [Shamwaris](#shamwaris).
 - **Livestock registry:** farmers register cattle from a face photo and a side photo. Claude grades
   breed, body condition and visible health, and a muzzle-print model stops the same animal being
   registered twice. See [docs/livestock-registry.md](docs/livestock-registry.md).
@@ -58,6 +60,10 @@ dotnet run
 `ConnectionStrings:Chat` defaults to LocalDB. Set `Database:MigrateOnStartup` to `true` if you'd
 rather have the API apply migrations itself.
 
+In Development the API serves Swagger UI at `/swagger` and the OpenAPI document at
+`/openapi/v1.json`. For endpoints that need sign-in, click **Authorize** and paste a Clerk session
+token.
+
 ### Clerk
 
 1. Create a Clerk application. From **API keys**, copy:
@@ -98,6 +104,23 @@ How it works:
 - **Send money** in a chat moves stablecoin from the sender's Bridge wallet to the recipient's.
   Each transfer's id is its Bridge idempotency key, and a background poller retries any whose
   outcome wasn't known.
+
+### Shamwaris
+
+The **Shamwaris** tab adds friends by email address or phone number. Numbers need their country
+code (`+263 77 123 4567`); spaces, dashes and a `00` prefix are fine.
+
+- If someone on Ndeipi has that email or number, they get a request live and appear under
+  **Requests**. Once they accept, you're Shamwaris on both sides. If they'd already asked you,
+  adding them back accepts straight away.
+- If no one does yet, the invite waits. When someone signs up, or later verifies that email or
+  number in Clerk, the invite becomes a request to them.
+- Only **verified** emails and numbers count, both for being found and for claiming invites.
+  Otherwise anyone could sign up with someone else's email and collect their requests. Turn on
+  phone numbers in Clerk (**User & authentication → Phone**) for adding by phone to work.
+- Tap a Shamwari to open your chat. The chat's **+** panel sends money or tokens. Swipe a Shamwari
+  left to remove them.
+- No email or SMS goes out yet. Tell the person to join Ndeipi yourself.
 
 ## Running the app
 
@@ -188,6 +211,8 @@ queue procedures and trigger, and the app's view models.
   `AddSignalR().AddStackExchangeRedis(...)` or Azure SignalR Service. Otherwise messages only
   reach people connected to the same instance.
 - **Push notifications** for people who aren't connected (FCM/APNs) aren't included yet.
+- **Shamwari invites** aren't delivered to the invited person yet. Sending them needs an email or
+  SMS provider, such as SendGrid or Twilio.
 - **Livestock:**
   - Supply and tune a muzzle-print ONNX model. Without one, duplicates can't be detected.
   - Validate Claude's body-condition and breed calls against your vets' scores.
