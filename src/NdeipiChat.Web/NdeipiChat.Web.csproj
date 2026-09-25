@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- index.html names blazor.webassembly.js plainly: the API serves it with MapFallbackToFile,
+         which doesn't fill fingerprint placeholders. MapStaticAssets maps the plain name. -->
+    <OverrideHtmlAssetPlaceholders>false</OverrideHtmlAssetPlaceholders>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+    <!-- Client.Core's livestock capture queue brings native SQLite, which can't run in the browser
+         and isn't used here (ClientOptions.SupportsLivestock is off). -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" ExcludeAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NdeipiChat.Client.Core\NdeipiChat.Client.Core.csproj" />
+  </ItemGroup>
+
+</Project>

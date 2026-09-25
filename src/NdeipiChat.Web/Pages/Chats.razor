@@ -1,0 +1,45 @@
+@page "/chats"
+@inherits ViewModelPage<ChatsViewModel>
+
+<PageTitle>Chats · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <h1>Chats</h1>
+    <a class="bar-action" href="shamwaris" title="New chat">＋</a>
+</header>
+
+@if (Vm.IsEmpty)
+{
+    <div class="empty">
+        <p>No chats yet.</p>
+        <a class="button primary" href="shamwaris">Find your Shamwaris</a>
+    </div>
+}
+else
+{
+    <ul class="list">
+        @foreach (var chat in Vm.Conversations)
+        {
+            <li class="row" @key="chat.Id" @onclick="() => Vm.OpenCommand.ExecuteAsync(chat)">
+                <Avatar Url="@chat.AvatarUrl" Initials="@chat.Initials" />
+                <div class="row-main">
+                    <div class="row-top">
+                        <span class="name">@chat.Title</span>
+                        <span class="time">@chat.TimeText</span>
+                    </div>
+                    <div class="row-bottom">
+                        <span class="preview">@chat.Preview</span>
+                        @if (chat.HasUnread)
+                        {
+                            <span class="badge">@chat.UnreadText</span>
+                        }
+                    </div>
+                </div>
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    protected override Task OnInitializedAsync() => Vm.RefreshCommand.ExecuteAsync(null);
+}

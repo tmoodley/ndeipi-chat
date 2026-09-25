@@ -1,0 +1,45 @@
+@page "/signin/callback"
+@inject WebSignIn Flow
+@inject AppCoordinator Coordinator
+@inject NavigationManager Navigation
+
+<PageTitle>Signing in · Ndeipi Chat</PageTitle>
+
+<div class="signin">
+    <div class="logo large">N</div>
+    @if (_error is null)
+    {
+        <p class="muted">Signing you in…</p>
+    }
+    else
+    {
+        <p class="error">@_error</p>
+        <a class="button primary wide" href="signin">Try again</a>
+    }
+</div>
+
+@code {
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = new Uri(Navigation.Uri).Query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(pair => pair.Split('=', 2))
+            .GroupBy(p => Uri.UnescapeDataString(p[0]))
+            .ToDictionary(g => g.Key, g => Uri.UnescapeDataString(g.First().ElementAtOrDefault(1) ?? ""));
+        try
+        {
+            await Flow.CompleteAsync(query);
+            await Coordinator.SignedInAsync();
+        }
+        catch (Exception ex) when (ex is AuthException or ApiException)
+        {
+            _error = ex.Message;
+        }
+        catch (HttpRequestException)
+        {
+            _error = "Can't reach the server. Check your connection.";
+        }
+    }
+}

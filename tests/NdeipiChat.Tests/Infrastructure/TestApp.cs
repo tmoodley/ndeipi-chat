@@ -28,6 +28,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     public const string Issuer = "https://clerk.test";
     public const string TrustedOrigin = "https://chat.test";
     public const string RedirectUri = "ndeipichat://auth";
+    public const string WebRedirectUri = "https://chat.test/signin/callback";
     public const string KnownTokenContract = "0x1111111111111111111111111111111111111111";
 
     /// <summary>Stands in for the key pair behind Bridge's webhook signatures.</summary>
@@ -48,6 +49,8 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // Serves the web app's files from its project, as Development does, so its routes can be tested.
+        builder.UseStaticWebAssets();
         builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Chat"] = ConnectionString,
@@ -56,6 +59,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Clerk:PublishableKey"] = "pk_test_publishable",
             ["Clerk:AuthorizedParties:0"] = TrustedOrigin,
             ["MobileAuth:RedirectUris:0"] = RedirectUri,
+            ["MobileAuth:RedirectUris:1"] = WebRedirectUri,
             ["Tokens:QueuePollInterval"] = "00:00:00.200",
             ["Tokens:Known:0:Chain"] = "polygon",
             ["Tokens:Known:0:Symbol"] = "NMX",

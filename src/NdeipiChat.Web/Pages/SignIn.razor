@@ -1,0 +1,21 @@
+@page "/signin"
+@inject WebSignIn Flow
+
+<PageTitle>Sign in · Ndeipi Chat</PageTitle>
+
+<div class="signin">
+    <div class="logo large">N</div>
+    <h1>Ndeipi Chat</h1>
+    <p class="muted">Chat with your Shamwaris and send them money.</p>
+    <button class="primary wide" disabled="@_busy" @onclick="StartAsync">@(_busy ? "Opening sign-in…" : "Sign in")</button>
+</div>
+
+@code {
+    bool _busy;
+
+    async Task StartAsync()
+    {
+        _busy = true;
+        await Flow.StartAsync();
+    }
+}

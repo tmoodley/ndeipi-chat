@@ -1,0 +1,94 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppCoordinator Coordinator
+@inject AuthService Auth
+@inject ChatSession Session
+@inject ChatsViewModel Chats
+@inject ContactsViewModel Contacts
+@inject WebDispatcher Dispatcher
+@inject NavigationManager Navigation
+
+@if (!_started)
+{
+    <div class="splash"><div class="logo">N</div></div>
+}
+else if (IsSignInPage)
+{
+    @Body
+}
+else
+{
+    <div class="shell">
+        <nav class="tabs">
+            <div class="brand"><span class="logo small">N</span> Ndeipi</div>
+            <NavLink href="chats" class="tab">
+                <span class="icon">💬</span><span>Chats</span>
+                @if (Chats.TotalUnread > 0)
+                {
+                    <span class="badge">@(Chats.TotalUnread > 99 ? "99+" : Chats.TotalUnread)</span>
+                }
+            </NavLink>
+            <NavLink href="shamwaris" class="tab">
+                <span class="icon">👥</span><span>Shamwaris</span>
+                @if (Contacts.Incoming.Count > 0)
+                {
+                    <span class="badge">@Contacts.Incoming.Count</span>
+                }
+            </NavLink>
+            <NavLink href="me" class="tab">
+                <span class="icon">👤</span><span>Me</span>
+            </NavLink>
+        </nav>
+        <main class="content">
+            @if (Session.Connection.State is not Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected)
+            {
+                <div class="offline">Connecting…</div>
+            }
+            @Body
+        </main>
+    </div>
+}
+
+@code {
+    bool _started;
+
+    bool IsSignInPage =>
+        Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/') is WebNavigator.SignInPath or WebNavigator.CallbackPath;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        Dispatcher.Changed += Refresh;
+        Session.Connection.StateChanged += Refresh;
+
+        // Signed in: connect and stay on the page asked for. Otherwise: the sign-in page.
+        try
+        {
+            await Coordinator.StartAsync();
+        }
+        catch (ApiException)
+        {
+            // A saved sign-in the server no longer accepts; AuthService has already cleared it.
+            Navigation.NavigateTo(WebNavigator.SignInPath, replace: true);
+        }
+        _started = true;
+
+        if (await Auth.IsSignedInAsync())
+        {
+            // Fills the tab badges before those tabs are opened.
+            _ = Chats.RefreshCommand.ExecuteAsync(null);
+            _ = Contacts.LoadCommand.ExecuteAsync(null);
+        }
+    }
+
+    void OnLocationChanged(object? sender, LocationChangedEventArgs e) => Refresh();
+
+    void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        Dispatcher.Changed -= Refresh;
+        Session.Connection.StateChanged -= Refresh;
+    }
+}

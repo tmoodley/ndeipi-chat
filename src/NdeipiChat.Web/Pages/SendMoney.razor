@@ -1,0 +1,46 @@
+@page "/chat/{Id:guid}/send-money"
+@inherits ViewModelPage<BankTransferViewModel>
+
+<PageTitle>Send money · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="chat/@Id" title="Back">‹</a>
+    <h1>Send money</h1>
+</header>
+
+<form class="form" @onsubmit="() => Vm.SendCommand.ExecuteAsync(null)">
+    <RecipientField Form="Vm" />
+
+    <label class="field">
+        <span class="label">Amount@(Vm.Currency.Length > 0 ? $" ({Vm.Currency})" : "")</span>
+        <input class="amount" @bind="Vm.Amount" @bind:event="oninput" inputmode="decimal" placeholder="0.00" autocomplete="off" />
+    </label>
+
+    <label class="field">
+        <span class="label">Note</span>
+        <input @bind="Vm.Memo" @bind:event="oninput" maxlength="280" placeholder="Add a note (optional)" />
+    </label>
+
+    @if (Vm.NeedsVerification)
+    {
+        <div class="notice">
+            Verify your identity before sending money.
+            <button type="button" class="link" @onclick="() => Vm.OpenWalletCommand.ExecuteAsync(null)">Go to Wallet</button>
+        </div>
+    }
+
+    @if (Vm.ErrorMessage is not null)
+    {
+        <p class="error">@Vm.ErrorMessage</p>
+    }
+
+    <button type="submit" class="primary wide" disabled="@Vm.IsBusy">@(Vm.IsBusy ? "Sending…" : "Send")</button>
+    <p class="muted small">Money moves from your Ndeipi wallet to theirs. It can't be reversed once confirmed.</p>
+</form>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    protected override Task OnInitializedAsync() =>
+        Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id });
+}

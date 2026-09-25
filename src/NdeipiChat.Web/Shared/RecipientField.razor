@@ -1,0 +1,25 @@
+@* "To": just the name in a direct chat, a picker in a group. *@
+<label class="field">
+    <span class="label">To</span>
+    @if (Form.ShowRecipientPicker)
+    {
+        <select value="@(Form.Recipient?.Id.ToString() ?? "")" @onchange="Choose">
+            <option value="">Choose who to send to</option>
+            @foreach (var person in Form.Recipients)
+            {
+                <option value="@person.Id">@person.DisplayName</option>
+            }
+        </select>
+    }
+    else
+    {
+        <span class="value">@Form.Recipient?.DisplayName</span>
+    }
+</label>
+
+@code {
+    [Parameter, EditorRequired] public TransferFormViewModel Form { get; set; } = null!;
+
+    void Choose(ChangeEventArgs e) =>
+        Form.Recipient = Guid.TryParse(e.Value?.ToString(), out var id) ? Form.Recipients.FirstOrDefault(r => r.Id == id) : null;
+}

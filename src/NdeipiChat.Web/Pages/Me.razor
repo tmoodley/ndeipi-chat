@@ -1,0 +1,39 @@
+@page "/me"
+@inherits ViewModelPage<MeViewModel>
+
+<PageTitle>Me · Ndeipi Chat</PageTitle>
+
+<header class="bar"><h1>Me</h1></header>
+
+<div class="page">
+    <div class="profile">
+        <Avatar Url="@Vm.AvatarUrl" Initials="@Vm.Initials" Size="72" />
+        <div>
+            <div class="name large">@Vm.DisplayName</div>
+            @if (Vm.Username is not null)
+            {
+                <div class="muted">@Vm.Username</div>
+            }
+            @if (Vm.Email is not null)
+            {
+                <div class="muted">@Vm.Email</div>
+            }
+        </div>
+    </div>
+
+    <ul class="list">
+        <li class="row" @onclick="() => Vm.OpenWalletCommand.ExecuteAsync(null)">
+            <span class="icon">👛</span>
+            <div class="row-main"><span class="name">Wallet</span></div>
+            <span class="chevron">›</span>
+        </li>
+    </ul>
+
+    <p class="muted small">Registering livestock is in the Ndeipi Chat app for Android and iPhone.</p>
+
+    <button class="secondary wide danger" @onclick="() => Vm.SignOutCommand.ExecuteAsync(null)">Sign out</button>
+</div>
+
+@code {
+    protected override Task OnInitializedAsync() => Vm.LoadCommand.ExecuteAsync(null);
+}

@@ -1,0 +1,65 @@
+@* One message, drawn by kind. A kind this build doesn't know shows as a placeholder. *@
+@if (Message.ShowTimestamp)
+{
+    <div class="stamp">@Message.SentAt.ToLocalTime().ToString("ddd d MMM, HH:mm")</div>
+}
+<div class="message @(Message.IsMine ? "mine" : "theirs")">
+    @if (!Message.IsMine)
+    {
+        <Avatar Url="@Message.SenderAvatarUrl" Initials="@Message.SenderInitials" Size="36" />
+    }
+    <div class="message-body">
+        @switch (Message)
+        {
+            case TextMessageViewModel text:
+                <div class="bubble">@text.Text</div>
+                break;
+
+            case TransferMessageViewModel transfer:
+                <div class="transfer @(transfer.IsConfirmed ? "done" : transfer.IsFailedTransfer ? "failed" : "")">
+                    <div class="transfer-head">@transfer.Headline</div>
+                    <div class="transfer-amount">@transfer.AmountText</div>
+                    @if (transfer is AssetTransferMessageViewModel { HasMemo: true } asset)
+                    {
+                        <div class="transfer-memo">@asset.Memo</div>
+                    }
+                    else if (transfer is BankTransferMessageViewModel { HasMemo: true } bank)
+                    {
+                        <div class="transfer-memo">@bank.Memo</div>
+                    }
+                    <div class="transfer-foot">
+                        <span>@transfer.StatusText</span>
+                        @if (transfer is AssetTransferMessageViewModel { HasTxHash: true } minted)
+                        {
+                            <span class="mono">@minted.ChainText · @minted.ShortTxHash</span>
+                        }
+                    </div>
+                    @if (transfer.Error is not null)
+                    {
+                        <div class="transfer-error">@transfer.Error</div>
+                    }
+                </div>
+                break;
+
+            case UnsupportedMessageViewModel unsupported:
+                <div class="bubble muted">@unsupported.Text</div>
+                break;
+        }
+
+        @if (Message.IsSending)
+        {
+            <div class="delivery">Sending…</div>
+        }
+        else if (Message.IsFailed)
+        {
+            <button class="delivery failed" @onclick="() => Retry.InvokeAsync(Message)">
+                @(Message.DeliveryError ?? "Not sent.") Tap to retry.
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public MessageViewModel Message { get; set; } = null!;
+    [Parameter] public EventCallback<MessageViewModel> Retry { get; set; }
+}
