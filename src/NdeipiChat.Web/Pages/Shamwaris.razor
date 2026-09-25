@@ -1,0 +1,113 @@
+@page "/shamwaris"
+@inherits ViewModelPage<ContactsViewModel>
+
+<PageTitle>Shamwaris · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <h1>Shamwaris</h1>
+    <button class="bar-action text" @onclick="() => Vm.ToggleGroupModeCommand.Execute(null)">@(Vm.IsGroupMode ? "Cancel" : "New group")</button>
+</header>
+
+<div class="page">
+    <section>
+        <h2>Add a Shamwari</h2>
+        <form class="inline-form" @onsubmit="() => Vm.AddShamwariCommand.ExecuteAsync(null)">
+            <input @bind="Vm.NewContact" @bind:event="oninput" placeholder="Email or phone, e.g. +263 77 123 4567" autocomplete="off" />
+            <button type="submit" class="primary" disabled="@(!Vm.AddShamwariCommand.CanExecute(null) || Vm.IsBusy)">Add</button>
+        </form>
+        @if (Vm.AddStatus is not null)
+        {
+            <p class="muted">@Vm.AddStatus</p>
+        }
+    </section>
+
+    <input class="search" type="search" @bind="Vm.Query" @bind:event="oninput" placeholder="Search by name, username or email" />
+
+    @if (Vm.IsGroupMode)
+    {
+        <div class="group-bar">
+            <input @bind="Vm.GroupTitle" @bind:event="oninput" placeholder="Group name (optional)" />
+            <button class="primary" disabled="@(!Vm.CreateGroupCommand.CanExecute(null))" @onclick="() => Vm.CreateGroupCommand.ExecuteAsync(null)">
+                Start group (@Vm.SelectedCount)
+            </button>
+        </div>
+    }
+
+    @if (Vm.HasResults)
+    {
+        <h2>Search results</h2>
+        <ul class="list">
+            @foreach (var person in Vm.Results)
+            {
+                <PersonRow @key="person.User.Id" Person="person" OnSelect="p => Vm.SelectCommand.ExecuteAsync(p)" />
+            }
+        </ul>
+    }
+
+    @if (Vm.HasIncoming)
+    {
+        <h2>Requests</h2>
+        <ul class="list">
+            @foreach (var request in Vm.Incoming)
+            {
+                <li class="row" @key="request.Id">
+                    <Avatar Url="@request.AvatarUrl" Initials="@request.Initials" />
+                    <div class="row-main">
+                        <span class="name">@request.Name</span>
+                        <span class="preview">wants to be your Shamwari</span>
+                    </div>
+                    <button class="primary small" @onclick="() => Vm.AcceptCommand.ExecuteAsync(request)">Accept</button>
+                    <button class="secondary small" @onclick="() => Vm.DismissCommand.ExecuteAsync(request)">Decline</button>
+                </li>
+            }
+        </ul>
+    }
+
+    <h2>Shamwaris</h2>
+    @if (!Vm.HasShamwaris)
+    {
+        <p class="muted">Add someone by their email or phone number. Open a Shamwari to chat or send money.</p>
+    }
+    <ul class="list">
+        @foreach (var shamwari in Vm.Shamwaris)
+        {
+            <PersonRow @key="shamwari.User.Id" Person="shamwari" OnSelect="p => Vm.SelectCommand.ExecuteAsync(p)">
+                <button class="secondary small" title="Remove Shamwari"
+                        @onclick="() => Vm.RemoveCommand.ExecuteAsync(shamwari)" @onclick:stopPropagation="true">Remove</button>
+            </PersonRow>
+        }
+    </ul>
+
+    @if (Vm.HasOutgoing)
+    {
+        <h2>Waiting for them</h2>
+        <ul class="list">
+            @foreach (var request in Vm.Outgoing)
+            {
+                <li class="row" @key="request.Id">
+                    <Avatar Url="@request.AvatarUrl" Initials="@request.Initials" />
+                    <div class="row-main">
+                        <span class="name">@request.Name</span>
+                        <span class="preview">@request.Detail</span>
+                    </div>
+                    <button class="secondary small" @onclick="() => Vm.DismissCommand.ExecuteAsync(request)">Cancel</button>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Vm.HasRecent)
+    {
+        <h2>Others you chat with</h2>
+        <ul class="list">
+            @foreach (var person in Vm.Recent)
+            {
+                <PersonRow @key="person.User.Id" Person="person" OnSelect="p => Vm.SelectCommand.ExecuteAsync(p)" />
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    protected override Task OnInitializedAsync() => Vm.LoadCommand.ExecuteAsync(null);
+}

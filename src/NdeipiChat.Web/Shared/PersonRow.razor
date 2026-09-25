@@ -1,0 +1,22 @@
+@* A person to tap: opens the chat, or ticks them while picking a group. *@
+<li class="row" @onclick="() => OnSelect.InvokeAsync(Person)">
+    <Avatar Url="@Person.AvatarUrl" Initials="@Person.Initials" />
+    <div class="row-main">
+        <span class="name">@Person.Name</span>
+        @if (Person.Username is not null)
+        {
+            <span class="preview">@Person.Username</span>
+        }
+    </div>
+    @if (Person.IsSelected)
+    {
+        <span class="tick">✓</span>
+    }
+    @ChildContent
+</li>
+
+@code {
+    [Parameter, EditorRequired] public ContactItemViewModel Person { get; set; } = null!;
+    [Parameter] public EventCallback<ContactItemViewModel> OnSelect { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

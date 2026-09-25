@@ -1,0 +1,61 @@
+@page "/wallet"
+@inherits ViewModelPage<WalletViewModel>
+
+<PageTitle>Wallet · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="me" title="Back">‹</a>
+    <h1>Wallet</h1>
+    <button class="bar-action text" disabled="@Vm.IsBusy" @onclick="() => Vm.RefreshCommand.ExecuteAsync(null)">Refresh</button>
+</header>
+
+<div class="page">
+    <section class="card">
+        <h2>Money</h2>
+        <p class="status @(Vm.IsVerified ? "ok" : "")">@Vm.StatusText</p>
+        @if (Vm.WalletText.Length > 0)
+        {
+            <p class="muted mono">@Vm.WalletText</p>
+        }
+        @foreach (var balance in Vm.Balances)
+        {
+            <div class="balance"><span>@balance.Currency.ToUpperInvariant()</span><strong>@balance.Amount</strong></div>
+        }
+        @if (Vm.CanVerify)
+        {
+            <button class="primary wide" disabled="@Vm.IsBusy" @onclick="() => Vm.VerifyCommand.ExecuteAsync(null)">@Vm.VerifyButtonText</button>
+            <p class="muted small">Verification opens in a new tab. Come back and press Refresh when you're done.</p>
+        }
+    </section>
+
+    <section class="card">
+        <h2>Receiving wallets</h2>
+        <p class="muted small">Where people's token transfers to you arrive, one address per chain.</p>
+        <ul class="list">
+            @foreach (var wallet in Vm.ReceivingWallets)
+            {
+                <li class="row" @key="wallet.Chain">
+                    <div class="row-main">
+                        <span class="name">@wallet.Chain</span>
+                        <span class="preview mono">@wallet.Address</span>
+                    </div>
+                    <button class="secondary small" @onclick="() => Vm.RemoveWalletCommand.ExecuteAsync(wallet)">Remove</button>
+                </li>
+            }
+        </ul>
+        <form class="inline-form" @onsubmit="() => Vm.SaveWalletCommand.ExecuteAsync(null)">
+            <input class="narrow" @bind="Vm.NewWalletChain" @bind:event="oninput" placeholder="Chain" />
+            <input class="mono" @bind="Vm.NewWalletAddress" @bind:event="oninput" placeholder="Address" />
+            <button type="submit" class="primary" disabled="@Vm.IsBusy">Save</button>
+        </form>
+    </section>
+
+    @if (Vm.ErrorMessage is not null)
+    {
+        <p class="error">@Vm.ErrorMessage</p>
+    }
+</div>
+
+@code {
+    protected override Task OnInitializedAsync() => Vm.LoadCommand.ExecuteAsync(null);
+}

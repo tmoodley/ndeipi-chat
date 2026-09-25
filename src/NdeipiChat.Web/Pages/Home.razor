@@ -1,0 +1,9 @@
+@page "/"
+@inject AuthService Auth
+@inject NavigationManager Navigation
+
+@* The layout's start-up sends a fresh visit on; this covers returning to "/" later. *@
+@code {
+    protected override async Task OnInitializedAsync() =>
+        Navigation.NavigateTo(await Auth.IsSignedInAsync() ? "chats" : WebNavigator.SignInPath, replace: true);
+}

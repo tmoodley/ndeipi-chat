@@ -38,6 +38,7 @@ if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 
 app.UseExceptionHandler();
 app.UseStatusCodePages();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -49,6 +50,18 @@ app.MapShamwaris();
 app.MapTokenTransfers();
 app.MapBanking();
 app.MapLivestock();
+
+// The web app (NdeipiChat.Web): Blazor WebAssembly, served from the same origin as the API.
+// MapStaticAssets, not UseStaticFiles: it fills index.html's fingerprinted file names
+// (blazor.webassembly#[.{fingerprint}].js) as it serves the page; the published file keeps the
+// placeholders.
+app.MapStaticAssets();
+
+// Any other path is a page of the web app -- except under the API's own prefixes, where an
+// unknown path stays a 404 rather than turning into the app's HTML.
+foreach (var prefix in new[] { "api", "hubs", "auth", "webhooks", "openapi" })
+    app.Map($"{prefix}/{{**path}}", () => Results.NotFound());
+app.MapFallbackToFile("index.html");
 
 app.Run();
 

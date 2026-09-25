@@ -32,22 +32,37 @@ public sealed class AuthService(HttpClient http, ITokenStore store, IBrowserAuth
 
     public async Task SignInAsync(CancellationToken ct = default)
     {
-        var verifier = Pkce.NewSecret();
-        var state = Pkce.NewSecret();
+        var (url, pending) = StartSignIn();
+        var result = await browser.AuthenticateAsync(url, new Uri(options.RedirectUri), ct);
+        await CompleteSignInAsync(pending, result, ct);
+    }
+
+    /// <summary>
+    /// The first half of <see cref="SignInAsync"/>, for a client that leaves the page to sign in
+    /// (the web app): it keeps <see cref="PendingSignIn"/> until the redirect comes back, then
+    /// calls <see cref="CompleteSignInAsync"/>.
+    /// </summary>
+    public (Uri Url, PendingSignIn Pending) StartSignIn()
+    {
+        var pending = new PendingSignIn(Pkce.NewSecret(), Pkce.NewSecret());
         var url = new Uri(options.ApiBaseUrl, MobileAuthContract.SignInPath.TrimStart('/')
             + $"?redirect_uri={Uri.EscapeDataString(options.RedirectUri)}"
-            + $"&code_challenge={Pkce.Challenge(verifier)}&code_challenge_method=S256"
-            + $"&state={state}");
+            + $"&code_challenge={Pkce.Challenge(pending.Verifier)}&code_challenge_method=S256"
+            + $"&state={pending.State}");
+        return (url, pending);
+    }
 
-        var result = await browser.AuthenticateAsync(url, new Uri(options.RedirectUri), ct);
-        if (!result.TryGetValue("state", out var returnedState) || returnedState != state)
+    /// <summary>Redeems the code from the redirect's query, after checking it answers this sign-in.</summary>
+    public async Task CompleteSignInAsync(PendingSignIn pending, IReadOnlyDictionary<string, string> result, CancellationToken ct = default)
+    {
+        if (!result.TryGetValue("state", out var returnedState) || returnedState != pending.State)
             throw new AuthException("Sign-in was interrupted. Please try again.");
         if (!result.TryGetValue("code", out var code) || string.IsNullOrEmpty(code))
             throw new AuthException("Sign-in didn't complete. Please try again.");
 
         using var response = await http.PostAsJsonAsync(
             MobileAuthContract.TokenPath.TrimStart('/'),
-            new MobileTokenRequest(code, verifier, options.RedirectUri),
+            new MobileTokenRequest(code, pending.Verifier, options.RedirectUri),
             ContractJson.Options,
             ct);
         if (!response.IsSuccessStatusCode)
@@ -152,6 +167,9 @@ public sealed class AuthService(HttpClient http, ITokenStore store, IBrowserAuth
 }
 
 public sealed class AuthException(string message) : Exception(message);
+
+/// <summary>A sign-in waiting for its redirect: the PKCE verifier and the state it must come back with.</summary>
+public sealed record PendingSignIn(string Verifier, string State);
 
 public static class Pkce
 {

@@ -1,0 +1,97 @@
+@page "/chat/{Id:guid}/transfer"
+@inherits ViewModelPage<AssetTransferViewModel>
+
+<PageTitle>Transfer · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="chat/@Id" title="Back">‹</a>
+    <h1>Transfer</h1>
+</header>
+
+<form class="form" @onsubmit="() => Vm.SendCommand.ExecuteAsync(null)">
+    <RecipientField Form="Vm" />
+
+    <label class="field">
+        <span class="label">Token</span>
+        <select value="@Vm.Tokens.IndexOf(Vm.SelectedToken!)" @onchange="ChooseToken">
+            @for (var i = 0; i < Vm.Tokens.Count; i++)
+            {
+                <option value="@i">@Vm.Tokens[i].Label</option>
+            }
+        </select>
+    </label>
+
+    @if (Vm.IsCustom)
+    {
+        <label class="field">
+            <span class="label">Chain</span>
+            <input @bind="Vm.Chain" @bind:event="oninput" placeholder="e.g. polygon" />
+        </label>
+        <label class="field">
+            <span class="label">Standard</span>
+            <select @bind="Vm.Standard">
+                @foreach (var standard in Vm.Standards)
+                {
+                    <option value="@standard">@standard</option>
+                }
+            </select>
+        </label>
+        <label class="field">
+            <span class="label">Symbol</span>
+            <input @bind="Vm.Symbol" @bind:event="oninput" placeholder="e.g. AGD" />
+        </label>
+        @if (Vm.NeedsContract)
+        {
+            <label class="field">
+                <span class="label">Contract</span>
+                <input class="mono" @bind="Vm.ContractAddress" @bind:event="oninput" placeholder="Contract address" />
+            </label>
+        }
+        @if (!Vm.IsNonFungible)
+        {
+            <label class="field">
+                <span class="label">Decimals</span>
+                <input @bind="Vm.Decimals" @bind:event="oninput" inputmode="numeric" placeholder="Optional" />
+            </label>
+        }
+    }
+
+    @if (Vm.IsNonFungible)
+    {
+        <label class="field">
+            <span class="label">Token id</span>
+            <input @bind="Vm.TokenId" @bind:event="oninput" inputmode="numeric" />
+        </label>
+    }
+
+    <label class="field">
+        <span class="label">Amount</span>
+        <input class="amount" @bind="Vm.Amount" @bind:event="oninput" inputmode="decimal" placeholder="@Vm.AmountPlaceholder" autocomplete="off" />
+    </label>
+
+    <label class="field">
+        <span class="label">Note</span>
+        <input @bind="Vm.Memo" @bind:event="oninput" maxlength="280" placeholder="Add a note (optional)" />
+    </label>
+
+    @if (Vm.ErrorMessage is not null)
+    {
+        <p class="error">@Vm.ErrorMessage</p>
+    }
+
+    <button type="submit" class="primary wide" disabled="@Vm.IsBusy">@(Vm.IsBusy ? "Sending…" : "Transfer")</button>
+    <p class="muted small">Ndeipi records the transfer on-chain. Once confirmed it can't be reversed.</p>
+</form>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    protected override Task OnInitializedAsync() =>
+        Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id });
+
+    void ChooseToken(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var i) && i >= 0 && i < Vm.Tokens.Count)
+            Vm.SelectedToken = Vm.Tokens[i];
+    }
+}

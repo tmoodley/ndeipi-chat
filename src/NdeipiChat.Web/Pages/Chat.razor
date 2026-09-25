@@ -1,0 +1,77 @@
+@page "/chat/{Id:guid}"
+@inherits ViewModelPage<ChatViewModel>
+@inject IJSRuntime JS
+
+<PageTitle>@(string.IsNullOrEmpty(Vm.Title) ? "Chat" : Vm.Title) · Ndeipi Chat</PageTitle>
+
+<div class="chat">
+    <header class="bar">
+        <a class="bar-back" href="chats" title="Back">‹</a>
+        <h1>@Vm.Title</h1>
+    </header>
+
+    <div class="messages" @ref="_scroller">
+        @if (Vm.HasMore)
+        {
+            <button class="link center" disabled="@Vm.IsLoading" @onclick="() => Vm.LoadOlderCommand.ExecuteAsync(null)">Earlier messages</button>
+        }
+        @foreach (var message in Vm.Messages)
+        {
+            <MessageBubble @key="message.ClientMessageId" Message="message" Retry="m => Vm.RetryCommand.ExecuteAsync(m)" />
+        }
+    </div>
+
+    @if (Vm.TypingText is not null)
+    {
+        <div class="typing">@Vm.TypingText</div>
+    }
+
+    <form class="composer" @onsubmit="() => Vm.SendTextCommand.ExecuteAsync(null)">
+        <button type="button" class="round" title="Send money or tokens" @onclick="() => Vm.ToggleExtensionPanelCommand.Execute(null)">＋</button>
+        <input @bind="Vm.Draft" @bind:event="oninput" placeholder="Message" maxlength="4000" autocomplete="off" />
+        <button type="submit" class="primary" disabled="@string.IsNullOrWhiteSpace(Vm.Draft)">Send</button>
+    </form>
+
+    @if (Vm.IsExtensionPanelOpen)
+    {
+        <div class="actions">
+            @foreach (var action in Vm.Actions)
+            {
+                <button class="action" @onclick="() => Vm.RunActionCommand.ExecuteAsync(action)">
+                    <span class="glyph">@action.Glyph</span>
+                    <span>@action.Title</span>
+                </button>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    ElementReference _scroller;
+    Guid? _lastMessage;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id });
+        Vm.Activate();
+    }
+
+    /// <summary>A new message at the bottom scrolls into view; older ones loading at the top don't.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var last = Vm.Messages.LastOrDefault()?.ClientMessageId;
+        if (last == _lastMessage)
+            return;
+        _lastMessage = last;
+        await JS.InvokeVoidAsync("ndeipi.scrollToBottom", _scroller);
+    }
+
+    public override void Dispose()
+    {
+        Vm.Deactivate();
+        Vm.Dispose();
+        base.Dispose();
+    }
+}

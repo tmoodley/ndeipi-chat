@@ -1,0 +1,21 @@
+@* A photo if there is one, else initials on a colour picked from the name. *@
+<span class="avatar" style="width:@(Size)px;height:@(Size)px;font-size:@(Size * 0.4)px;@(Url is null ? $"background:{Colour}" : "")">
+    @if (Url is not null)
+    {
+        <img src="@Url" alt="" />
+    }
+    else
+    {
+        @Initials
+    }
+</span>
+
+@code {
+    static readonly string[] Colours = ["#07C160", "#1485EE", "#FA9D3B", "#9C6ADE", "#E64340", "#10AEFF", "#576B95"];
+
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string Initials { get; set; } = "";
+    [Parameter] public int Size { get; set; } = 44;
+
+    string Colour => Colours[(int)((uint)string.GetHashCode(Initials, StringComparison.Ordinal) % Colours.Length)];
+}
