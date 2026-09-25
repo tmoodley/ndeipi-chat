@@ -34,6 +34,7 @@ public sealed class ChatConnection : IAsyncDisposable
         _hub.On<TypingDto>(nameof(IChatClient.Typing), t => Typing?.Invoke(t));
         _hub.On<ReadReceiptDto>(nameof(IChatClient.ReadReceipt), r => ReadReceipt?.Invoke(r));
         _hub.On<BankingStatusDto>(nameof(IChatClient.BankingStatusChanged), b => BankingStatusChanged?.Invoke(b));
+        _hub.On(nameof(IChatClient.ShamwarisChanged), () => ShamwarisChanged?.Invoke());
 
         _hub.Reconnecting += _ => Raise(StateChanged);
         _hub.Reconnected += _ =>
@@ -50,6 +51,7 @@ public sealed class ChatConnection : IAsyncDisposable
     public event Action<TypingDto>? Typing;
     public event Action<ReadReceiptDto>? ReadReceipt;
     public event Action<BankingStatusDto>? BankingStatusChanged;
+    public event Action? ShamwarisChanged;
     public event Action? Reconnected;
     public event Action? StateChanged;
 

@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
-using Ndeipi.Api.Auth;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Auth;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Chat;
+namespace NdeipiChat.Api.Chat;
 
 [Authorize]
 public sealed class ChatHub(CurrentUserService users, MessageService messages, ConversationService conversations) : Hub<IChatClient>

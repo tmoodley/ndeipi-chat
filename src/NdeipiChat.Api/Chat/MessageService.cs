@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Chat;
+namespace NdeipiChat.Api.Chat;
 
 /// <summary>The one path every message takes, whether it arrives over SignalR or HTTP.</summary>
 public sealed class MessageService(

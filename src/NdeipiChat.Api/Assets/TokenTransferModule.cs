@@ -1,11 +1,11 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Ndeipi.Api.Chat;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Chat;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Assets;
+namespace NdeipiChat.Api.Assets;
 
 public sealed class TokenOptions
 {

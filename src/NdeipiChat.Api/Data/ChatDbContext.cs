@@ -20,6 +20,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<LivestockAnimal> Livestock => Set<LivestockAnimal>();
     public DbSet<LivestockHealthAudit> HealthAudits => Set<LivestockHealthAudit>();
     public DbSet<OperatorSigningKey> OperatorKeys => Set<OperatorSigningKey>();
+    public DbSet<ShamwariLink> Shamwaris => Set<ShamwariLink>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -31,8 +32,23 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(u => u.DisplayName).HasMaxLength(200);
             e.Property(u => u.Username).HasMaxLength(100);
             e.Property(u => u.Email).HasMaxLength(320);
+            e.Property(u => u.Phone).HasMaxLength(20);
+            e.HasIndex(u => u.Phone);
             e.Property(u => u.AvatarUrl).HasMaxLength(1000);
             e.HasMany(u => u.Wallets).WithOne().HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<ShamwariLink>(e =>
+        {
+            e.ToTable("Shamwaris");
+            e.HasOne(s => s.Requester).WithMany().HasForeignKey(s => s.RequesterId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(s => s.Addressee).WithMany().HasForeignKey(s => s.AddresseeId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(s => s.InviteContact).HasMaxLength(320);
+            e.Property(s => s.PairKey).HasMaxLength(80);
+            e.HasIndex(s => s.PairKey).IsUnique().HasFilter("[PairKey] IS NOT NULL");
+            e.HasIndex(s => new { s.RequesterId, s.InviteContact }).IsUnique().HasFilter("[InviteContact] IS NOT NULL");
+            e.HasIndex(s => s.InviteContact).HasFilter("[InviteContact] IS NOT NULL");
+            e.HasIndex(s => s.AddresseeId);
         });
 
         model.Entity<UserWallet>(e =>

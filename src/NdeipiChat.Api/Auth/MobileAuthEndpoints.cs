@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 public static class MobileAuthEndpoints
 {

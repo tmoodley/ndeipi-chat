@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Ndeipi.Api.Banking;
+namespace NdeipiChat.Api.Banking;
 
 public sealed class BridgeOptions
 {

@@ -1,8 +1,8 @@
 using System.Text.Json;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Chat;
+namespace NdeipiChat.Api.Chat;
 
 /// <summary>
 /// A chat extension on the server: owns one message <see cref="Kind"/>, validates what the app

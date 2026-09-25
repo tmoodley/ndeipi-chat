@@ -2,12 +2,12 @@ using System.Globalization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Ndeipi.Api.Auth;
-using Ndeipi.Api.Banking;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Auth;
+using NdeipiChat.Api.Banking;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Chat;
+namespace NdeipiChat.Api.Chat;
 
 public static class ChatModule
 {

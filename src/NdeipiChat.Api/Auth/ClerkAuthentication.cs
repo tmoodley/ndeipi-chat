@@ -4,7 +4,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 public static class ClerkAuthentication
 {

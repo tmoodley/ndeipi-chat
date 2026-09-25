@@ -4,10 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 using SkiaSharp;
 
-namespace Ndeipi.Api.Livestock;
+namespace NdeipiChat.Api.Livestock;
 
 /// <summary>The spec's biometric node: a muzzle photo in, a muzzle-print vector out.</summary>
 public interface IMuzzleEmbedder

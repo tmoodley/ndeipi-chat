@@ -20,6 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\NdeipiChat.Api\NdeipiChat.Api.csproj" />
     <ProjectReference Include="..\..\src\NdeipiChat.Client.Core\NdeipiChat.Client.Core.csproj" />
   </ItemGroup>
 

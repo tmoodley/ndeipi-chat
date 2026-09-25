@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Ndeipi.Api.Data.Migrations
+namespace NdeipiChat.Api.Data.Migrations
 {
     /// <summary>
     /// The interface Ndeipi Enterprise Server works through: claim, complete, fail and release

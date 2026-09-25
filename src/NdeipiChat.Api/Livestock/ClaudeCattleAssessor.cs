@@ -4,7 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
 using NdeipiChat.Contracts;
 
-namespace Ndeipi.Api.Livestock;
+namespace NdeipiChat.Api.Livestock;
 
 /// <summary>What the vision model makes of the two photos.</summary>
 public sealed record CattleAssessment(

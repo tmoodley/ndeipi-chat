@@ -118,12 +118,15 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     }
 
     /// <summary>A Clerk user who has signed in once, so the API knows them.</summary>
-    public async Task<TestUser> CreateUserAsync(string name, string? email = null)
+    public async Task<TestUser> CreateUserAsync(string name, string? email = null, string? phone = null, bool verified = true)
     {
         var clerkId = "user_" + Guid.NewGuid().ToString("N")[..16];
         var parts = name.Split(' ', 2);
+        var verification = new ClerkVerification(verified ? "verified" : "unverified");
         Clerk.AddUser(new ClerkUser(clerkId, parts[0], parts.ElementAtOrDefault(1), null, null, "idn_1",
-            [new ClerkEmailAddress("idn_1", email ?? $"{clerkId}@example.test")]));
+            [new ClerkEmailAddress("idn_1", email ?? $"{clerkId}@example.test", verification)],
+            phone is null ? null : "idn_2",
+            phone is null ? null : [new ClerkPhoneNumber("idn_2", phone, verification)]));
 
         var sessionId = Clerk.StartSession(clerkId);
         var http = ClientWithToken(TestTokens.Create(clerkId, sessionId));

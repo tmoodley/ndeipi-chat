@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 
 #nullable disable
 
-namespace Ndeipi.Api.Data.Migrations
+namespace NdeipiChat.Api.Data.Migrations
 {
     [DbContext(typeof(ChatDbContext))]
     partial class ChatDbContextModelSnapshot : ModelSnapshot
@@ -539,6 +539,53 @@ namespace Ndeipi.Api.Data.Migrations
                     b.ToTable("RefreshTokens");
                 });
 
+            modelBuilder.Entity("NdeipiChat.Api.Data.ShamwariLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Accepted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("AddresseeId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("InviteContact")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("PairKey")
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<Guid>("RequesterId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AddresseeId");
+
+                    b.HasIndex("InviteContact")
+                        .HasFilter("[InviteContact] IS NOT NULL");
+
+                    b.HasIndex("PairKey")
+                        .IsUnique()
+                        .HasFilter("[PairKey] IS NOT NULL");
+
+                    b.HasIndex("RequesterId", "InviteContact")
+                        .IsUnique()
+                        .HasFilter("[InviteContact] IS NOT NULL");
+
+                    b.ToTable("Shamwaris", (string)null);
+                });
+
             modelBuilder.Entity("NdeipiChat.Api.Data.TokenTransfer", b =>
                 {
                     b.Property<Guid>("Id")
@@ -693,6 +740,13 @@ namespace Ndeipi.Api.Data.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
 
+                    b.Property<bool>("EmailVerified")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
                     b.Property<DateTimeOffset>("ProfileSyncedAt")
                         .HasColumnType("datetimeoffset");
 
@@ -706,6 +760,8 @@ namespace Ndeipi.Api.Data.Migrations
                         .IsUnique();
 
                     b.HasIndex("Email");
+
+                    b.HasIndex("Phone");
 
                     b.ToTable("Users");
                 });
@@ -806,6 +862,24 @@ namespace Ndeipi.Api.Data.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.Data.ShamwariLink", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.Data.User", "Addressee")
+                        .WithMany()
+                        .HasForeignKey("AddresseeId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("NdeipiChat.Api.Data.User", "Requester")
+                        .WithMany()
+                        .HasForeignKey("RequesterId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Addressee");
+
+                    b.Navigation("Requester");
                 });
 
             modelBuilder.Entity("NdeipiChat.Api.Data.UserWallet", b =>

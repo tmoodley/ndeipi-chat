@@ -5,11 +5,11 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
 using NdeipiChat.Contracts;
 using SkiaSharp;
 
-namespace Ndeipi.Api.Livestock;
+namespace NdeipiChat.Api.Livestock;
 
 public sealed record RegistrationSubmission(byte[] FaceImage, byte[] FlankImage, string MetadataJson, Guid? KeyId, string? Signature);
 

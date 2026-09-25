@@ -21,6 +21,21 @@ public sealed class ChatApi(HttpClient http)
     public Task<List<UserDto>> SearchUsersAsync(string query, CancellationToken ct = default) =>
         GetAsync<List<UserDto>>($"api/users/search?q={Uri.EscapeDataString(query)}", ct);
 
+    public Task<ShamwariListDto> GetShamwarisAsync(CancellationToken ct = default) => GetAsync<ShamwariListDto>("api/shamwaris", ct);
+
+    public Task<AddShamwariResponse> AddShamwariAsync(string contact, CancellationToken ct = default) =>
+        SendAsync<AddShamwariResponse>(HttpMethod.Post, "api/shamwaris", new AddShamwariRequest(contact), ct);
+
+    public Task<ShamwariListDto> AcceptShamwariAsync(Guid requestId, CancellationToken ct = default) =>
+        SendAsync<ShamwariListDto>(HttpMethod.Post, $"api/shamwaris/requests/{requestId}/accept", null, ct);
+
+    /// <summary>Declines a request to me, or cancels one I sent.</summary>
+    public Task<ShamwariListDto> DeleteShamwariRequestAsync(Guid requestId, CancellationToken ct = default) =>
+        SendAsync<ShamwariListDto>(HttpMethod.Delete, $"api/shamwaris/requests/{requestId}", null, ct);
+
+    public Task<ShamwariListDto> RemoveShamwariAsync(Guid userId, CancellationToken ct = default) =>
+        SendAsync<ShamwariListDto>(HttpMethod.Delete, $"api/shamwaris/{userId}", null, ct);
+
     public Task<List<ConversationDto>> GetConversationsAsync(CancellationToken ct = default) =>
         GetAsync<List<ConversationDto>>("api/conversations", ct);
 

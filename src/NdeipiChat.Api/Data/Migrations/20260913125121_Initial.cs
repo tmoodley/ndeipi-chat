@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Ndeipi.Api.Data.Migrations
+namespace NdeipiChat.Api.Data.Migrations
 {
     /// <inheritdoc />
     public partial class Initial : Migration

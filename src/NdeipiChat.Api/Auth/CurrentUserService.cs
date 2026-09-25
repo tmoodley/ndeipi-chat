@@ -1,18 +1,20 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Ndeipi.Api.Data;
+using NdeipiChat.Api.Data;
+using NdeipiChat.Api.Shamwaris;
 
-namespace Ndeipi.Api.Auth;
+namespace NdeipiChat.Api.Auth;
 
 /// <summary>
 /// Resolves the signed-in Clerk user to a local <see cref="User"/>, creating it on first sight and
-/// refreshing the name, email and avatar from Clerk now and then (session tokens don't carry them).
+/// refreshing the name, email, phone and avatar from Clerk now and then (session tokens don't carry them).
 /// </summary>
 public sealed class CurrentUserService(
     ChatDbContext db,
     IClerkBackendApi clerk,
     IOptions<ClerkOptions> options,
+    ShamwariService shamwaris,
     TimeProvider clock,
     ILogger<CurrentUserService> log)
 {
@@ -51,6 +53,8 @@ public sealed class CurrentUserService(
             user.DisplayName = profile.FullName ?? profile.Username ?? profile.PrimaryEmail?.Split('@')[0] ?? user.DisplayName;
             user.Username = profile.Username;
             user.Email = profile.PrimaryEmail;
+            user.EmailVerified = profile.PrimaryEmailVerified;
+            user.Phone = ShamwariContact.NormalizePhone(profile.VerifiedPhone);
             user.AvatarUrl = profile.ImageUrl;
             user.ProfileSyncedAt = now;
         }
@@ -69,6 +73,8 @@ public sealed class CurrentUserService(
             return await db.Users.FirstAsync(u => u.ClerkUserId == clerkId, ct);
         }
 
+        if (profile is not null)
+            await shamwaris.ClaimInvitesAsync(user, ct);
         return user;
     }
 }
