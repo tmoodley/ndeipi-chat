@@ -16,6 +16,11 @@ else if (IsSignInPage)
 {
     @Body
 }
+else if (!_signedIn)
+{
+    @* On the way to the sign-in page: don't let the page asked for load and call the API. *@
+    <div class="splash"><div class="logo">N</div></div>
+}
 else
 {
     <div class="shell">
@@ -35,6 +40,9 @@ else
                     <span class="badge">@Contacts.Incoming.Count</span>
                 }
             </NavLink>
+            <NavLink href="herd" class="tab">
+                <span class="icon">🐄</span><span>Herd</span>
+            </NavLink>
             <NavLink href="me" class="tab">
                 <span class="icon">👤</span><span>Me</span>
             </NavLink>
@@ -50,7 +58,7 @@ else
 }
 
 @code {
-    bool _started;
+    bool _started, _signedIn;
 
     bool IsSignInPage =>
         Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/') is WebNavigator.SignInPath or WebNavigator.CallbackPath;
@@ -71,9 +79,10 @@ else
             // A saved sign-in the server no longer accepts; AuthService has already cleared it.
             Navigation.NavigateTo(WebNavigator.SignInPath, replace: true);
         }
+        _signedIn = await Auth.IsSignedInAsync();
         _started = true;
 
-        if (await Auth.IsSignedInAsync())
+        if (_signedIn)
         {
             // Fills the tab badges before those tabs are opened.
             _ = Chats.RefreshCommand.ExecuteAsync(null);
@@ -81,7 +90,12 @@ else
         }
     }
 
-    void OnLocationChanged(object? sender, LocationChangedEventArgs e) => Refresh();
+    /// <summary>Signing in or out always ends in a navigation, so that's when to look again.</summary>
+    void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
+    {
+        _signedIn = await Auth.IsSignedInAsync();
+        StateHasChanged();
+    });
 
     void Refresh() => _ = InvokeAsync(StateHasChanged);
 

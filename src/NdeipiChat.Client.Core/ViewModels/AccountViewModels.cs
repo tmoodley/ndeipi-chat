@@ -10,7 +10,7 @@ using NdeipiChat.Contracts;
 namespace NdeipiChat.Client.ViewModels;
 
 /// <summary>Launch and sign-out: decides whether the app opens on sign-in or on the chats.</summary>
-public sealed class AppCoordinator(AuthService auth, ChatSession session, LivestockSync livestock, ClientOptions options, INavigator navigator, IUiDispatcher ui)
+public sealed class AppCoordinator(AuthService auth, ChatSession session, LivestockSync livestock, INavigator navigator, IUiDispatcher ui)
 {
     bool _started;
 
@@ -42,8 +42,7 @@ public sealed class AppCoordinator(AuthService auth, ChatSession session, Livest
         {
             // Offline: open the app anyway; the connection keeps retrying in the background.
         }
-        if (options.SupportsLivestock)
-            _ = SendWaitingCapturesAsync();
+        _ = SendWaitingCapturesAsync();
         await navigator.ShowMainAsync();
     }
 

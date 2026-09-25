@@ -13,12 +13,12 @@ namespace NdeipiChat.Client.ViewModels;
 public sealed partial class HerdViewModel : ObservableObject
 {
     readonly LivestockApi _api;
-    readonly LivestockCaptureQueue _queue;
+    readonly ILivestockCaptureQueue _queue;
     readonly LivestockSync _sync;
     readonly INavigator _navigator;
     readonly IUiDispatcher _ui;
 
-    public HerdViewModel(LivestockApi api, LivestockCaptureQueue queue, LivestockSync sync, INavigator navigator, IUiDispatcher ui)
+    public HerdViewModel(LivestockApi api, ILivestockCaptureQueue queue, LivestockSync sync, INavigator navigator, IUiDispatcher ui)
     {
         (_api, _queue, _sync, _navigator, _ui) = (api, queue, sync, navigator, ui);
         _sync.CaptureUploaded += outcome => _ui.Post(() => _ = ReloadAsync(includeCows: outcome.Accepted));
@@ -180,7 +180,7 @@ public sealed partial class RegisterCowViewModel : ObservableObject, INavigation
     public const int MinFlankShortSide = 720;
     public const string NotSure = "Not sure";
 
-    readonly LivestockCaptureQueue _queue;
+    readonly ILivestockCaptureQueue _queue;
     readonly LivestockSync _sync;
     readonly ChatSession _session;
     readonly ILocationProvider _location;
@@ -189,7 +189,7 @@ public sealed partial class RegisterCowViewModel : ObservableObject, INavigation
     readonly TimeProvider _clock;
 
     public RegisterCowViewModel(
-        LivestockCaptureQueue queue,
+        ILivestockCaptureQueue queue,
         LivestockSync sync,
         ChatSession session,
         ILocationProvider location,

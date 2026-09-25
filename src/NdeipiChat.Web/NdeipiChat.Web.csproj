@@ -12,8 +12,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
-    <!-- Client.Core's livestock capture queue brings native SQLite, which can't run in the browser
-         and isn't used here (ClientOptions.SupportsLivestock is off). -->
+    <!-- Client.Core's SQLite capture queue brings native SQLite, which can't run in the browser.
+         The web app queues captures in IndexedDB instead (Platform/IndexedDbCaptureQueue.cs). -->
     <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" ExcludeAssets="all" />
   </ItemGroup>
 

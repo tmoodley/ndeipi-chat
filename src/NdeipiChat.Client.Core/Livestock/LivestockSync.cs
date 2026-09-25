@@ -12,7 +12,7 @@ public sealed record UploadOutcome(PendingCapture Capture, LivestockRegistration
 /// records the answer. Accepted captures leave the phone; refused ones wait for the farmer; anything
 /// that failed for want of a connection or a working server waits for the next try.
 /// </summary>
-public sealed class LivestockSync(LivestockCaptureQueue queue, LivestockApi api, OperatorSigner signer)
+public sealed class LivestockSync(ILivestockCaptureQueue queue, LivestockApi api, OperatorSigner signer)
 {
     public const string OfflineMessage = "Waiting for a connection. It will upload automatically.";
 
@@ -64,8 +64,7 @@ public sealed class LivestockSync(LivestockCaptureQueue queue, LivestockApi api,
         if (capture.Status != CaptureStatuses.Pending)
             return new UploadOutcome(capture, null, false);
 
-        var face = await File.ReadAllBytesAsync(capture.FacePath, ct);
-        var flank = await File.ReadAllBytesAsync(capture.FlankPath, ct);
+        var (face, flank) = await queue.ReadPhotosAsync(capture, ct);
         var payload = LivestockContract.SigningPayload(face, flank, capture.MetadataJson);
 
         UploadOutcome outcome;

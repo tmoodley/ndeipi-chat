@@ -337,7 +337,7 @@ public sealed class LivestockTests(TestApp app) : IClassFixture<TestApp>
 
     // ---- The app's side: capture flow, offline queue, device key ----
 
-    sealed record Phone(ClientHarness Client, SwitchableConnection Connection, LivestockApi Api, LivestockCaptureQueue Queue, LivestockSync Sync) : IAsyncDisposable
+    sealed record Phone(ClientHarness Client, SwitchableConnection Connection, LivestockApi Api, ILivestockCaptureQueue Queue, LivestockSync Sync) : IAsyncDisposable
     {
         public RegisterCowViewModel NewForm() =>
             new(Queue, Sync, Client.Session, new FixedLocation(), new InMemorySettingsStore(), Client.Navigator, TimeProvider.System);
@@ -345,7 +345,8 @@ public sealed class LivestockTests(TestApp app) : IClassFixture<TestApp>
         public ValueTask DisposeAsync() => Client.DisposeAsync();
     }
 
-    async Task<Phone> PhoneAsync(string name)
+    /// <summary>The app by default; pass a queue and signer to stand in for the web app's IndexedDB and Web Crypto.</summary>
+    async Task<Phone> PhoneAsync(string name, ILivestockCaptureQueue? queue = null, IP256Signer? signer = null)
     {
         var farmer = await app.CreateUserAsync(name);
         var client = await ClientHarness.SignInAsync(app, farmer);
@@ -357,8 +358,8 @@ public sealed class LivestockTests(TestApp app) : IClassFixture<TestApp>
             DataDirectory = Path.Combine(app.FilesDirectory, "phone-" + Guid.NewGuid().ToString("N")),
             DeviceName = "Test phone"
         };
-        var queue = new LivestockCaptureQueue(options);
-        var sync = new LivestockSync(queue, api, new OperatorSigner(api, new InMemoryOperatorKeyStore(), client.Session, options));
+        queue ??= new LivestockCaptureQueue(options);
+        var sync = new LivestockSync(queue, api, new OperatorSigner(api, new InMemoryOperatorKeyStore(), client.Session, options, signer));
         return new Phone(client, connection, api, queue, sync);
     }
 
@@ -454,6 +455,84 @@ public sealed class LivestockTests(TestApp app) : IClassFixture<TestApp>
         var refused = Assert.Single(await phone.Queue.ListAsync());
         Assert.Equal(CaptureStatuses.Rejected, refused.Status);
         Assert.Equal(0, await phone.Sync.UploadPendingAsync());
+    }
+
+    [Fact]
+    public async Task The_web_app_queues_in_the_browser_and_signs_through_its_own_crypto()
+    {
+        app.Claude.Assessment = StubClaude.Assess();
+        var browserQueue = new MemoryCaptureQueue();
+        var webCrypto = new CountingSigner();
+        await using var browser = await PhoneAsync("Rudo Web", browserQueue, webCrypto);
+        var form = browser.NewForm();
+        await FillAsync(form, 22);
+
+        // Offline: the capture waits in the browser's store, photos and all, with no files involved.
+        browser.Connection.Offline = true;
+        await form.SubmitCommand.ExecuteAsync(null);
+        var waiting = Assert.Single(await browserQueue.ListAsync());
+        Assert.Equal(("", CaptureStatuses.Pending), (waiting.FacePath, waiting.Status));
+
+        browser.Connection.Offline = false;
+        Assert.Equal(1, await browser.Sync.UploadPendingAsync());
+        Assert.Empty(await browserQueue.ListAsync());
+        // The key made offline couldn't be registered, so it was dropped; the upload made and used another.
+        Assert.Equal((2, 1), (webCrypto.KeysCreated, webCrypto.Signatures));
+    }
+
+    /// <summary>Like the web app's IndexedDB queue: records and photos in one store, no file paths.</summary>
+    sealed class MemoryCaptureQueue : ILivestockCaptureQueue
+    {
+        readonly Dictionary<Guid, (PendingCapture Capture, byte[] Face, byte[] Flank)> _captures = [];
+
+        public Task<PendingCapture> EnqueueAsync(byte[] face, byte[] flank, string metadataJson, string label, CancellationToken ct = default)
+        {
+            var capture = new PendingCapture(Guid.NewGuid(), DateTimeOffset.UtcNow, label, metadataJson, "", "", CaptureStatuses.Pending, 0, null);
+            _captures[capture.Id] = (capture, face, flank);
+            return Task.FromResult(capture);
+        }
+
+        public Task<IReadOnlyList<PendingCapture>> ListAsync(CancellationToken ct = default) =>
+            Task.FromResult<IReadOnlyList<PendingCapture>>(_captures.Values.Select(c => c.Capture).OrderBy(c => c.CreatedAt).ToList());
+
+        public Task<PendingCapture?> GetAsync(Guid id, CancellationToken ct = default) =>
+            Task.FromResult(_captures.TryGetValue(id, out var c) ? c.Capture : null);
+
+        public Task UpdateAsync(PendingCapture capture, CancellationToken ct = default)
+        {
+            _captures[capture.Id] = _captures[capture.Id] with { Capture = capture };
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAsync(Guid id, CancellationToken ct = default)
+        {
+            _captures.Remove(id);
+            return Task.CompletedTask;
+        }
+
+        public Task<(byte[] Face, byte[] Flank)> ReadPhotosAsync(PendingCapture capture, CancellationToken ct = default) =>
+            Task.FromResult((_captures[capture.Id].Face, _captures[capture.Id].Flank));
+    }
+
+    /// <summary>Stands in for Web Crypto; the API can't tell, since the key and signature formats are the same.</summary>
+    sealed class CountingSigner : IP256Signer
+    {
+        readonly DotNetP256Signer _inner = new();
+
+        public int KeysCreated { get; private set; }
+        public int Signatures { get; private set; }
+
+        public Task<(string PublicKeySpki, string PrivateKeyPkcs8)> CreateKeyAsync()
+        {
+            KeysCreated++;
+            return _inner.CreateKeyAsync();
+        }
+
+        public Task<string> SignAsync(string privateKeyPkcs8, byte[] payload)
+        {
+            Signatures++;
+            return _inner.SignAsync(privateKeyPkcs8, payload);
+        }
     }
 
     sealed class FixedLocation : ILocationProvider

@@ -91,12 +91,18 @@ public sealed class WebNavigator(NavigationManager navigation, IJSRuntime js) : 
     public Task GoToAsync(string route, IDictionary<string, object>? parameters = null)
     {
         Guid Conversation() => parameters?[Routes.ConversationIdParameter] is Guid id ? id : Guid.Empty;
+        // Cow ids are URNs (urn:ndeipi:asset:cattle:zm-…), so they're escaped into the path.
+        string? Cow() => parameters is not null && parameters.TryGetValue(Routes.CowIdParameter, out var id)
+            ? Uri.EscapeDataString(id.ToString()!)
+            : null;
         navigation.NavigateTo(route switch
         {
             Routes.Chat => $"chat/{Conversation()}",
             Routes.BankTransfer => $"chat/{Conversation()}/send-money",
             Routes.AssetTransfer => $"chat/{Conversation()}/transfer",
             Routes.Wallet => "wallet",
+            Routes.RegisterCow => Cow() is { } cow ? $"herd/register?cow={cow}" : "herd/register",
+            Routes.Cow => $"herd/cow/{Cow()}",
             _ => "chats"
         });
         return Task.CompletedTask;
@@ -128,12 +134,6 @@ public sealed class WebDialogs(IJSRuntime js) : IDialogs
     public async Task AlertAsync(string title, string message) => await js.InvokeVoidAsync("ndeipi.alert", title, message);
 
     public async Task OpenBrowserAsync(Uri url) => await js.InvokeVoidAsync("ndeipi.open", url.ToString());
-}
-
-/// <summary>Livestock registration isn't on the web, so there's no position to give.</summary>
-public sealed class NoLocationProvider : ILocationProvider
-{
-    public Task<GpsTelemetry?> GetLocationAsync(CancellationToken ct) => Task.FromResult<GpsTelemetry?>(null);
 }
 
 /// <summary>

@@ -1,0 +1,220 @@
+@page "/herd/register"
+@inherits ViewModelPage<RegisterCowViewModel>
+@inject IJSRuntime JS
+
+<PageTitle>@Vm.Title · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="herd" title="Back">‹</a>
+    <h1>@Vm.Title</h1>
+</header>
+
+<div class="page register">
+    @if (Vm.StepText.Length > 0)
+    {
+        <p class="step">@Vm.StepText</p>
+    }
+
+    @if (Vm.IsCapturing)
+    {
+        <section class="card capture">
+            <div class="capture-guide @(Vm.Step == RegistrationStep.Face ? "face" : "flank")">
+                <span>@(Vm.Step == RegistrationStep.Face ? "Head-on, muzzle filling the frame" : "Side-on, shoulder to tail")</span>
+            </div>
+            <p>@Vm.Instruction</p>
+            @* On a phone, "capture" opens the rear camera; on a computer it picks a photo. *@
+            <label class="button primary wide file-button">
+                @(_reading ? "Reading photo…" : Vm.Step == RegistrationStep.Face ? "Take the face photo" : "Take the side photo")
+                <InputFile OnChange="PhotoChosenAsync" accept="image/jpeg,image/png" capture="environment" disabled="@_reading" />
+            </label>
+            <p class="muted small">
+                Use the main camera at full resolution: at least @(Vm.Step == RegistrationStep.Face ? RegisterCowViewModel.MinFaceShortSide : RegisterCowViewModel.MinFlankShortSide) pixels on the shorter side.
+            </p>
+            @if (Vm.PhotoWarning is not null)
+            {
+                <p class="error">@Vm.PhotoWarning</p>
+            }
+        </section>
+    }
+
+    @if (_faceUrl is not null || _flankUrl is not null)
+    {
+        <div class="photos">
+            @if (_faceUrl is not null)
+            {
+                <figure>
+                    <img src="@_faceUrl" alt="Face photo" />
+                    <figcaption>Face <button class="link" disabled="@(!CanRetake)" @onclick="() => Vm.RetakeFaceCommand.Execute(null)">Retake</button></figcaption>
+                </figure>
+            }
+            @if (_flankUrl is not null)
+            {
+                <figure>
+                    <img src="@_flankUrl" alt="Side photo" />
+                    <figcaption>Side <button class="link" disabled="@(!CanRetake)" @onclick="() => Vm.RetakeFlankCommand.Execute(null)">Retake</button></figcaption>
+                </figure>
+            }
+        </div>
+    }
+
+    @if (Vm.IsDetailsStep || Vm.IsSubmitting)
+    {
+        <form class="form" @onsubmit="() => Vm.SubmitCommand.ExecuteAsync(null)">
+            <label class="field">
+                <span class="label">Ranch code</span>
+                <input @bind="Vm.RanchCode" @bind:event="oninput" placeholder="e.g. zm-st-041" autocomplete="off" />
+            </label>
+            @if (!Vm.IsHealthCheck)
+            {
+                <label class="field">
+                    <span class="label">Breed</span>
+                    <select @bind="Vm.ClaimedBreed">
+                        @foreach (var breed in Vm.Breeds)
+                        {
+                            <option value="@breed">@breed</option>
+                        }
+                    </select>
+                </label>
+                <label class="field">
+                    <span class="label">Sex</span>
+                    <select @bind="Vm.Sex">
+                        @foreach (var sex in Vm.Sexes)
+                        {
+                            <option value="@sex">@sex</option>
+                        }
+                    </select>
+                </label>
+                <label class="field">
+                    <span class="label">Age in months</span>
+                    <input @bind="Vm.AgeMonths" @bind:event="oninput" inputmode="numeric" placeholder="Optional, e.g. 28" />
+                </label>
+            }
+            <label class="field">
+                <span class="label">Owner's wallet</span>
+                <input class="mono" @bind="Vm.OperatorWallet" @bind:event="oninput" placeholder="Optional 0x address" />
+            </label>
+            <p class="muted small">The browser will ask for your location: the registry records where each animal was registered.</p>
+
+            @if (Vm.ErrorMessage is not null)
+            {
+                <p class="error">@Vm.ErrorMessage</p>
+            }
+            <button type="submit" class="primary wide" disabled="@Vm.IsSubmitting">
+                @(Vm.IsSubmitting ? "Analysing photos…" : Vm.IsHealthCheck ? "Record health check" : "Register")
+            </button>
+        </form>
+    }
+
+    @if (Vm.IsDone && Vm.Result is { } result)
+    {
+        <section class="card result @(result.Succeeded ? "ok" : result.IsQueued ? "queued" : "failed")">
+            <h2>@result.Headline</h2>
+            <p class="mono">@result.Detail</p>
+            @if (result.BreedText is not null)
+            {
+                <div class="fact"><span class="label">Breed</span><span>@result.BreedText</span></div>
+            }
+            @if (result.ConditionText is not null)
+            {
+                <div class="fact"><span class="label">Condition</span><span>@result.ConditionText</span></div>
+            }
+            @if (result.HealthText is not null)
+            {
+                <div class="fact"><span class="label">Health</span><span>@result.HealthText</span></div>
+            }
+            @if (result.HasFindings)
+            {
+                <div class="fact">
+                    <span class="label">@(result.Succeeded ? "Findings" : "Problems")</span>
+                    <ul>
+                        @foreach (var finding in result.Findings)
+                        {
+                            <li>@finding</li>
+                        }
+                    </ul>
+                </div>
+            }
+            @if (result.RequiresVet)
+            {
+                <div class="notice">A vet should inspect this animal.</div>
+            }
+            @if (result.AttestationText is not null)
+            {
+                <p class="muted mono small">@result.AttestationText</p>
+            }
+        </section>
+        <button class="primary wide" @onclick="() => Vm.FinishCommand.ExecuteAsync(null)">Done</button>
+    }
+</div>
+
+@code {
+    const long MaxPhotoBytes = 30 * 1024 * 1024;
+
+    [SupplyParameterFromQuery(Name = "cow")] public string? CowId { get; set; }
+
+    bool _reading;
+    byte[]? _shownFace, _shownFlank;
+    string? _faceUrl, _flankUrl;
+
+    bool CanRetake => Vm.IsCapturing || Vm.IsDetailsStep;
+
+    protected override Task OnInitializedAsync()
+    {
+        var parameters = new Dictionary<string, object>();
+        if (!string.IsNullOrEmpty(CowId))
+            parameters[Routes.CowIdParameter] = CowId;
+        return Vm.OnNavigatedToAsync(parameters);
+    }
+
+    async Task PhotoChosenAsync(InputFileChangeEventArgs e)
+    {
+        _reading = true;
+        try
+        {
+            using var photo = new MemoryStream();
+            await e.File.OpenReadStream(MaxPhotoBytes).CopyToAsync(photo);
+            Vm.AcceptPhoto(photo.ToArray());
+        }
+        catch (IOException)
+        {
+            Vm.PhotoWarning = "That photo is too large or couldn't be read. Try another.";
+        }
+        finally
+        {
+            _reading = false;
+        }
+    }
+
+    /// <summary>Keeps an object URL for each photo on screen, swapping it when the photo changes.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var changed = false;
+        if (!ReferenceEquals(Vm.FacePhoto, _shownFace))
+        {
+            _faceUrl = await SwapAsync(_faceUrl, _shownFace = Vm.FacePhoto);
+            changed = true;
+        }
+        if (!ReferenceEquals(Vm.FlankPhoto, _shownFlank))
+        {
+            _flankUrl = await SwapAsync(_flankUrl, _shownFlank = Vm.FlankPhoto);
+            changed = true;
+        }
+        if (changed)
+            StateHasChanged();
+    }
+
+    async Task<string?> SwapAsync(string? old, byte[]? photo)
+    {
+        if (old is not null)
+            await JS.InvokeVoidAsync("ndeipi.revokeObjectUrl", old);
+        return photo is null ? null : await JS.InvokeAsync<string>("ndeipi.objectUrl", photo, photo is [0x89, 0x50, ..] ? "image/png" : "image/jpeg");
+    }
+
+    public override void Dispose()
+    {
+        foreach (var url in new[] { _faceUrl, _flankUrl })
+            if (url is not null)
+                _ = JS.InvokeVoidAsync("ndeipi.revokeObjectUrl", url);
+        base.Dispose();
+    }
+}

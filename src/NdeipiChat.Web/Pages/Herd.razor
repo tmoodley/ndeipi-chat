@@ -1,0 +1,160 @@
+@page "/herd"
+@inherits ViewModelPage<HerdViewModel>
+@inject ILivestockCaptureQueue Queue
+@inject IJSRuntime JS
+
+<PageTitle>Herd · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <h1>Herd</h1>
+    <button class="bar-action text" @onclick="() => Vm.RegisterCommand.ExecuteAsync(null)">Register</button>
+</header>
+
+<div class="page">
+    @if (Vm.ErrorMessage is not null)
+    {
+        <p class="error">@Vm.ErrorMessage</p>
+    }
+
+    @if (Vm.VetCount > 0)
+    {
+        <div class="notice">@Vm.VetCount @(Vm.VetCount == 1 ? "animal needs" : "animals need") a vet's inspection.</div>
+    }
+
+    @if (Vm.HasPending)
+    {
+        <h2>Waiting to upload</h2>
+        <ul class="list">
+            @foreach (var capture in Vm.Pending)
+            {
+                <li class="row static" @key="capture.Id">
+                    @if (_previews.TryGetValue(capture.Id, out var preview))
+                    {
+                        <img class="thumb" src="@preview" alt="" />
+                    }
+                    else
+                    {
+                        <span class="thumb placeholder">🐄</span>
+                    }
+                    <div class="row-main">
+                        <span class="name">@capture.Label</span>
+                        <span class="preview @(capture.IsRejected ? "error" : "")">@capture.StatusText</span>
+                        <span class="time">@capture.TimeText</span>
+                    </div>
+                    <button class="secondary small" @onclick="() => DiscardAsync(capture)">Discard</button>
+                </li>
+            }
+        </ul>
+        <button class="primary" disabled="@Vm.IsSyncing" @onclick="() => Vm.SyncCommand.ExecuteAsync(null)">
+            @(Vm.IsSyncing ? "Uploading…" : "Upload now")
+        </button>
+    }
+
+    @if (Vm.IsEmpty)
+    {
+        <div class="empty">
+            <p>No animals registered yet.</p>
+            <p class="small">Take a photo of the face and one of the side. Ndeipi grades the breed, body condition and health, and the muzzle print makes sure no animal is registered twice.</p>
+            <button class="primary" @onclick="() => Vm.RegisterCommand.ExecuteAsync(null)">Register a cow</button>
+        </div>
+    }
+    else if (Vm.Cows.Count > 0)
+    {
+        <h2>Registered (@Vm.Cows.Count)</h2>
+        <ul class="list">
+            @foreach (var cow in Vm.Cows)
+            {
+                <li class="row" @key="cow.CowId" @onclick="() => Vm.OpenCommand.ExecuteAsync(cow)">
+                    @if (cow.Thumbnail is not null)
+                    {
+                        <img class="thumb" src="@ImageUrls.Data(cow.Thumbnail)" alt="" />
+                    }
+                    else
+                    {
+                        <span class="thumb placeholder">🐄</span>
+                    }
+                    <div class="row-main">
+                        <span class="name">@cow.Title</span>
+                        <span class="preview">@cow.Subtitle</span>
+                        <span class="time mono">@cow.ShortId</span>
+                    </div>
+                    @if (cow.RequiresVet)
+                    {
+                        <span class="flag">Vet</span>
+                    }
+                    <span class="chevron">›</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    // Object URLs for the face photos of captures still in the browser; revoked when they go.
+    readonly Dictionary<Guid, string> _previews = [];
+    bool _loadingPreviews, _previewsStale;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Vm.Pending.CollectionChanged += OnPendingChanged;
+        await Vm.RefreshCommand.ExecuteAsync(null);
+    }
+
+    void OnPendingChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => _ = LoadPreviewsAsync();
+
+    /// <summary>One pass at a time; changes during a pass trigger one more.</summary>
+    async Task LoadPreviewsAsync()
+    {
+        _previewsStale = true;
+        if (_loadingPreviews)
+            return;
+        _loadingPreviews = true;
+        try
+        {
+            while (_previewsStale)
+            {
+                _previewsStale = false;
+                await SyncPreviewsAsync();
+            }
+        }
+        finally
+        {
+            _loadingPreviews = false;
+        }
+    }
+
+    async Task SyncPreviewsAsync()
+    {
+        var current = Vm.Pending.Select(p => p.Id).ToHashSet();
+        foreach (var gone in _previews.Keys.Where(id => !current.Contains(id)).ToList())
+        {
+            await JS.InvokeVoidAsync("ndeipi.revokeObjectUrl", _previews[gone]);
+            _previews.Remove(gone);
+        }
+        foreach (var id in current.Where(id => !_previews.ContainsKey(id)))
+        {
+            try
+            {
+                if (await Queue.GetAsync(id) is not { } capture)
+                    continue;
+                var (face, _) = await Queue.ReadPhotosAsync(capture);
+                _previews[id] = await JS.InvokeAsync<string>("ndeipi.objectUrl", face, "image/jpeg");
+            }
+            catch (InvalidOperationException)
+            {
+                // Uploaded or discarded meanwhile; the placeholder stays.
+            }
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    Task DiscardAsync(PendingCaptureViewModel capture) => Vm.DiscardCommand.ExecuteAsync(capture);
+
+    public override void Dispose()
+    {
+        Vm.Pending.CollectionChanged -= OnPendingChanged;
+        foreach (var url in _previews.Values)
+            _ = JS.InvokeVoidAsync("ndeipi.revokeObjectUrl", url);
+        base.Dispose();
+    }
+}
