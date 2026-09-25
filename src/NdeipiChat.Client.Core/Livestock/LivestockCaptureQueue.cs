@@ -25,10 +25,28 @@ public sealed record PendingCapture(
     string? LastError);
 
 /// <summary>
-/// The spec's offline SQLite ingestion cache. Every capture is saved here first, then uploaded, so a
-/// farmer out of signal loses nothing: photos wait on the phone until a connection returns.
+/// Where captures wait to upload. Every capture is saved here first, then uploaded, so a farmer out
+/// of signal loses nothing. The app keeps them in SQLite (<see cref="LivestockCaptureQueue"/>); the
+/// web app, where SQLite and files don't survive a reload, in IndexedDB.
 /// </summary>
-public sealed class LivestockCaptureQueue
+public interface ILivestockCaptureQueue
+{
+    Task<PendingCapture> EnqueueAsync(byte[] face, byte[] flank, string metadataJson, string label, CancellationToken ct = default);
+    Task<IReadOnlyList<PendingCapture>> ListAsync(CancellationToken ct = default);
+    Task<PendingCapture?> GetAsync(Guid id, CancellationToken ct = default);
+    Task UpdateAsync(PendingCapture capture, CancellationToken ct = default);
+
+    /// <summary>Removes a capture and its photos -- once uploaded, or when the farmer discards it.</summary>
+    Task RemoveAsync(Guid id, CancellationToken ct = default);
+
+    Task<(byte[] Face, byte[] Flank)> ReadPhotosAsync(PendingCapture capture, CancellationToken ct = default);
+}
+
+/// <summary>
+/// The spec's offline SQLite ingestion cache, with the photos as files beside it: they wait on the
+/// phone until a connection returns.
+/// </summary>
+public sealed class LivestockCaptureQueue : ILivestockCaptureQueue
 {
     readonly string _photoDirectory;
     readonly string _connectionString;
@@ -105,7 +123,9 @@ public sealed class LivestockCaptureQueue
         await update.ExecuteNonQueryAsync(ct);
     }
 
-    /// <summary>Removes a capture and its photos -- once uploaded, or when the farmer discards it.</summary>
+    public async Task<(byte[] Face, byte[] Flank)> ReadPhotosAsync(PendingCapture capture, CancellationToken ct = default) =>
+        (await File.ReadAllBytesAsync(capture.FacePath, ct), await File.ReadAllBytesAsync(capture.FlankPath, ct));
+
     public async Task RemoveAsync(Guid id, CancellationToken ct = default)
     {
         var capture = await GetAsync(id, ct);

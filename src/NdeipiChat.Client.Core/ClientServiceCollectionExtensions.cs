@@ -39,7 +39,8 @@ public static class ClientServiceCollectionExtensions
 
         // Livestock registry. The app supplies ILocationProvider, ISettingsStore and IOperatorKeyStore.
         services.AddSingleton(sp => new LivestockApi(sp.GetRequiredService<IHttpClientFactory>().CreateClient(ChatApi.HttpClientName)));
-        services.AddSingleton<LivestockCaptureQueue>();
+        services.AddSingleton<ILivestockCaptureQueue, LivestockCaptureQueue>();
+        services.AddSingleton<IP256Signer, DotNetP256Signer>();
         services.AddSingleton<OperatorSigner>();
         services.AddSingleton<LivestockSync>();
 

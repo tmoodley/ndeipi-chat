@@ -15,12 +15,6 @@ public sealed class ClientOptions
 
     /// <summary>Shown to the operator when listing the devices that can sign registrations.</summary>
     public string DeviceName { get; init; } = "This device";
-
-    /// <summary>
-    /// Whether this client registers livestock. The web app doesn't: its offline capture queue
-    /// needs SQLite, which doesn't run in the browser.
-    /// </summary>
-    public bool SupportsLivestock { get; init; } = true;
 }
 
 /// <summary>The phone's position, for the spec's gpsTelemetry. Null if location is off or refused.</summary>

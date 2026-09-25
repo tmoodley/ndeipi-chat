@@ -15,8 +15,7 @@ builder.Services.AddNdeipiChatClient(new ClientOptions
 {
     ApiBaseUrl = origin,
     RedirectUri = new Uri(origin, WebNavigator.CallbackPath).ToString(),
-    DeviceName = "Web browser",
-    SupportsLivestock = false
+    DeviceName = "Web browser"
 });
 
 builder.Services.AddSingleton<BrowserStorage>();
@@ -28,10 +27,11 @@ builder.Services.AddSingleton<IDialogs, WebDialogs>();
 builder.Services.AddSingleton<WebDispatcher>();
 builder.Services.AddSingleton<IUiDispatcher>(sp => sp.GetRequiredService<WebDispatcher>());
 
-// The livestock services come with the client but aren't used on the web; these only let them be
-// constructed.
-builder.Services.AddSingleton<IOperatorKeyStore, InMemoryOperatorKeyStore>();
-builder.Services.AddSingleton<ILocationProvider, NoLocationProvider>();
-builder.Services.AddSingleton<ISettingsStore, InMemorySettingsStore>();
+// Livestock: the browser's versions of the phone's capture queue, key storage, signing and GPS.
+builder.Services.AddSingleton<ILivestockCaptureQueue, IndexedDbCaptureQueue>();
+builder.Services.AddSingleton<IP256Signer, WebCryptoP256Signer>();
+builder.Services.AddSingleton<IOperatorKeyStore, BrowserOperatorKeyStore>();
+builder.Services.AddSingleton<ILocationProvider, BrowserLocationProvider>();
+builder.Services.AddSingleton<ISettingsStore, BrowserSettingsStore>();
 
 await builder.Build().RunAsync();

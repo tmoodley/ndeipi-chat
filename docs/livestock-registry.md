@@ -183,3 +183,21 @@ goes up on launch or when the connection returns. A capture the server refuses s
 with the reason, until the farmer retakes or discards it.
 
 A cow's record shows every health check, and **New health check** re-screens that animal.
+
+## On the web
+
+chat.ndeipi.com has the same Herd tab, registration and records, built from the same view models.
+The differences come from the browser:
+
+- **Photos** come from a file picker. On a phone it opens the rear camera (`capture="environment"`);
+  on a computer it picks a photo. There's no live guide frame; the page shows a still one instead.
+  The same minimum sizes apply.
+- **Offline.** Captures wait in the browser's IndexedDB, photos included, instead of SQLite. They
+  survive reloads and closing the tab, and upload the next time the app starts or on **Upload now**.
+  Clearing the site's data discards them.
+- **Location** is the browser's geolocation, which asks the first time.
+- **Signing** uses Web Crypto's ECDSA P-256, since .NET's `ECDsa` isn't available in WebAssembly.
+  Keys and signatures have the same formats (SPKI, PKCS#8, raw r‖s), so the API can't tell the
+  difference. The private key is kept in the browser's `localStorage`: a browser has no Keychain
+  or Keystore, so script running on the site could read it. A key can be revoked on the server,
+  and the next registration then registers a fresh one.

@@ -1,0 +1,72 @@
+@page "/herd/cow/{CowId}"
+@inherits ViewModelPage<CowDetailViewModel>
+
+<PageTitle>@(Vm.Title.Length > 0 ? Vm.Title : "Animal") · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="herd" title="Back">‹</a>
+    <h1 class="mono">@Vm.Title</h1>
+</header>
+
+<div class="page">
+    @if (Vm.ErrorMessage is not null)
+    {
+        <p class="error">@Vm.ErrorMessage</p>
+    }
+
+    @if (Vm.Cow is not null)
+    {
+        @if (Vm.FacePhoto is not null)
+        {
+            <img class="cow-photo" src="@ImageUrls.Data(Vm.FacePhoto)" alt="Face photo" />
+        }
+
+        <section class="card">
+            <div class="fact"><span class="label">Breed</span><span>@Vm.BreedText</span></div>
+            <div class="fact"><span class="label">Sex</span><span>@Vm.SexAgeText</span></div>
+            @if (Vm.TraitsText.Length > 0)
+            {
+                <div class="fact"><span class="label">Traits</span><span>@Vm.TraitsText</span></div>
+            }
+            <div class="fact"><span class="label">Ranch</span><span>@Vm.RanchText</span></div>
+            <div class="fact"><span class="label">Registered</span><span>@Vm.RegisteredText</span></div>
+            <div class="fact">
+                <span class="label">Where</span>
+                <a href="https://www.openstreetmap.org/?mlat=@(Vm.Cow.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture))&mlon=@(Vm.Cow.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture))&zoom=14"
+                   target="_blank" rel="noopener" class="mono">@Vm.LocationText</a>
+            </div>
+            <div class="fact"><span class="label">Identity</span><span>@Vm.IdentityText</span></div>
+        </section>
+
+        <button class="primary wide" @onclick="() => Vm.HealthCheckCommand.ExecuteAsync(null)">New health check</button>
+
+        <h2>Health checks</h2>
+        <ul class="list">
+            @foreach (var audit in Vm.Audits)
+            {
+                <li class="row static audit">
+                    <div class="row-main">
+                        <div class="row-top">
+                            <span class="name">@audit.ConditionText</span>
+                            <span class="time">@audit.DateText</span>
+                        </div>
+                        <span>@audit.HealthText</span>
+                        <span class="findings">@audit.FindingsText</span>
+                        <span class="time mono">@audit.AttestationText</span>
+                    </div>
+                    @if (audit.RequiresVet)
+                    {
+                        <span class="flag">Vet</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [Parameter] public string CowId { get; set; } = "";
+
+    protected override Task OnParametersSetAsync() =>
+        Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.CowIdParameter] = Uri.UnescapeDataString(CowId) });
+}
