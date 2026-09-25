@@ -11,6 +11,9 @@ using NdeipiChat.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Clerk's handshake token rides in the sign-in page's query string; see web.config for IIS's limit.
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestLineSize = 16 * 1024);
+
 builder.Services.AddDbContext<ChatDbContext>((sp, o) =>
     o.UseSqlServer(sp.GetRequiredService<IConfiguration>().GetConnectionString("Chat")));
 builder.Services.AddSingleton(TimeProvider.System);
