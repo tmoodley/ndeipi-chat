@@ -94,6 +94,7 @@ public static class Routes
     public const string Wallet = "wallet";
     public const string RegisterCow = "register-cow";
     public const string Cow = "cow";
+    public const string ComposePost = "compose-post";
 
     public const string ConversationIdParameter = "conversationId";
     public const string CowIdParameter = "cowId";

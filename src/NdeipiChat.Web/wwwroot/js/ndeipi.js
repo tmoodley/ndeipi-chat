@@ -47,6 +47,20 @@
     back: () => window.history.back(),
     scrollToBottom: (element) => { if (element) element.scrollTop = element.scrollHeight; },
 
+    // A post's photo, shrunk in the browser before upload: upright, at most maxEdge on its long side,
+    // as JPEG. Saves mobile data, and turns WebP (and HEIC, where the browser reads it) into JPEG.
+    shrinkImage: async (bytes, maxEdge, quality) => {
+      const bitmap = await createImageBitmap(new Blob([bytes]), { imageOrientation: 'from-image' });
+      const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
+      return new Uint8Array(await blob.arrayBuffer());
+    },
+
     // A photo on screen without copying megabytes into the page as base64.
     objectUrl: (bytes, type) => URL.createObjectURL(new Blob([bytes], { type: type || 'image/jpeg' })),
     revokeObjectUrl: (url) => URL.revokeObjectURL(url),

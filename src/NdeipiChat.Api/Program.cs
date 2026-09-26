@@ -7,6 +7,7 @@ using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Data;
 using NdeipiChat.Api.Livestock;
 using NdeipiChat.Api.Shamwaris;
+using NdeipiChat.Api.Social;
 using NdeipiChat.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,6 +25,7 @@ builder.Services.AddApiDocs();
 builder.Services.AddClerkAuthentication(builder.Configuration);
 builder.Services.AddChat();
 builder.Services.AddShamwaris();
+builder.Services.AddSocial(builder.Configuration);
 builder.Services.AddTokenTransfers(builder.Configuration);
 builder.Services.AddBridgeBanking(builder.Configuration);
 builder.Services.AddLivestock(builder.Configuration);
@@ -47,6 +49,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapMobileAuth();
 app.MapChat();
 app.MapShamwaris();
+app.MapSocial();
 app.MapTokenTransfers();
 app.MapBanking();
 app.MapLivestock();
@@ -59,7 +62,7 @@ app.MapStaticAssets();
 
 // Any other path is a page of the web app -- except under the API's own prefixes, where an
 // unknown path stays a 404 rather than turning into the app's HTML.
-foreach (var prefix in new[] { "api", "hubs", "auth", "webhooks", "openapi" })
+foreach (var prefix in new[] { "api", "hubs", "auth", "webhooks", "openapi", "media", "nft" })
     app.Map($"{prefix}/{{**path}}", () => Results.NotFound());
 app.MapFallbackToFile("index.html");
 

@@ -1,8 +1,73 @@
 using System.Collections.Specialized;
 using NdeipiChat.App.Extensions;
 using NdeipiChat.Client.ViewModels;
+using NdeipiChat.Contracts;
 
 namespace NdeipiChat.App.Pages;
+
+public partial class FeedPage : ViewModelPage
+{
+    readonly FeedViewModel _viewModel;
+
+    public FeedPage(FeedViewModel viewModel) : base(viewModel)
+    {
+        InitializeComponent();
+        _viewModel = viewModel;
+    }
+
+    /// <summary>Loads once; pull down to refresh. A post published here is added without a reload.</summary>
+    protected override Task OnAppearedAsync() =>
+        _viewModel.Posts.Count == 0 ? _viewModel.RefreshCommand.ExecuteAsync(null) : Task.CompletedTask;
+
+    async void OnDelete(object? sender, EventArgs e)
+    {
+        if ((sender as Button)?.CommandParameter is PostItemViewModel post
+            && await DisplayAlertAsync("Delete post?", "This can't be undone.", "Delete", "Cancel"))
+            await _viewModel.DeleteCommand.ExecuteAsync(post);
+    }
+}
+
+public partial class ComposePostPage : ViewModelPage
+{
+    const int MaxEdge = 2048;
+
+    readonly ComposePostViewModel _viewModel;
+
+    public ComposePostPage(ComposePostViewModel viewModel) : base(viewModel)
+    {
+        InitializeComponent();
+        _viewModel = viewModel;
+    }
+
+    /// <summary>Phone photos are shrunk as they're picked: less to upload, and well under the size limit.</summary>
+    static MediaPickerOptions Options(int limit) => new()
+    {
+        SelectionLimit = limit,
+        MaximumWidth = MaxEdge,
+        MaximumHeight = MaxEdge,
+        CompressionQuality = 90
+    };
+
+    async void OnTakePhoto(object? sender, EventArgs e) =>
+        await AddAsync([await MediaPicker.Default.CapturePhotoAsync(Options(1))]);
+
+    async void OnChoosePhotos(object? sender, EventArgs e) =>
+        await AddAsync(await MediaPicker.Default.PickPhotosAsync(Options(SocialContract.MaxPhotos - _viewModel.Photos.Count)) ?? []);
+
+    async Task AddAsync(IEnumerable<FileResult?> files)
+    {
+        foreach (var file in files)
+        {
+            if (file is null)
+                continue;
+            await using var stream = await file.OpenReadAsync();
+            using var photo = new MemoryStream();
+            await stream.CopyToAsync(photo);
+            if (!_viewModel.AddPhoto(photo.ToArray()))
+                break;
+        }
+    }
+}
 
 public partial class SignInPage : ViewModelPage
 {

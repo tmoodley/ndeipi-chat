@@ -85,6 +85,9 @@ public sealed class TokenTransfer
 {
     public const string TransferOperation = "Transfer";
 
+    /// <summary>Mint a new NFT to the recipient: a post, with <see cref="PostId"/> and <see cref="MetadataUri"/> set.</summary>
+    public const string MintOperation = "Mint";
+
     public Guid Id { get; set; }
     public string Operation { get; set; } = TransferOperation;
     public string Status { get; set; } = TransferStatuses.Pending;
@@ -104,9 +107,14 @@ public sealed class TokenTransfer
     public required string RecipientClerkId { get; set; }
     public string? RecipientWalletAddress { get; set; }
 
-    public Guid ConversationId { get; set; }
-    public Guid MessageId { get; set; }
+    /// <summary>Where a transfer was sent from; null for a mint.</summary>
+    public Guid? ConversationId { get; set; }
+    public Guid? MessageId { get; set; }
     public string? Memo { get; set; }
+
+    /// <summary>For a mint: the post it mints, and the public URL of its ERC-721 metadata (the tokenURI).</summary>
+    public Guid? PostId { get; set; }
+    public string? MetadataUri { get; set; }
 
     public string? TxHash { get; set; }
     public string? Error { get; set; }
@@ -217,4 +225,38 @@ public sealed class ShamwariLink
     public bool Accepted { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? AcceptedAt { get; set; }
+}
+
+/// <summary>
+/// A post in the public feed: a caption and one to four photos. When the author mints it,
+/// <see cref="MintTransferId"/> points at its row in the Ndeipi queue, which holds the NFT's state.
+/// </summary>
+public sealed class Post
+{
+    public Guid Id { get; set; }
+    public Guid AuthorId { get; set; }
+    public User Author { get; set; } = null!;
+    public string? Caption { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public Guid? MintTransferId { get; set; }
+    public TokenTransfer? Mint { get; set; }
+
+    public List<PostMedia> Media { get; set; } = [];
+}
+
+/// <summary>A photo in a post, stored as JPEGs in three sizes (see PostMediaStore).</summary>
+public sealed class PostMedia
+{
+    public Guid Id { get; set; }
+    public Guid PostId { get; set; }
+    public int Position { get; set; }
+    public int Width { get; set; }
+    public int Height { get; set; }
+}
+
+public sealed class PostLike
+{
+    public Guid PostId { get; set; }
+    public Guid UserId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }

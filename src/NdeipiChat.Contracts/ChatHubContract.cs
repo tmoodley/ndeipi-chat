@@ -29,4 +29,7 @@ public interface IChatClient
 
     /// <summary>Someone sent, accepted, declined or cancelled a Shamwari request, or unfriended you.</summary>
     Task ShamwarisChanged();
+
+    /// <summary>To a post's author: its NFT moved on (Processing, Confirmed, Failed).</summary>
+    Task PostNftChanged(PostNftDto nft);
 }

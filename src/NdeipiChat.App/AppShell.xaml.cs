@@ -14,5 +14,6 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(Routes.Wallet, typeof(WalletPage));
         Routing.RegisterRoute(Routes.RegisterCow, typeof(RegisterCowPage));
         Routing.RegisterRoute(Routes.Cow, typeof(CowDetailPage));
+        Routing.RegisterRoute(Routes.ComposePost, typeof(ComposePostPage));
     }
 }

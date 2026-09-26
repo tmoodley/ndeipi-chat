@@ -1,0 +1,67 @@
+@* One post: author, photos (swipe or scroll sideways when there are several), likes, caption, NFT. *@
+<article class="post">
+    <header class="post-head">
+        <Avatar Url="@Post.AuthorAvatarUrl" Initials="@Post.AuthorInitials" Size="36" />
+        <div class="row-main">
+            <span class="name">@Post.AuthorName</span>
+            <a class="time" href="posts/@Post.Id">@Post.TimeText</a>
+        </div>
+        @if (Post.CanDelete)
+        {
+            <button class="link danger" disabled="@Post.IsBusy" @onclick="DeleteAsync">Delete</button>
+        }
+    </header>
+
+    <div class="post-photos @(Post.HasSeveralPhotos ? "several" : "")">
+        @foreach (var photo in Post.Photos)
+        {
+            <img src="@photo.Url" alt="" loading="lazy" width="@photo.Width" height="@photo.Height"
+                 style="aspect-ratio:@photo.Width/@photo.Height" />
+        }
+    </div>
+    @if (Post.HasSeveralPhotos)
+    {
+        <div class="post-count">@Post.Photos.Count photos · scroll sideways</div>
+    }
+
+    <div class="post-actions">
+        <button class="like @(Post.LikedByMe ? "liked" : "")" title="@(Post.LikedByMe ? "Unlike" : "Like")"
+                @onclick="() => Feed.ToggleLikeCommand.ExecuteAsync(Post)">@(Post.LikedByMe ? "♥" : "♡")</button>
+        <span class="likes">@Post.LikeText</span>
+        @if (Post.CanMint)
+        {
+            <button class="secondary small mint" disabled="@Post.IsBusy" @onclick="() => Feed.MintCommand.ExecuteAsync(Post)">⬡ @Post.MintText</button>
+        }
+    </div>
+
+    @if (Post.HasCaption)
+    {
+        <p class="caption"><strong>@Post.AuthorName</strong> @Post.Caption</p>
+    }
+
+    @if (Post.HasNft)
+    {
+        <div class="nft @(Post.IsMinted ? "minted" : "")">
+            <span>⬡ @Post.NftText</span>
+            @if (Post.Nft is { } nft)
+            {
+                <a href="@nft.MetadataUrl" target="_blank" rel="noopener">Metadata</a>
+            }
+        </div>
+    }
+</article>
+
+@code {
+    [Parameter, EditorRequired] public PostItemViewModel Post { get; set; } = null!;
+    [Parameter, EditorRequired] public FeedViewModel Feed { get; set; } = null!;
+    [Parameter] public EventCallback Deleted { get; set; }
+    [Inject] IJSRuntime JS { get; set; } = null!;
+
+    async Task DeleteAsync()
+    {
+        if (!await JS.InvokeAsync<bool>("confirm", "Delete this post? This can't be undone."))
+            return;
+        await Feed.DeleteCommand.ExecuteAsync(Post);
+        await Deleted.InvokeAsync();
+    }
+}

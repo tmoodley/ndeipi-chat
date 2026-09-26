@@ -155,6 +155,48 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
+    public async Task A_post_is_published_liked_and_minted_through_the_view_models()
+    {
+        var alice = await app.CreateUserAsync("Alice Feed");
+        var bob = await app.CreateUserAsync("Bob Feed");
+        await using var aliceApp = await ClientHarness.SignInAsync(app, alice);
+        await using var bobApp = await ClientHarness.SignInAsync(app, bob);
+        var aliceFeed = aliceApp.Feed();
+        await aliceFeed.RefreshCommand.ExecuteAsync(null);
+        Assert.True(aliceFeed.MintingEnabled);
+
+        var compose = aliceApp.Compose(aliceFeed);
+        await compose.PublishCommand.ExecuteAsync(null);
+        Assert.Equal("Add at least one photo.", compose.ErrorMessage);
+        Assert.False(compose.AddPhoto("not a photo"u8.ToArray()));
+        Assert.True(compose.AddPhoto(CowPhotos.Face(7, 1200, 900)));
+        compose.Caption = "Market day in Mbare";
+        await compose.PublishCommand.ExecuteAsync(null);
+
+        Assert.True(aliceApp.Navigator.WentBack);
+        var mine = aliceFeed.Posts[0];
+        Assert.Equal(("Market day in Mbare", true, true, true), (mine.Caption, mine.IsMine, mine.CanMint, mine.CanDelete));
+
+        // Bob sees it and likes it.
+        var bobFeed = bobApp.Feed();
+        await bobFeed.RefreshCommand.ExecuteAsync(null);
+        var seen = bobFeed.Posts.First(p => p.Id == mine.Id);
+        Assert.Equal((false, false), (seen.CanMint, seen.CanDelete));
+        await bobFeed.ToggleLikeCommand.ExecuteAsync(seen);
+        Assert.Equal(("1 like", true), (seen.LikeText, seen.LikedByMe));
+
+        // Alice mints; Ndeipi confirms; her feed shows the NFT without a reload.
+        await aliceFeed.MintCommand.ExecuteAsync(mine);
+        Assert.Equal(("Queued for minting", false, false), (mine.NftText, mine.CanMint, mine.CanDelete));
+        var claimed = await app.SqlAsync("EXEC ndeipi.usp_ClaimTokenTransfers @WorkerId = 'ndeipi-1', @BatchSize = 50");
+        var row = claimed.Single(r => (Guid?)r["PostId"] == mine.Id);
+        await app.SqlAsync("EXEC ndeipi.usp_CompleteTokenTransfer @Id = @id, @WorkerId = 'ndeipi-1', @TxHash = '0xabcdef0123456789'",
+            new SqlParameter("@id", row["Id"]));
+        await Wait.UntilAsync(() => aliceApp.Ui.Read(() => mine.IsMinted), "Alice's post shows as minted");
+        Assert.StartsWith("NFT #…", aliceApp.Ui.Read(() => mine.NftText));
+    }
+
+    [Fact]
     public void Kinds_this_build_does_not_know_render_as_a_placeholder()
     {
         var extensions = new ChatExtensions([new TextMessageRenderer()], []);
@@ -215,6 +257,8 @@ public sealed class ClientHarness : IAsyncDisposable
     public ChatViewModel Chat() => new(Api, Session, Extensions, Ui, Dialogs, TimeProvider.System);
     public AssetTransferViewModel AssetTransfer() => new(Api, Session, Navigator);
     public ContactsViewModel Contacts() => new(Api, Session, Navigator, Dialogs, Ui);
+    public FeedViewModel Feed() => new(Api, Session, Navigator, Dialogs, Ui, TimeProvider.System);
+    public ComposePostViewModel Compose(FeedViewModel feed) => new(Api, feed, Navigator);
 
     public async ValueTask DisposeAsync()
     {

@@ -1,0 +1,54 @@
+@page "/posts/{Id:guid}"
+@inject FeedViewModel Feed
+@inject ChatApi Api
+@inject ChatSession Session
+@inject NavigationManager Navigation
+@implements IDisposable
+@inject WebDispatcher Dispatcher
+
+<PageTitle>Post · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="feed" title="Back">‹</a>
+    <h1>Post</h1>
+</header>
+
+<div class="feed">
+    @if (_error is not null)
+    {
+        <div class="empty"><p>@_error</p><a href="feed">Back to the feed</a></div>
+    }
+    else if (_post is not null)
+    {
+        <PostCard Post="_post" Feed="Feed" Deleted="@(() => Navigation.NavigateTo("feed"))" />
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    PostItemViewModel? _post;
+    string? _error;
+
+    protected override void OnInitialized() => Dispatcher.Changed += Refresh;
+
+    /// <summary>The same post object as the feed's when it's there, so a live mint update reaches both.</summary>
+    protected override async Task OnParametersSetAsync()
+    {
+        _post = Feed.Posts.FirstOrDefault(p => p.Id == Id);
+        if (_post is not null)
+            return;
+        try
+        {
+            _post = new PostItemViewModel(await Api.GetPostAsync(Id), Session.MyUserId, Feed.MintingEnabled, TimeProvider.System);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.StatusCode == System.Net.HttpStatusCode.NotFound ? "This post has been deleted." : ex.Message;
+        }
+    }
+
+    void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Dispatcher.Changed -= Refresh;
+}

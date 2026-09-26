@@ -1,0 +1,106 @@
+@page "/feed/new"
+@inherits ViewModelPage<ComposePostViewModel>
+@inject IJSRuntime JS
+
+<PageTitle>New post · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="feed" title="Back">‹</a>
+    <h1>New post</h1>
+</header>
+
+<form class="form" @onsubmit="() => Vm.PublishCommand.ExecuteAsync(null)">
+    <div class="compose-photos">
+        @foreach (var photo in Vm.Photos)
+        {
+            <figure @key="photo.Id">
+                @if (_urls.TryGetValue(photo.Id, out var url))
+                {
+                    <img src="@url" alt="" />
+                }
+                <button type="button" class="remove" title="Remove" @onclick="() => Vm.RemovePhotoCommand.Execute(photo)">✕</button>
+            </figure>
+        }
+        @if (Vm.CanAddPhoto)
+        {
+            <label class="add-photo">
+                <span>@(_reading ? "…" : "＋")</span>
+                <span class="small">@(Vm.Photos.Count == 0 ? "Add photos" : "Add")</span>
+                <InputFile OnChange="PhotosChosenAsync" accept="image/*" multiple disabled="@_reading" />
+            </label>
+        }
+    </div>
+    <p class="muted small">Up to @SocialContract.MaxPhotos photos. They're re-encoded before they're shared, which removes location and camera details.</p>
+
+    <label class="field">
+        <span class="label">Caption</span>
+        <textarea rows="4" maxlength="@SocialContract.MaxCaptionLength" @bind="Vm.Caption" @bind:event="oninput" placeholder="Say something about it (optional)"></textarea>
+        @if (Vm.CaptionRemaining < 200)
+        {
+            <span class="muted small">@Vm.CaptionRemaining characters left</span>
+        }
+    </label>
+
+    @if (Vm.MintingEnabled)
+    {
+        <label class="switch">
+            <input type="checkbox" @bind="Vm.MintAsNft" />
+            <span>
+                <strong>@Vm.MintLabel</strong><br />
+                <span class="muted small">Minted to you. Once it's minted, the post can't be deleted: the NFT shows these photos.</span>
+            </span>
+        </label>
+    }
+
+    @if (Vm.ErrorMessage is not null)
+    {
+        <p class="error">@Vm.ErrorMessage</p>
+    }
+    <button type="submit" class="primary wide" disabled="@(Vm.IsBusy || _reading)">@(Vm.IsBusy ? "Posting…" : "Share")</button>
+</form>
+
+@code {
+    const int MaxEdge = 2048;
+    const long MaxPickedBytes = 40 * 1024 * 1024;
+
+    readonly Dictionary<Guid, string> _urls = [];
+    bool _reading;
+
+    async Task PhotosChosenAsync(InputFileChangeEventArgs e)
+    {
+        _reading = true;
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(SocialContract.MaxPhotos))
+            {
+                if (!Vm.CanAddPhoto)
+                    break;
+                byte[] shrunk;
+                try
+                {
+                    using var original = new MemoryStream();
+                    await file.OpenReadStream(MaxPickedBytes).CopyToAsync(original);
+                    shrunk = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", original.ToArray(), MaxEdge, 0.9);
+                }
+                catch (Exception ex) when (ex is IOException or JSException)
+                {
+                    Vm.ErrorMessage = $"Couldn't read {file.Name}. Try a JPEG or PNG photo.";
+                    continue;
+                }
+                if (Vm.AddPhoto(shrunk))
+                    _urls[Vm.Photos[^1].Id] = await JS.InvokeAsync<string>("ndeipi.objectUrl", shrunk, "image/jpeg");
+            }
+        }
+        finally
+        {
+            _reading = false;
+        }
+    }
+
+    public override void Dispose()
+    {
+        foreach (var url in _urls.Values)
+            _ = JS.InvokeVoidAsync("ndeipi.revokeObjectUrl", url);
+        base.Dispose();
+    }
+}

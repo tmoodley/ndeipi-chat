@@ -1,0 +1,33 @@
+@page "/feed"
+@inherits ViewModelPage<FeedViewModel>
+
+<PageTitle>Feed · Ndeipi Chat</PageTitle>
+
+<header class="bar">
+    <h1>Feed</h1>
+    <button class="bar-action text" @onclick="() => Vm.ComposeCommand.ExecuteAsync(null)">New post</button>
+</header>
+
+<div class="feed">
+    @if (Vm.IsEmpty)
+    {
+        <div class="empty">
+            <p>No posts yet.</p>
+            <button class="primary" @onclick="() => Vm.ComposeCommand.ExecuteAsync(null)">Share the first photo</button>
+        </div>
+    }
+    @foreach (var post in Vm.Posts)
+    {
+        <PostCard @key="post.Id" Post="post" Feed="Vm" />
+    }
+    @if (Vm.HasMore)
+    {
+        <button class="secondary wide" disabled="@Vm.IsLoadingMore" @onclick="() => Vm.LoadMoreCommand.ExecuteAsync(null)">
+            @(Vm.IsLoadingMore ? "Loading…" : "Load more")
+        </button>
+    }
+</div>
+
+@code {
+    protected override Task OnInitializedAsync() => Vm.RefreshCommand.ExecuteAsync(null);
+}
