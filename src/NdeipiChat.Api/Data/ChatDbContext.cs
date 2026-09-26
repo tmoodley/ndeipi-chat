@@ -21,6 +21,9 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<LivestockHealthAudit> HealthAudits => Set<LivestockHealthAudit>();
     public DbSet<OperatorSigningKey> OperatorKeys => Set<OperatorSigningKey>();
     public DbSet<ShamwariLink> Shamwaris => Set<ShamwariLink>();
+    public DbSet<Post> Posts => Set<Post>();
+    public DbSet<PostMedia> PostMedia => Set<PostMedia>();
+    public DbSet<PostLike> PostLikes => Set<PostLike>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -36,6 +39,25 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.HasIndex(u => u.Phone);
             e.Property(u => u.AvatarUrl).HasMaxLength(1000);
             e.HasMany(u => u.Wallets).WithOne().HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<Post>(e =>
+        {
+            e.Property(p => p.Caption).HasMaxLength(2200);
+            e.HasIndex(p => new { p.CreatedAt, p.Id });
+            e.HasIndex(p => new { p.AuthorId, p.CreatedAt });
+            e.HasOne(p => p.Author).WithMany().HasForeignKey(p => p.AuthorId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.Mint).WithMany().HasForeignKey(p => p.MintTransferId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(p => p.Media).WithOne().HasForeignKey(m => m.PostId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());
+
+        model.Entity<PostLike>(e =>
+        {
+            e.HasKey(l => new { l.PostId, l.UserId });
+            e.HasOne<Post>().WithMany().HasForeignKey(l => l.PostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(l => l.UserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         model.Entity<ShamwariLink>(e =>
@@ -102,6 +124,8 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(t => t.RecipientClerkId).HasMaxLength(64);
             e.Property(t => t.RecipientWalletAddress).HasMaxLength(128);
             e.Property(t => t.Memo).HasMaxLength(280);
+            e.Property(t => t.MetadataUri).HasMaxLength(500);
+            e.HasIndex(t => t.PostId).HasFilter("[PostId] IS NOT NULL");
             e.Property(t => t.TxHash).HasMaxLength(128);
             e.Property(t => t.Error).HasMaxLength(1000);
             e.Property(t => t.ClaimedBy).HasMaxLength(100);

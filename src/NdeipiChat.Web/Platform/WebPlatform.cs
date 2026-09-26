@@ -103,6 +103,7 @@ public sealed class WebNavigator(NavigationManager navigation, IJSRuntime js) : 
             Routes.Wallet => "wallet",
             Routes.RegisterCow => Cow() is { } cow ? $"herd/register?cow={cow}" : "herd/register",
             Routes.Cow => $"herd/cow/{Cow()}",
+            Routes.ComposePost => "feed/new",
             _ => "chats"
         });
         return Task.CompletedTask;

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.ComposePostPage"
+                     x:DataType="vm:ComposePostViewModel"
+                     Title="New post"
+                     Shell.TabBarIsVisible="False">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+            <CollectionView ItemsSource="{Binding Photos}" ItemsLayout="HorizontalList" HeightRequest="110">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ComposePhoto">
+                        <Grid WidthRequest="104" HeightRequest="104" Margin="0,0,8,0">
+                            <Image Source="{Binding Data, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" />
+                            <Button Text="✕" WidthRequest="30" HeightRequest="30" CornerRadius="15" Padding="0" FontSize="12"
+                                    BackgroundColor="#99000000" TextColor="White" HorizontalOptions="End" VerticalOptions="Start" Margin="4"
+                                    Command="{Binding RemovePhotoCommand, Source={RelativeSource AncestorType={x:Type vm:ComposePostViewModel}}, x:DataType=vm:ComposePostViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding CanAddPhoto}">
+                <Button Text="Take photo" Clicked="OnTakePhoto" Style="{StaticResource Secondary}" />
+                <Button Grid.Column="1" Text="Choose photos" Clicked="OnChoosePhotos" Style="{StaticResource Secondary}" />
+            </Grid>
+            <Label Text="Up to 4 photos. They're re-encoded before they're shared, which removes location and camera details."
+                   Style="{StaticResource Muted}" FontSize="13" />
+
+            <Editor Text="{Binding Caption}" Placeholder="Say something about it (optional)" AutoSize="TextChanges" MinimumHeightRequest="90" MaxLength="2200" />
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" IsVisible="{Binding MintingEnabled}">
+                <Switch IsToggled="{Binding MintAsNft}" OnColor="{StaticResource Brand}" VerticalOptions="Start" />
+                <VerticalStackLayout Grid.Column="1">
+                    <Label Text="{Binding MintLabel}" FontAttributes="Bold" />
+                    <Label Text="Minted to you. Once it's minted, the post can't be deleted: the NFT shows these photos."
+                           Style="{StaticResource Muted}" FontSize="13" />
+                </VerticalStackLayout>
+            </Grid>
+
+            <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+            <Button Text="Share" Command="{Binding PublishCommand}" Style="{StaticResource Primary}" />
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}" Color="{StaticResource Brand}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:ViewModelPage>

@@ -55,6 +55,8 @@ public static class MauiProgram
         builder.Services.AddTransient<HerdPage>();
         builder.Services.AddTransient<RegisterCowPage>();
         builder.Services.AddTransient<CowDetailPage>();
+        builder.Services.AddTransient<FeedPage>();
+        builder.Services.AddTransient<ComposePostPage>();
         builder.Services.AddSingleton<AppShell>();
 
 #if DEBUG

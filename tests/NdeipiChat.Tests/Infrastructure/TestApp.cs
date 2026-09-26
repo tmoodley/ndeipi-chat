@@ -30,6 +30,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     public const string RedirectUri = "ndeipichat://auth";
     public const string WebRedirectUri = "https://chat.test/signin/callback";
     public const string KnownTokenContract = "0x1111111111111111111111111111111111111111";
+    public const string NftContract = "0x2222222222222222222222222222222222222222";
 
     /// <summary>Stands in for the key pair behind Bridge's webhook signatures.</summary>
     public static readonly RSA WebhookKey = TestTokens.CreateRsa();
@@ -73,6 +74,10 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Bridge:Currency"] = "usdc",
             ["Bridge:PollInterval"] = "00:00:00",
             ["Livestock:ImageStoragePath"] = Path.Combine(FilesDirectory, "livestock-images"),
+            ["Social:MediaPath"] = Path.Combine(FilesDirectory, "post-media"),
+            ["Social:PublicBaseUrl"] = "",
+            ["Social:Nft:Chain"] = "ndeipi",
+            ["Social:Nft:ContractAddress"] = NftContract,
             ["Livestock:Claude:ApiKey"] = "claude-test-key",
             ["Livestock:Claude:MaxAttempts"] = "1",
             ["Livestock:Muzzle:ModelPath"] = TinyMuzzleModel.Path,

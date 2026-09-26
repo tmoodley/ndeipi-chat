@@ -33,6 +33,9 @@ else
                     <span class="badge">@(Chats.TotalUnread > 99 ? "99+" : Chats.TotalUnread)</span>
                 }
             </NavLink>
+            <NavLink href="feed" class="tab">
+                <span class="icon">📷</span><span>Feed</span>
+            </NavLink>
             <NavLink href="shamwaris" class="tab">
                 <span class="icon">👥</span><span>Shamwaris</span>
                 @if (Contacts.Incoming.Count > 0)

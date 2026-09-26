@@ -49,7 +49,7 @@ Columns returned:
 | Column | Type | Notes |
 | --- | --- | --- |
 | `Id` | `uniqueidentifier` | The transfer id. **Use it as your idempotency key on-chain.** |
-| `Operation` | `nvarchar(20)` | Always `Transfer` today (Ndeipi's `TransactionType`). |
+| `Operation` | `nvarchar(20)` | `Transfer` (Ndeipi's `TransactionType`) or `Mint`. See [Minting posts](#minting-posts). |
 | `Chain` | `nvarchar(50)` | Lower case, e.g. `polygon`. |
 | `TokenStandard` | `nvarchar(20)` | `native`, `erc20`, `erc721`, `erc1155`, `spl` or `other`. |
 | `TokenSymbol` | `nvarchar(32)` | e.g. `NMX`. For tokens in the API's catalogue, the server sets this, not the app. |
@@ -60,7 +60,8 @@ Columns returned:
 | `SenderUserId` / `RecipientUserId` | `uniqueidentifier` | The chat's user ids. |
 | `SenderClerkId` / `RecipientClerkId` | `nvarchar(64)` | Clerk user ids (`user_...`), stable across systems. |
 | `SenderWalletAddress` / `RecipientWalletAddress` | `nvarchar(128)` | The address each user saved for this chain in the app's Wallet screen, or `NULL`. If your wallets are custodial, resolve them from the Clerk id instead. |
-| `ConversationId`, `MessageId` | `uniqueidentifier` | Where the transfer was sent from. |
+| `ConversationId`, `MessageId` | `uniqueidentifier` | Where the transfer was sent from. `NULL` for a `Mint`. |
+| `PostId`, `MetadataUri` | `uniqueidentifier`, `nvarchar(500)` | A `Mint` only: the post being minted, and the NFT's tokenURI. `NULL` for a `Transfer`. |
 | `Memo` | `nvarchar(280)` | Optional note from the sender. |
 | `Attempts`, `ClaimedBy`, `ClaimedAt`, `CreatedAt` | | `datetime2`, UTC. |
 
@@ -81,6 +82,30 @@ again. If you can't tell, leave it `Processing` and resolve it by hand.
 
 Complete, fail and release all refuse, with error 50001, a transfer that isn't `Processing` for
 the `@WorkerId` you name. So a stale or confused worker can't overwrite another worker's result.
+
+## Minting posts
+
+People can mint their feed posts (photos and a caption) as ERC-721 NFTs. A mint is a row on the
+same queue, with the same procedures and lifecycle, and differs from a transfer like this:
+
+| Column | For a `Mint` |
+| --- | --- |
+| `Operation` | `Mint`: create the token rather than move it. |
+| `Chain`, `ContractAddress`, `TokenStandard`, `TokenSymbol` | The API's `Social:Nft` settings, e.g. your NFT contract on NdeipiCoin, `erc721`, `NDPOST`. |
+| `TokenId` | Chosen by the API: the post id as an unsigned 128-bit number, in decimal. It's the same on every retry of the same post, so a second mint of it on-chain is a duplicate. Mint exactly this id. |
+| `Amount` | `1`. |
+| `RecipientUserId` / `RecipientClerkId` / `RecipientWalletAddress` | The author. That's who the token is minted to. The sender columns hold the author too. |
+| `MetadataUri` | The token's `tokenURI`, e.g. `https://chat.ndeipi.com/nft/posts/{postId}`. It serves ERC-721 metadata JSON (`name`, `description`, `image`, `attributes`), publicly, with no sign-in. Set it on the token as you mint. |
+| `PostId` | The post. `ConversationId` and `MessageId` are `NULL`. |
+
+Complete it with `usp_CompleteTokenTransfer` and the mint's transaction hash, as for a transfer;
+the author sees "NFT #… on {chain}" within about two seconds. Fail it with `usp_FailTokenTransfer`
+and a message for the author ("Gas price too high, try later"). They can retry, which queues a new
+row with a new `Id` and the same `TokenId`. So before minting, check the token doesn't already
+exist, in case an earlier attempt landed after all.
+
+Once a post has a mint that hasn't failed, it can't be deleted, so the metadata and photos the
+token points at stay up.
 
 ## A worker loop
 

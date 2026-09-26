@@ -483,3 +483,7 @@ $RECYCLE.BIN/
 
 # Server-only settings with secrets; published with the API, never committed.
 src/NdeipiChat.Api/appsettings.Production.json
+
+# Hardhat (contracts/): build output and caches.
+contracts/cache/
+contracts/typechain-types/

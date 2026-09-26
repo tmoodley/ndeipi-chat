@@ -14,6 +14,9 @@
         <Tab Title="Chats" Route="chats" Icon="tab_chats.png">
             <ShellContent ContentTemplate="{DataTemplate pages:ChatsPage}" />
         </Tab>
+        <Tab Title="Feed" Route="feed" Icon="tab_feed.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:FeedPage}" />
+        </Tab>
         <Tab Title="Shamwaris" Route="contacts" Icon="tab_contacts.png">
             <ShellContent ContentTemplate="{DataTemplate pages:ContactsPage}" />
         </Tab>

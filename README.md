@@ -10,6 +10,8 @@ talk to, right in the conversation.
 - **Banking:** runs on **Bridge**, which handles KYC, custodial wallets and user-to-user transfers.
 - **Shamwaris (friends):** add people by email or phone number. They accept, and then you can chat
   and send money. See [Shamwaris](#shamwaris).
+- **Feed:** public photo posts with likes. Authors can mint a post as an NFT, which Ndeipi
+  Enterprise Server mints from the same queue as token transfers. See [Feed and NFTs](#feed-and-nfts).
 - **Livestock registry:** farmers register cattle from a face photo and a side photo. Claude grades
   breed, body condition and visible health, and a muzzle-print model stops the same animal being
   registered twice. See [docs/livestock-registry.md](docs/livestock-registry.md).
@@ -121,6 +123,35 @@ code (`+263 77 123 4567`); spaces, dashes and a `00` prefix are fine.
 - Tap a Shamwari to open your chat. The chat's **+** panel sends money or tokens. Swipe a Shamwari
   left to remove them.
 - No email or SMS goes out yet. Tell the person to join Ndeipi yourself.
+
+### Feed and NFTs
+
+The **Feed** tab shows everyone's posts, newest first. A post is one to four photos and an optional
+caption. Anyone signed in can see and like posts.
+
+- **Photos** are re-encoded on the server as JPEGs in three sizes (320, 1080 and 2048 px on the
+  long side), which drops EXIF, including any GPS position. They're served publicly from
+  `/media/posts/{id}/{thumb|feed|full}` and cached for good: an NFT's image must load in any wallet.
+  They're stored under `Social:MediaPath` (`App_Data/post-media`).
+- **Minting.** Tick **Mint as an NFT** when posting, or tap **Mint as NFT** on one of your posts.
+  That queues a `Mint` row for Ndeipi Enterprise Server (see [docs/ndeipi-queue.md](docs/ndeipi-queue.md#minting-posts)),
+  minted to you. The post shows "Queued", then "Minting on-chain…", then "NFT #… on {chain}",
+  live. A failed mint can be retried.
+- **Metadata.** The NFT's tokenURI is `/nft/posts/{id}`: public ERC-721 JSON with the caption, the
+  full-size photo, the author and the date.
+- A post with a mint that hasn't failed can't be deleted, since its NFT points at the photos.
+
+Minting is off until the contract is set:
+
+```json
+"Social": {
+  "PublicBaseUrl": "https://chat.ndeipi.com",
+  "Nft": { "Chain": "ndeipi", "ContractAddress": "0x…", "Standard": "erc721", "Symbol": "NDPOST" }
+}
+```
+
+`PublicBaseUrl` is the address used in tokenURIs and image links. They outlive any request, so
+set it to the public HTTPS address. It's blank in Development, where the request's own address is used.
 
 ## Running the app
 

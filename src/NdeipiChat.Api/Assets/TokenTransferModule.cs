@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Data;
+using NdeipiChat.Api.Social;
 using NdeipiChat.Contracts;
 
 namespace NdeipiChat.Api.Assets;
@@ -207,16 +208,21 @@ public sealed class TokenTransferQueueWatcher(
         var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
         var messageState = scope.ServiceProvider.GetRequiredService<MessageStateService>();
 
+        var notifier = scope.ServiceProvider.GetRequiredService<ChatNotifier>();
+
         var changed = await db.TokenTransfers.AsNoTracking()
             .Where(t => t.NotifyPending)
             .OrderBy(t => t.UpdatedAt)
             .Take(BatchSize)
-            .Select(t => new { t.Id, t.MessageId, t.Status, t.TxHash, t.Error })
             .ToListAsync(ct);
 
         foreach (var transfer in changed)
         {
-            await messageState.SetAsync(transfer.MessageId, new AssetTransferState(transfer.Id, transfer.Status, transfer.TxHash, transfer.Error), ct);
+            // A post's mint goes to its author; a transfer, to the chat it was sent in.
+            if (transfer.PostId is not null)
+                await notifier.ToUser(transfer.RecipientClerkId).PostNftChanged(PostService.ToNftDto(transfer));
+            else if (transfer.MessageId is { } messageId)
+                await messageState.SetAsync(messageId, new AssetTransferState(transfer.Id, transfer.Status, transfer.TxHash, transfer.Error), ct);
 
             // Clear the flag only if the status is still what was relayed; if Ndeipi moved it on in
             // the meantime, the flag stays up and the next pass relays the newer status.

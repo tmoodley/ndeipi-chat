@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     xmlns:contracts="clr-namespace:NdeipiChat.Contracts;assembly=NdeipiChat.Contracts"
+                     x:Class="NdeipiChat.App.Pages.FeedPage"
+                     x:DataType="vm:FeedViewModel"
+                     Title="Feed">
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="New post" Command="{Binding ComposeCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <RefreshView IsRefreshing="{Binding IsRefreshing}" Command="{Binding RefreshCommand}">
+        <CollectionView ItemsSource="{Binding Posts}"
+                        RemainingItemsThreshold="3"
+                        RemainingItemsThresholdReachedCommand="{Binding LoadMoreCommand}">
+            <CollectionView.EmptyView>
+                <VerticalStackLayout Padding="32" Spacing="12" VerticalOptions="Center">
+                    <Label Text="No posts yet." HorizontalOptions="Center" Style="{StaticResource Muted}" />
+                    <Button Text="Share the first photo" Command="{Binding ComposeCommand}" Style="{StaticResource Primary}" />
+                </VerticalStackLayout>
+            </CollectionView.EmptyView>
+            <CollectionView.ItemTemplate>
+                <DataTemplate x:DataType="vm:PostItemViewModel">
+                    <VerticalStackLayout BackgroundColor="{StaticResource Surface}" Margin="0,0,0,10" Spacing="6">
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,10,12,0" ColumnSpacing="10">
+                            <controls:AvatarView Text="{Binding AuthorInitials}" ImageUrl="{Binding AuthorAvatarUrl}" Size="36" />
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label Text="{Binding AuthorName}" FontAttributes="Bold" />
+                                <Label Text="{Binding TimeText}" Style="{StaticResource Muted}" FontSize="12" />
+                            </VerticalStackLayout>
+                            <Button Grid.Column="2" Text="Delete" TextColor="{StaticResource Danger}" BackgroundColor="Transparent"
+                                    IsVisible="{Binding CanDelete}" Clicked="OnDelete" CommandParameter="{Binding .}" />
+                        </Grid>
+
+                        <!-- Several photos swipe sideways; the dots show which one is on screen. -->
+                        <CarouselView ItemsSource="{Binding Photos}" HeightRequest="380" Loop="False" BackgroundColor="Black">
+                            <CarouselView.ItemTemplate>
+                                <DataTemplate x:DataType="contracts:PostMediaDto">
+                                    <Image Source="{Binding Url}" Aspect="AspectFit" />
+                                </DataTemplate>
+                            </CarouselView.ItemTemplate>
+                        </CarouselView>
+                        <Label Text="Swipe for more photos" IsVisible="{Binding HasSeveralPhotos}" HorizontalOptions="Center"
+                               Style="{StaticResource Muted}" FontSize="12" />
+
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="8,0,12,0" ColumnSpacing="4">
+                            <Button Text="♡" FontSize="24" BackgroundColor="Transparent" TextColor="{StaticResource Text}" Padding="4,0"
+                                    Command="{Binding ToggleLikeCommand, Source={RelativeSource AncestorType={x:Type vm:FeedViewModel}}, x:DataType=vm:FeedViewModel}"
+                                    CommandParameter="{Binding .}">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button" Binding="{Binding LikedByMe}" Value="True">
+                                        <Setter Property="Text" Value="♥" />
+                                        <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+                            <Label Grid.Column="1" Text="{Binding LikeText}" FontAttributes="Bold" VerticalOptions="Center" />
+                            <Button Grid.Column="2" Text="{Binding MintText, StringFormat='⬡ {0}'}" Style="{StaticResource Secondary}"
+                                    HeightRequest="36" FontSize="14" Padding="12,0"
+                                    IsVisible="{Binding CanMint}"
+                                    Command="{Binding MintCommand, Source={RelativeSource AncestorType={x:Type vm:FeedViewModel}}, x:DataType=vm:FeedViewModel}"
+                                    CommandParameter="{Binding .}" />
+                        </Grid>
+
+                        <Label Text="{Binding Caption}" IsVisible="{Binding HasCaption}" Padding="12,0" LineBreakMode="WordWrap" />
+
+                        <Border IsVisible="{Binding HasNft}" Margin="12,0,12,10" Padding="10,8" StrokeThickness="0" BackgroundColor="#F2F2F2">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8" />
+                            </Border.StrokeShape>
+                            <Label Text="{Binding NftText, StringFormat='⬡ {0}'}" FontSize="13" Style="{StaticResource Muted}">
+                                <Label.Triggers>
+                                    <DataTrigger TargetType="Label" Binding="{Binding IsMinted}" Value="True">
+                                        <Setter Property="TextColor" Value="{StaticResource Brand}" />
+                                    </DataTrigger>
+                                </Label.Triggers>
+                            </Label>
+                        </Border>
+                        <BoxView HeightRequest="4" Color="Transparent" IsVisible="{Binding HasNft, Converter={StaticResource Not}}" />
+                    </VerticalStackLayout>
+                </DataTemplate>
+            </CollectionView.ItemTemplate>
+        </CollectionView>
+    </RefreshView>
+</pages:ViewModelPage>
