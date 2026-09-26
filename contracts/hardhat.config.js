@@ -13,7 +13,7 @@ module.exports = {
   },
   networks: {
     // Polygon's testnet: try the whole flow here first.
-    amoy: { url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology", chainId: 80002, accounts },
+    amoy: { url: process.env.AMOY_RPC_URL || "https://polygon-amoy-bor-rpc.publicnode.com", chainId: 80002, accounts },
     polygon: { url: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com", chainId: 137, accounts }
   },
   etherscan: { apiKey: process.env.POLYGONSCAN_API_KEY || "" }
