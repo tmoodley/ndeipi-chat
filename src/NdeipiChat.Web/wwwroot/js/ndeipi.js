@@ -43,6 +43,9 @@
       remove: (area, key) => { try { window[area].removeItem(key); } catch { } }
     },
     alert: (title, message) => window.alert(title ? title + '\n\n' + message : message),
+    // True only inside the Ndeipi app's WebView, which adds this token to its user agent.
+    isInApp: (token) => navigator.userAgent.includes(token),
+    fragment: () => window.location.hash,
     open: (url) => window.open(url, '_blank', 'noopener'),
     back: () => window.history.back(),
     scrollToBottom: (element) => { if (element) element.scrollTop = element.scrollHeight; },

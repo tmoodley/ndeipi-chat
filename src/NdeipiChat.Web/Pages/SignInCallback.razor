@@ -1,6 +1,8 @@
 @page "/signin/callback"
 @inject WebSignIn Flow
 @inject AppCoordinator Coordinator
+@inject WebEmbedding Embedding
+@inject IJSRuntime JS
 @inject NavigationManager Navigation
 
 <PageTitle>Signing in · Ndeipi Chat</PageTitle>
@@ -28,10 +30,28 @@
             .Select(pair => pair.Split('=', 2))
             .GroupBy(p => Uri.UnescapeDataString(p[0]))
             .ToDictionary(g => g.Key, g => Uri.UnescapeDataString(g.First().ElementAtOrDefault(1) ?? ""));
+
+        // A handoff from the phone app carries the verifier in the fragment. Honoured only in the
+        // app's own WebView: in a normal browser, a crafted link could otherwise sign someone into
+        // the link-maker's account.
+        string? handoffVerifier = null;
+        if (Embedding.IsInApp)
+        {
+            var fragment = await JS.InvokeAsync<string>("ndeipi.fragment");
+            handoffVerifier = fragment.StartsWith("#verifier=", StringComparison.Ordinal) ? fragment["#verifier=".Length..] : null;
+        }
+
         try
         {
-            await Flow.CompleteAsync(query);
+            await Flow.CompleteAsync(query, handoffVerifier);
+            if (query.GetValueOrDefault("embedded") == "1" && Embedding.IsInApp)
+                Embedding.Enter();
             await Coordinator.SignedInAsync();
+
+            // Straight on to the sub-app the phone asked for; only a sub-app page, never an outside URL.
+            if (query.GetValueOrDefault("next") is { } next && next.StartsWith(WebSubApps.LoadedAppsPrefix + "/", StringComparison.Ordinal)
+                && next.Skip(WebSubApps.LoadedAppsPrefix.Length + 1).All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+                Navigation.NavigateTo(next, replace: true);
         }
         catch (Exception ex) when (ex is AuthException or ApiException)
         {

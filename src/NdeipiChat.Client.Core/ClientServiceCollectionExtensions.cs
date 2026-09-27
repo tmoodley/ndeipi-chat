@@ -57,6 +57,12 @@ public static class ClientServiceCollectionExtensions
         services.AddSingleton<ContactsViewModel>();
         services.AddSingleton<FeedViewModel>();
         services.AddSingleton<LauncherViewModel>();
+        services.AddTransient<WebSubAppViewModel>();
+
+        // Sub-apps must be signed by a publisher key compiled into the shell. A shell may register its
+        // own SubAppTrust first, e.g. to allow unsigned bundles in local development.
+        services.TryAddSingleton(SubAppTrust.Of(requireSignature: true, PublisherKeys.All));
+        services.AddSingleton<SubAppVerifier>();
         services.AddTransient<ComposePostViewModel>();
         services.AddTransient<AssetTransferViewModel>();
         services.AddTransient<BankTransferViewModel>();

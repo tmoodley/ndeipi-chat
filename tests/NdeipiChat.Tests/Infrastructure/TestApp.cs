@@ -61,6 +61,8 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Clerk:AuthorizedParties:0"] = TrustedOrigin,
             ["MobileAuth:RedirectUris:0"] = RedirectUri,
             ["MobileAuth:RedirectUris:1"] = WebRedirectUri,
+            // The web shell on the test server itself, for the phone app's sign-in handoff.
+            ["MobileAuth:RedirectUris:2"] = "http://localhost/" + MobileAuthContract.WebCallbackPath,
             ["Tokens:QueuePollInterval"] = "00:00:00.200",
             ["Tokens:Known:0:Chain"] = "polygon",
             ["Tokens:Known:0:Symbol"] = "NMX",

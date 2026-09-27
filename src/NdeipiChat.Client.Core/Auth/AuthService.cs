@@ -52,6 +52,34 @@ public sealed class AuthService(HttpClient http, ITokenStore store, IBrowserAuth
         return (url, pending);
     }
 
+    /// <summary>
+    /// Hands this sign-in to the web shell in the app's WebView, so a sub-app opened there needs no
+    /// second login (SRS SR-03-02 on the phone). The API issues a one-time code for this session; the
+    /// PKCE verifier travels in the URL fragment, which never leaves the device. The web shell redeems
+    /// the code for a session of its own, then opens <paramref name="next"/> (e.g. "apps/inventory").
+    /// </summary>
+    public async Task<Uri> CreateWebHandoffAsync(string next, CancellationToken ct = default)
+    {
+        var token = await GetAccessTokenAsync(ct: ct) ?? throw new AuthException("Sign in again to open this app.");
+        var pending = new PendingSignIn(Pkce.NewSecret(), Pkce.NewSecret());
+        var callback = new Uri(options.ApiBaseUrl, MobileAuthContract.WebCallbackPath).ToString();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, MobileAuthContract.CompletePath.TrimStart('/'))
+        {
+            Content = JsonContent.Create(new { redirectUri = callback, codeChallenge = Pkce.Challenge(pending.Verifier) })
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await http.SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new AuthException("Couldn't open the app. Please try again.");
+        var code = (await response.Content.ReadFromJsonAsync<HandoffCode>(ct))?.Code
+            ?? throw new AuthException("Couldn't open the app. Please try again.");
+
+        return new Uri($"{callback}?code={Uri.EscapeDataString(code)}&state={pending.State}&next={Uri.EscapeDataString(next)}&embedded=1#verifier={pending.Verifier}");
+    }
+
+    sealed record HandoffCode(string Code);
+
     /// <summary>Redeems the code from the redirect's query, after checking it answers this sign-in.</summary>
     public async Task CompleteSignInAsync(PendingSignIn pending, IReadOnlyDictionary<string, string> result, CancellationToken ct = default)
     {

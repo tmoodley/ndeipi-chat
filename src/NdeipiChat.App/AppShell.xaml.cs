@@ -44,6 +44,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(Routes.RegisterCow, typeof(RegisterCowPage));
         Routing.RegisterRoute(Routes.Cow, typeof(CowDetailPage));
         Routing.RegisterRoute(Routes.ComposePost, typeof(ComposePostPage));
+        Routing.RegisterRoute(Routes.WebSubApp, typeof(WebSubAppPage));
         foreach (var (id, page) in SubAppPages.Where(p => p.Key != BuiltInApps.Wallet))
             Routing.RegisterRoute(PageRoute(id), page);
 

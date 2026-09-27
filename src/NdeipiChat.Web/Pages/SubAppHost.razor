@@ -3,7 +3,7 @@
 @inject SubAppLoader Loader
 @inject ChatSession Session
 @inject IHttpClientFactory HttpClients
-@inject NavigationManager Navigation
+@inject WebEmbedding Embedding
 
 @* Hosts a sub-app loaded at runtime (SRS SR-02-03): <DynamicComponent> renders its root component
    inside an error boundary, so a failing sub-app can't take the shell down with it. It gets the
@@ -14,12 +14,12 @@
 @if (_error is not null)
 {
     <header class="bar">
-        <a class="bar-back" href="" title="Back to your apps">‹</a>
+        <button class="bar-back link" title="Back" @onclick="Embedding.Leave">‹</button>
         <h1>@(_app?.Title ?? "App")</h1>
     </header>
     <div class="empty">
         <p>@_error</p>
-        <a class="button primary" href="">Back to your apps</a>
+        <button class="primary" @onclick="Embedding.Leave">Back</button>
     </div>
 }
 else if (_root is null || _context is null)
@@ -36,7 +36,7 @@ else
         </ChildContent>
         <ErrorContent>
             <header class="bar">
-                <a class="bar-back" href="" title="Back to your apps">‹</a>
+                <button class="bar-back link" title="Back" @onclick="Embedding.Leave">‹</button>
                 <h1>@_app?.Title</h1>
             </header>
             <div class="empty">
@@ -77,7 +77,7 @@ else
                 Session.MyUserId,
                 Session.Me?.DisplayName ?? "",
                 HttpClients.CreateClient(ChatApi.HttpClientName),
-                () => { Navigation.NavigateTo(""); return Task.CompletedTask; });
+                () => { Embedding.Leave(); return Task.CompletedTask; });
         }
         catch (SubAppLoadException ex)
         {

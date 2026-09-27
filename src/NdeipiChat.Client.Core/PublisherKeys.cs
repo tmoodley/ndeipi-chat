@@ -1,7 +1,8 @@
-namespace NdeipiChat.Web.Platform;
+namespace NdeipiChat.Client;
 
 /// <summary>
-/// Publisher keys whose signed sub-apps this shell runs (SRS NFR-02-01). Compiled in on purpose:
+/// Publisher keys whose signed sub-apps the shells run (SRS NFR-02-01): the web shell and the phone
+/// app compile in the same ones. Compiled in on purpose:
 /// a key fetched at runtime would come from the same server as the bundles it vouches for. To rotate,
 /// add the new key here, publish, re-sign with the new key, then remove the old one.
 /// </summary>

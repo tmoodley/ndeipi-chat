@@ -85,12 +85,37 @@ than deploying sub-apps the shell would refuse. For an emergency unsigned publis
   dotnet run --project tools/NdeipiChat.SubAppSigner -- sign --site <publish>/wwwroot --key <key file>
   ```
 
+## On the phone
+
+The phone app opens loaded sub-apps as **web micro-frontends**: the web shell's `apps/{id}` page,
+in an in-app WebView (`WebSubAppPage`). The app stores don't allow downloading native code, which
+rules out loading .NET DLLs at runtime. Google Play's Device and Network Abuse policy forbids it on
+Android, and iOS apps can't run code they didn't ship with.
+
+1. **The app checks the bundle itself.** `WebSubAppViewModel` downloads the bundle and runs it
+   through `SubAppVerifier`, with the publisher keys compiled into the store-signed app
+   (`PublisherKeys`, shared with the web shell). A bundle that fails the check doesn't open.
+   Release builds require a signature; debug builds, which may use a local API, don't.
+2. **It hands over its sign-in.** `AuthService.CreateWebHandoffAsync` asks the API for a one-time
+   code for the phone's own Clerk session, through the existing PKCE code flow. It then opens
+   `signin/callback?code=…&state=…&next=apps/{id}&embedded=1#verifier=…`. The verifier is in the
+   fragment, which never leaves the device.
+3. **The web shell redeems the code** for a WebView session of its own, whose refresh tokens are
+   separate from the phone's. It goes straight to the sub-app in **embedded mode**: no navigation,
+   and "back" navigates to `embed/close`, which the app catches to close the page.
+4. **The WebView stays on the Ndeipi site.** Links elsewhere open in the system browser.
+
+**Guarding the handoff:** the web shell reads a verifier from the fragment only when the user agent
+has `NdeipiApp/1`, which the app's WebView adds. In an ordinary browser, a crafted callback link
+can't sign someone into the link-maker's account ("login CSRF"): it just shows "Sign-in was
+interrupted". Embedded mode never offers sign-out, which would end the phone's Clerk session too.
+
 ## Limits, for now
 
 - **Adding an app means republishing the site.** Blazor only lazy-loads assemblies the site was
-  published with. Existing phone installs don't need an update: the phone app shows loaded
-  sub-apps as "update to use it" until step 4.
-- **On the web, signing guards the bundles, not the shell.** The web shell, trusted keys included,
-  is itself served by the same site. Signing stops a bundle that was swapped in storage, a cache
-  or a CDN from running, but someone who controls the site could change the shell too. On the
-  phone app (step 4), the trusted keys ship inside a store-signed app, which closes that gap.
+  published with. Phone installs need no update.
+- **Signing guards the bundles, not the web shell.** The web shell is served by the site, so
+  someone who controls the site could change the shell. On the phone, the app refuses to open a
+  sub-app whose bundle fails its own check, done with keys that ship inside the store-signed app.
+  What then runs in the WebView is still web content from the site, confined to the WebView's
+  sandbox with no bridge to the phone's native features.

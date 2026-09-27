@@ -107,6 +107,11 @@ public static class Routes
     /// <summary>With <see cref="SubApp"/>: the manifest's route for it, e.g. "herd".</summary>
     public const string SubAppRouteParameter = "route";
 
+    /// <summary>A runtime-loaded sub-app, opened in the app's WebView (<see cref="SubAppIdParameter"/> says which).</summary>
+    public const string WebSubApp = "web-subapp";
+
+    public const string SubAppIdParameter = "appId";
+
     public const string ConversationIdParameter = "conversationId";
     public const string CowIdParameter = "cowId";
 }

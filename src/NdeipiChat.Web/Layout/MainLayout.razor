@@ -6,6 +6,7 @@
 @inject ChatsViewModel Chats
 @inject ContactsViewModel Contacts
 @inject LauncherViewModel Launcher
+@inject WebEmbedding Embedding
 @inject WebDispatcher Dispatcher
 @inject NavigationManager Navigation
 
@@ -21,6 +22,11 @@ else if (!_signedIn)
 {
     @* On the way to the sign-in page: don't let the page asked for load and call the API. *@
     <div class="splash"><div class="logo">N</div></div>
+}
+else if (Embedding.IsEmbedded)
+{
+    @* In the phone app's WebView, showing one sub-app: the app is the shell, so no navigation here. *@
+    <main class="content embedded">@Body</main>
 }
 else
 {

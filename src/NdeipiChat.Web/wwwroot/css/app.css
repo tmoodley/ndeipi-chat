@@ -424,3 +424,6 @@ textarea { resize: vertical; min-height: 90px; }
 .chip { display: inline-flex; align-items: center; background: var(--surface); border-radius: 18px; overflow: hidden; }
 .chip-open { background: none; padding: 6px 4px 6px 12px; font-size: 14px; color: var(--text); }
 .chip-close { background: none; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+
+/* In the phone app's WebView: the app draws the chrome, so the page fills the screen. */
+.content.embedded { max-width: none; padding-bottom: 0; min-height: 100vh; }

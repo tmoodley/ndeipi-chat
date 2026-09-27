@@ -58,13 +58,20 @@ public sealed class ShellNavigator : INavigator
             if (route == Routes.Launcher)
                 return Shell.Current.GoToAsync("//main/launcher");
             if (route.StartsWith(Routes.SubAppPrefix, StringComparison.Ordinal))
-                return OpenSubAppAsync(route[Routes.SubAppPrefix.Length..]);
+                return OpenSubAppAsync(route[Routes.SubAppPrefix.Length..],
+                    parameters is not null && parameters.TryGetValue(Routes.SubAppRouteParameter, out var appRoute) ? appRoute as string : null);
             return parameters is null ? Shell.Current.GoToAsync(route) : Shell.Current.GoToAsync(route, parameters);
         });
 
-    /// <summary>Its tab if one's showing; otherwise its page on top of the launcher.</summary>
-    static Task OpenSubAppAsync(string appId)
+    /// <summary>
+    /// A loaded sub-app (route apps/{id}) opens in the WebView page. A built-in one opens on its tab
+    /// if it has one showing, or else as a page on top of the launcher.
+    /// </summary>
+    static Task OpenSubAppAsync(string appId, string? route)
     {
+        if (route?.StartsWith("apps/", StringComparison.Ordinal) == true)
+            return Shell.Current.GoToAsync($"//main/launcher/{Routes.WebSubApp}",
+                new Dictionary<string, object> { [Routes.SubAppIdParameter] = appId });
         if (Shell.Current is AppShell shell && shell.TabRouteFor(appId) is { } tab)
             return shell.GoToAsync($"//main/{tab}");
         if (appId == BuiltInApps.Wallet)
