@@ -1,3 +1,4 @@
+using NdeipiChat.Api.Launcher;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +35,7 @@ public static class LivestockModule
 
     public static void MapLivestock(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup(LivestockContract.BasePath).RequireAuthorization();
+        var api = app.MapGroup(LivestockContract.BasePath).RequireAuthorization().RequireSubApp(SubApps.Herd);
 
         api.MapPost("/operator-keys", async (OperatorKeyRequest request, HttpContext http, CurrentUserService users, ChatDbContext db, TimeProvider clock) =>
         {

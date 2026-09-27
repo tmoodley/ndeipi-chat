@@ -1,3 +1,4 @@
+using NdeipiChat.Api.Launcher;
 using NdeipiChat.Api.Auth;
 using NdeipiChat.Contracts;
 
@@ -10,7 +11,7 @@ public static class ShamwariModule
 
     public static void MapShamwaris(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api/shamwaris").RequireAuthorization();
+        var api = app.MapGroup("/api/shamwaris").RequireAuthorization().RequireSubApp(SubApps.Shamwaris);
 
         api.MapGet("", async (HttpContext http, CurrentUserService users, ShamwariService shamwaris) =>
         {

@@ -56,6 +56,7 @@ public static class ClientServiceCollectionExtensions
         services.AddTransient<ChatViewModel>();
         services.AddSingleton<ContactsViewModel>();
         services.AddSingleton<FeedViewModel>();
+        services.AddSingleton<LauncherViewModel>();
         services.AddTransient<ComposePostViewModel>();
         services.AddTransient<AssetTransferViewModel>();
         services.AddTransient<BankTransferViewModel>();

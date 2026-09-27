@@ -62,6 +62,11 @@ public sealed class ChatApi(HttpClient http)
 
     public Task<List<BalanceDto>> GetBalancesAsync(CancellationToken ct = default) => GetAsync<List<BalanceDto>>("api/banking/balances", ct);
 
+    public Task<LauncherManifestDto> GetLauncherAsync(CancellationToken ct = default) => GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath, ct);
+
+    public Task<LauncherManifestDto> SetPinsAsync(IReadOnlyList<string> appIds, CancellationToken ct = default) =>
+        SendAsync<LauncherManifestDto>(HttpMethod.Put, LauncherContract.PinsPath, new SetPinsRequest(appIds), ct);
+
     public Task<FeedPageDto> GetFeedAsync(Guid? before = null, Guid? author = null, CancellationToken ct = default) =>
         GetAsync<FeedPageDto>("api/posts" + Query(("before", before), ("author", author)), ct);
 

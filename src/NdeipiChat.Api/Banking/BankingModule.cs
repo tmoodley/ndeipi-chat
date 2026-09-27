@@ -1,3 +1,4 @@
+using NdeipiChat.Api.Launcher;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -35,7 +36,7 @@ public static class BankingModule
 
     public static void MapBanking(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api/banking").RequireAuthorization();
+        var api = app.MapGroup("/api/banking").RequireAuthorization().RequireSubApp(SubApps.Wallet);
 
         api.MapGet("/status", async (HttpContext http, CurrentUserService users, BankingService banking) =>
         {

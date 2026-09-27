@@ -1,9 +1,58 @@
 @page "/"
-@inject AuthService Auth
-@inject NavigationManager Navigation
+@inherits ViewModelPage<LauncherViewModel>
+@inject ChatSession Session
 
-@* The layout's start-up sends a fresh visit on; this covers returning to "/" later. *@
+<PageTitle>Ndeipi</PageTitle>
+
+<header class="bar"><h1>Ndeipi</h1></header>
+
+<div class="page launcher">
+    <p class="greeting">@Greeting</p>
+
+    @if (Vm.IsOffline)
+    {
+        <div class="notice">You're offline. These are your apps from last time.</div>
+    }
+
+    @if (Vm.HasRunning)
+    {
+        <h2>Open</h2>
+        <div class="running">
+            @foreach (var app in Vm.Running)
+            {
+                <span class="chip" @key="app.Id">
+                    <button class="chip-open" @onclick="() => Vm.LaunchCommand.ExecuteAsync(app)">@app.Icon @app.Title</button>
+                    <button class="chip-close" title="Close @app.Title" @onclick="() => Vm.CloseCommand.Execute(app)">✕</button>
+                </span>
+            }
+        </div>
+    }
+
+    @if (Vm.Pinned.Count > 0)
+    {
+        <h2>Pinned</h2>
+        <div class="app-grid">
+            @foreach (var app in Vm.Pinned)
+            {
+                <AppTile @key="app.Id" App="app" Launcher="Vm" />
+            }
+        </div>
+    }
+
+    @if (Vm.IsLoaded)
+    {
+        <h2>All apps</h2>
+        <div class="app-grid">
+            @foreach (var app in Vm.Apps)
+            {
+                <AppTile @key="app.Id" App="app" Launcher="Vm" />
+            }
+        </div>
+    }
+</div>
+
 @code {
-    protected override async Task OnInitializedAsync() =>
-        Navigation.NavigateTo(await Auth.IsSignedInAsync() ? "chats" : WebNavigator.SignInPath, replace: true);
+    string Greeting => Session.Me?.DisplayName is { Length: > 0 } name ? $"Mhoro, {name.Split(' ')[0]}" : "Mhoro";
+
+    protected override Task OnInitializedAsync() => Vm.IsLoaded ? Task.CompletedTask : Vm.LoadCommand.ExecuteAsync(null);
 }

@@ -1,0 +1,25 @@
+@* A sub-app in the launcher grid: tap to open; the star pins it to the navigation. *@
+<div class="app-tile @(Available ? "" : "unavailable")" title="@App.Description">
+    <button class="app-open" disabled="@(!Available)" @onclick="() => Launcher.LaunchCommand.ExecuteAsync(App)">
+        <span class="app-icon">@App.Icon</span>
+        <span class="app-title">@App.Title</span>
+        @if (!Available)
+        {
+            <span class="app-note">Not on the web yet</span>
+        }
+        else if (App.IsRunning)
+        {
+            <span class="app-note">Open</span>
+        }
+    </button>
+    <button class="app-pin @(App.IsPinned ? "pinned" : "")" title="@App.PinText @App.Title"
+            @onclick="() => Launcher.TogglePinCommand.ExecuteAsync(App)">@(App.IsPinned ? "★" : "☆")</button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SubAppItemViewModel App { get; set; } = null!;
+    [Parameter, EditorRequired] public LauncherViewModel Launcher { get; set; } = null!;
+
+    /// <summary>Sub-apps listed in the manifest that this site has no pages for yet (loaded at runtime in step 2).</summary>
+    bool Available => WebSubApps.HasPages(App.Route);
+}

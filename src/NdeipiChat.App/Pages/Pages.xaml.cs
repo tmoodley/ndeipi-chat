@@ -5,6 +5,21 @@ using NdeipiChat.Contracts;
 
 namespace NdeipiChat.App.Pages;
 
+public partial class LauncherPage : ViewModelPage
+{
+    readonly LauncherViewModel _viewModel;
+
+    public LauncherPage(LauncherViewModel viewModel) : base(viewModel)
+    {
+        InitializeComponent();
+        _viewModel = viewModel;
+    }
+
+    /// <summary>Loads once per launch; pull down to pick up changes to the manifest.</summary>
+    protected override Task OnAppearedAsync() =>
+        _viewModel.IsLoaded ? Task.CompletedTask : _viewModel.LoadCommand.ExecuteAsync(null);
+}
+
 public partial class FeedPage : ViewModelPage
 {
     readonly FeedViewModel _viewModel;

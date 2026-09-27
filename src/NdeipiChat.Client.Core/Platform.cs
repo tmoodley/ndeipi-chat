@@ -96,6 +96,17 @@ public static class Routes
     public const string Cow = "cow";
     public const string ComposePost = "compose-post";
 
+    /// <summary>The host shell's launcher grid.</summary>
+    public const string Launcher = "launcher";
+
+    /// <summary>Opens a sub-app by its manifest id; each shell maps ids to its own pages.</summary>
+    public static string SubApp(string appId) => SubAppPrefix + appId;
+
+    public const string SubAppPrefix = "app/";
+
+    /// <summary>With <see cref="SubApp"/>: the manifest's route for it, e.g. "herd".</summary>
+    public const string SubAppRouteParameter = "route";
+
     public const string ConversationIdParameter = "conversationId";
     public const string CowIdParameter = "cowId";
 }

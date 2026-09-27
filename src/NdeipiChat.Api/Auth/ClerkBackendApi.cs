@@ -40,8 +40,25 @@ public sealed record ClerkUser(
     string? PrimaryEmailAddressId,
     List<ClerkEmailAddress>? EmailAddresses,
     string? PrimaryPhoneNumberId = null,
-    List<ClerkPhoneNumber>? PhoneNumbers = null)
+    List<ClerkPhoneNumber>? PhoneNumbers = null,
+    JsonElement? PublicMetadata = null)
 {
+    /// <summary>
+    /// Roles an administrator gave the user in Clerk, as <c>public_metadata.roles</c> (an array of
+    /// strings). Users can't change public metadata themselves, so roles can gate sub-apps.
+    /// </summary>
+    public IReadOnlyList<string> Roles =>
+        PublicMetadata is { ValueKind: JsonValueKind.Object } metadata
+        && metadata.TryGetProperty("roles", out var roles)
+        && roles.ValueKind == JsonValueKind.Array
+            ? roles.EnumerateArray()
+                .Where(r => r.ValueKind == JsonValueKind.String)
+                .Select(r => r.GetString()!.Trim().ToLowerInvariant())
+                .Where(r => r.Length is > 0 and <= 50 && !r.Contains(','))
+                .Distinct()
+                .ToList()
+            : [];
+
     public string? PrimaryEmail => PrimaryEmailAddress?.EmailAddress;
 
     ClerkEmailAddress? PrimaryEmailAddress =>

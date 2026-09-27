@@ -10,17 +10,22 @@
                   Shell.TabBarIsVisible="False"
                   ContentTemplate="{DataTemplate pages:SignInPage}" />
 
+    <!-- Apps, up to three pinned sub-apps, and Me: Android shows five tabs at most. AppShell.xaml.cs
+         shows the tabs of the user's first three pinned apps; the rest open from the launcher. -->
     <TabBar Route="main">
-        <Tab Title="Chats" Route="chats" Icon="tab_chats.png">
+        <Tab Title="Apps" Route="launcher" Icon="tab_apps.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:LauncherPage}" />
+        </Tab>
+        <Tab x:Name="ChatsTab" Title="Chats" Route="chats" Icon="tab_chats.png">
             <ShellContent ContentTemplate="{DataTemplate pages:ChatsPage}" />
         </Tab>
-        <Tab Title="Feed" Route="feed" Icon="tab_feed.png">
+        <Tab x:Name="FeedTab" Title="Feed" Route="feed" Icon="tab_feed.png">
             <ShellContent ContentTemplate="{DataTemplate pages:FeedPage}" />
         </Tab>
-        <Tab Title="Shamwaris" Route="contacts" Icon="tab_contacts.png">
+        <Tab x:Name="ShamwarisTab" Title="Shamwaris" Route="contacts" Icon="tab_contacts.png">
             <ShellContent ContentTemplate="{DataTemplate pages:ContactsPage}" />
         </Tab>
-        <Tab Title="Herd" Route="herd" Icon="tab_herd.png">
+        <Tab x:Name="HerdTab" Title="Herd" Route="herd" Icon="tab_herd.png" IsVisible="False">
             <ShellContent ContentTemplate="{DataTemplate pages:HerdPage}" />
         </Tab>
         <Tab Title="Me" Route="me" Icon="tab_me.png">

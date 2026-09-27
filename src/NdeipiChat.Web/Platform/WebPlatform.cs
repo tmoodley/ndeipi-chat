@@ -95,8 +95,16 @@ public sealed class WebNavigator(NavigationManager navigation, IJSRuntime js) : 
         string? Cow() => parameters is not null && parameters.TryGetValue(Routes.CowIdParameter, out var id)
             ? Uri.EscapeDataString(id.ToString()!)
             : null;
+        if (route.StartsWith(Routes.SubAppPrefix, StringComparison.Ordinal))
+        {
+            // A sub-app from the launcher: its manifest route is this site's path for it.
+            navigation.NavigateTo(parameters?[Routes.SubAppRouteParameter] as string ?? route[Routes.SubAppPrefix.Length..]);
+            return Task.CompletedTask;
+        }
+
         navigation.NavigateTo(route switch
         {
+            Routes.Launcher => "",
             Routes.Chat => $"chat/{Conversation()}",
             Routes.BankTransfer => $"chat/{Conversation()}/send-money",
             Routes.AssetTransfer => $"chat/{Conversation()}/transfer",
@@ -111,11 +119,11 @@ public sealed class WebNavigator(NavigationManager navigation, IJSRuntime js) : 
 
     public async Task GoBackAsync() => await js.InvokeVoidAsync("ndeipi.back");
 
-    /// <summary>Only from the landing and sign-in pages; a signed-in deep link stays where it is.</summary>
+    /// <summary>The launcher, from the sign-in pages; a signed-in deep link stays where it is.</summary>
     public Task ShowMainAsync()
     {
-        if (CurrentPath is "" or SignInPath or CallbackPath)
-            navigation.NavigateTo("chats", replace: true);
+        if (CurrentPath is SignInPath or CallbackPath)
+            navigation.NavigateTo("", replace: true);
         return Task.CompletedTask;
     }
 
