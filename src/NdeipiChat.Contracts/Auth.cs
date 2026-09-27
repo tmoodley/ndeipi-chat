@@ -11,6 +11,19 @@ public static class MobileAuthContract
     public const string TokenPath = "/api/auth/mobile/token";
     public const string RefreshPath = "/api/auth/mobile/refresh";
     public const string SignOutPath = "/api/auth/mobile/sign-out";
+
+    /// <summary>Issues a one-time code for the caller's own Clerk session; the sign-in page calls it, and so does the app's web handoff.</summary>
+    public const string CompletePath = "/api/auth/mobile/complete";
+
+    /// <summary>The web shell's sign-in callback, relative to the site: a registered redirect URI.</summary>
+    public const string WebCallbackPath = "signin/callback";
+
+    /// <summary>
+    /// In the user agent of the app's in-app WebView. Only there does the web callback accept a
+    /// handoff whose verifier arrives in the URL fragment (see AuthService.CreateWebHandoffAsync); a
+    /// link like that opened in a normal browser can't sign it into someone else's account.
+    /// </summary>
+    public const string InAppAgentToken = "NdeipiApp/1";
 }
 
 public sealed record MobileTokenRequest(string Code, string CodeVerifier, string RedirectUri);

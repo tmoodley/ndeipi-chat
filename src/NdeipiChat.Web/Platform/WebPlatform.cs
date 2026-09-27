@@ -62,7 +62,11 @@ public sealed class WebSignIn(AuthService auth, BrowserStorage storage, Navigati
         navigation.NavigateTo(url.ToString(), forceLoad: true);
     }
 
-    public async Task CompleteAsync(IReadOnlyDictionary<string, string> query)
+    /// <param name="handoffVerifier">
+    /// From the phone app's handoff (AuthService.CreateWebHandoffAsync): the PKCE verifier from the
+    /// URL fragment, used when this tab didn't start the sign-in. Pass it only inside the app's WebView.
+    /// </param>
+    public async Task CompleteAsync(IReadOnlyDictionary<string, string> query, string? handoffVerifier = null)
     {
         var json = await storage.GetAsync("sessionStorage", Key);
         await storage.RemoveAsync("sessionStorage", Key);
@@ -74,6 +78,9 @@ public sealed class WebSignIn(AuthService auth, BrowserStorage storage, Navigati
         catch (JsonException)
         {
         }
+
+        if (pending is null && handoffVerifier is { Length: > 0 } && query.TryGetValue("state", out var state))
+            pending = new PendingSignIn(handoffVerifier, state);
 
         // Nothing waiting: the callback was opened in another tab, or reloaded after it ran.
         if (pending is null)

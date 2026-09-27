@@ -1,0 +1,87 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using NdeipiChat.Client.Auth;
+using NdeipiChat.Contracts;
+
+namespace NdeipiChat.Client.ViewModels;
+
+/// <summary>
+/// A runtime-loaded sub-app on the phone (SRS step 4). It runs as a web micro-frontend in the app's
+/// WebView, not as downloaded native code, which the app stores don't allow. Before opening it, the
+/// app itself downloads the bundle and checks its hash and publisher signature against the keys
+/// compiled into this store-signed app (NFR-02-01). Then it hands its sign-in to the web shell, so
+/// there's no second login (SR-03-02).
+/// </summary>
+public sealed partial class WebSubAppViewModel(
+    LauncherViewModel launcher,
+    AuthService auth,
+    SubAppVerifier verifier,
+    IHttpClientFactory httpClients) : ObservableObject, INavigationAware
+{
+    [ObservableProperty]
+    public partial string Title { get; set; } = "";
+
+    /// <summary>The page to show: set once the bundle has passed its checks.</summary>
+    [ObservableProperty]
+    public partial Uri? Url { get; set; }
+
+    [ObservableProperty]
+    public partial string? ErrorMessage { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    /// <summary>The site the sub-app lives on; the WebView keeps to it.</summary>
+    public Uri? Site { get; private set; }
+
+    public async Task OnNavigatedToAsync(IReadOnlyDictionary<string, object> parameters)
+    {
+        (Url, ErrorMessage, IsLoading) = (null, null, true);
+        try
+        {
+            var appId = parameters.TryGetValue(Routes.SubAppIdParameter, out var id) ? id?.ToString() : null;
+            if (!launcher.IsLoaded)
+                await launcher.LoadCommand.ExecuteAsync(null);
+            var app = launcher.Apps.FirstOrDefault(a => a.Id == appId)?.App;
+            if (app is null)
+            {
+                ErrorMessage = "This app isn't available to you.";
+                return;
+            }
+            Title = app.Title;
+            if (app.BundleUri is null)
+            {
+                ErrorMessage = $"{app.Title} can't be opened here.";
+                return;
+            }
+
+            // The same bundle the web shell will load, checked here against this app's own trust.
+            var http = httpClients.CreateClient(AuthService.HttpClientName);
+            Site = http.BaseAddress;
+            byte[] bundle;
+            try
+            {
+                bundle = await http.GetByteArrayAsync(app.BundleUri);
+            }
+            catch (HttpRequestException)
+            {
+                ErrorMessage = $"Couldn't download {app.Title}. Check your connection and try again.";
+                return;
+            }
+            if (await verifier.ProblemWithAsync(app, bundle) is { } problem)
+            {
+                ErrorMessage = problem;
+                return;
+            }
+
+            Url = await auth.CreateWebHandoffAsync(app.Route);
+        }
+        catch (Exception ex) when (ex is AuthException or HttpRequestException)
+        {
+            ErrorMessage = ex is AuthException ? ex.Message : "Couldn't reach the server. Check your connection and try again.";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}

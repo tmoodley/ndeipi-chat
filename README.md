@@ -199,6 +199,17 @@ manifest's SHA-256 and renders it at `apps/{id}`, passing on the user's sign-in.
 (`src/NdeipiChat.SubApps.Inventory`) is the first. [docs/sub-apps.md](docs/sub-apps.md) covers how
 it works and how to add one.
 
+**Signed sub-apps (step 3).** Publishing the API signs every sub-app bundle with the publisher key
+at `~/.ndeipi/subapp-publisher.key`. The shell only runs bundles signed by a key compiled into it.
+A Release publish fails if the key is missing. Back the key up, and see
+[docs/sub-apps.md](docs/sub-apps.md#signing) for rotating it.
+
+**Sub-apps on the phone (step 4).** The phone app opens loaded sub-apps in an in-app WebView, as
+web micro-frontends, because the app stores don't allow downloading native code. Before opening
+one, the app checks the bundle's signature itself, with the keys compiled into it. It then hands
+its sign-in to the web shell, so there's no second login. See
+[docs/sub-apps.md](docs/sub-apps.md#on-the-phone).
+
 ## Running the app
 
 1. `dotnet workload install maui`.

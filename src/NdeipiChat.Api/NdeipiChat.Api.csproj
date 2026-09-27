@@ -30,4 +30,24 @@
     <ProjectReference Include="..\NdeipiChat.Web\NdeipiChat.Web.csproj" />
   </ItemGroup>
 
+  <!--
+    Signs sub-app bundles with the publisher key (SRS NFR-02-01, docs/sub-apps.md), once they're in
+    the publish folder and before anything deploys it: folder, FTP and Web Deploy publishes all
+    deploy from PublishDir. The key never leaves this machine; only the signatures are published.
+    Key: -p:SubAppPublisherKey=…, or NDEIPI_SUBAPP_KEY, or ~/.ndeipi/subapp-publisher.key.
+  -->
+  <PropertyGroup>
+    <SubAppPublisherKey Condition="'$(SubAppPublisherKey)' == ''">$(NDEIPI_SUBAPP_KEY)</SubAppPublisherKey>
+    <SubAppPublisherKey Condition="'$(SubAppPublisherKey)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.UserProfile))\.ndeipi\subapp-publisher.key</SubAppPublisherKey>
+    <_SubAppSigner>$(MSBuildThisFileDirectory)..\..\tools\NdeipiChat.SubAppSigner\NdeipiChat.SubAppSigner.csproj</_SubAppSigner>
+  </PropertyGroup>
+
+  <Target Name="SignSubAppBundles" AfterTargets="ComputeAndCopyFilesToPublishDirectory">
+    <Error Condition="!Exists('$(SubAppPublisherKey)') And '$(Configuration)' == 'Release' And '$(AllowUnsignedSubApps)' != 'true'"
+           Text="No sub-app publisher key at $(SubAppPublisherKey), so sub-apps can't be signed and the shell would refuse them. Set SubAppPublisherKey or NDEIPI_SUBAPP_KEY, or pass -p:AllowUnsignedSubApps=true." />
+    <Warning Condition="!Exists('$(SubAppPublisherKey)') And ('$(Configuration)' != 'Release' Or '$(AllowUnsignedSubApps)' == 'true')"
+             Text="Sub-apps are published unsigned; shells that require signatures will refuse them." />
+    <Exec Condition="Exists('$(SubAppPublisherKey)')"
+          Command="dotnet run --project &quot;$(_SubAppSigner)&quot; -c Release -- sign --site &quot;$(PublishDir)wwwroot&quot; --key &quot;$(SubAppPublisherKey)&quot; --out &quot;$(PublishDir)subapp-signatures.json&quot;" />
+  </Target>
 </Project>

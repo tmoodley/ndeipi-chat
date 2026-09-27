@@ -18,6 +18,11 @@ public static class MauiProgram
         builder.UseMauiApp<App>();
         builder.UseMauiCommunityToolkitCamera();
 
+#if DEBUG
+        // A debug build may run against a local API, whose sub-apps nobody has signed. Release builds
+        // take the client's default: signatures required, by the keys compiled in (PublisherKeys).
+        builder.Services.AddSingleton(SubAppTrust.Of(requireSignature: false, PublisherKeys.All));
+#endif
         builder.Services.AddNdeipiChatClient(new ClientOptions
         {
             ApiBaseUrl = new Uri(AppConfig.ApiBaseUrl),
@@ -56,6 +61,7 @@ public static class MauiProgram
         builder.Services.AddTransient<RegisterCowPage>();
         builder.Services.AddTransient<CowDetailPage>();
         builder.Services.AddTransient<LauncherPage>();
+        builder.Services.AddTransient<WebSubAppPage>();
         builder.Services.AddTransient<FeedPage>();
         builder.Services.AddTransient<ComposePostPage>();
         builder.Services.AddSingleton<AppShell>();

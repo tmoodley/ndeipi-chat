@@ -11,4 +11,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/NdeipiChat.Tests/NdeipiChat.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/NdeipiChat.SubAppSigner/NdeipiChat.SubAppSigner.csproj" />
+  </Folder>
 </Solution>

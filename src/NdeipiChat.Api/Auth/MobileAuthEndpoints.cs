@@ -9,7 +9,7 @@ namespace NdeipiChat.Api.Auth;
 
 public static class MobileAuthEndpoints
 {
-    public const string CompletePath = "/api/auth/mobile/complete";
+    public const string CompletePath = MobileAuthContract.CompletePath;
 
     public static void MapMobileAuth(this IEndpointRouteBuilder app)
     {

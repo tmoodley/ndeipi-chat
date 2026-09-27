@@ -11,6 +11,10 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 // Served by NdeipiChat.Api, so the API is this page's own origin.
 var origin = new Uri(builder.HostEnvironment.BaseAddress);
+// Sub-apps must be signed by a publisher key built into the shell (NFR-02-01); registered before
+// the client so it wins over the default. Local development runs the bundles the API builds on the
+// fly, which nothing has signed.
+builder.Services.AddSingleton(SubAppTrust.Of(requireSignature: !builder.HostEnvironment.IsDevelopment(), PublisherKeys.All));
 builder.Services.AddNdeipiChatClient(new ClientOptions
 {
     ApiBaseUrl = origin,
@@ -22,6 +26,7 @@ builder.Services.AddSingleton<BrowserStorage>();
 builder.Services.AddSingleton<ITokenStore, BrowserTokenStore>();
 builder.Services.AddSingleton<IBrowserAuthenticator, RedirectOnlyAuthenticator>();
 builder.Services.AddSingleton<WebSignIn>();
+builder.Services.AddSingleton<WebEmbedding>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddSingleton<SubAppLoader>();
 builder.Services.AddSingleton<INavigator, WebNavigator>();

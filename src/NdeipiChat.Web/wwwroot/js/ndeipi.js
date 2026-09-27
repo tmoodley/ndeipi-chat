@@ -43,6 +43,9 @@
       remove: (area, key) => { try { window[area].removeItem(key); } catch { } }
     },
     alert: (title, message) => window.alert(title ? title + '\n\n' + message : message),
+    // True only inside the Ndeipi app's WebView, which adds this token to its user agent.
+    isInApp: (token) => navigator.userAgent.includes(token),
+    fragment: () => window.location.hash,
     open: (url) => window.open(url, '_blank', 'noopener'),
     back: () => window.history.back(),
     scrollToBottom: (element) => { if (element) element.scrollTop = element.scrollHeight; },
@@ -87,6 +90,15 @@
       sign: async (privateKeyPkcs8, data) => {
         const key = await crypto.subtle.importKey('pkcs8', fromBase64(privateKeyPkcs8), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
         return toBase64(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, data));
+      },
+      // Sub-app signatures (a publisher's key, not the operator's). False for anything malformed.
+      verify: async (publicKeySpki, data, signature) => {
+        try {
+          const key = await crypto.subtle.importKey('spki', fromBase64(publicKeySpki), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+          return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, fromBase64(signature), data);
+        } catch {
+          return false;
+        }
       }
     },
 

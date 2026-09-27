@@ -5,6 +5,59 @@ using NdeipiChat.Contracts;
 
 namespace NdeipiChat.App.Pages;
 
+/// <summary>
+/// Hosts a runtime-loaded sub-app in a WebView. It stays on the Ndeipi site: the web shell's
+/// "close" (and its home page) come back to the launcher, and links elsewhere open in the browser.
+/// </summary>
+public partial class WebSubAppPage : ViewModelPage
+{
+    /// <summary>Tells the web shell it's in the app, so it accepts the sign-in handoff and hides its navigation.</summary>
+    const string InAppUserAgent = "Mozilla/5.0 (Mobile; Ndeipi) " + MobileAuthContract.InAppAgentToken;
+
+    readonly WebSubAppViewModel _viewModel;
+
+    public WebSubAppPage(WebSubAppViewModel viewModel) : base(viewModel)
+    {
+        InitializeComponent();
+        _viewModel = viewModel;
+        WebContent.UserAgent = InAppUserAgent;
+        _viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(WebSubAppViewModel.Url) && _viewModel.Url is { } url)
+                WebContent.Source = new UrlWebViewSource { Url = url.ToString() };
+        };
+    }
+
+    void OnNavigating(object? sender, WebNavigatingEventArgs e)
+    {
+        if (!Uri.TryCreate(e.Url, UriKind.Absolute, out var target) || _viewModel.Site is not { } site)
+            return;
+        if (!string.Equals(target.GetLeftPart(UriPartial.Authority), site.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
+        {
+            // Somewhere else: the system browser, not this WebView.
+            e.Cancel = true;
+            _ = Browser.Default.OpenAsync(target, BrowserLaunchMode.SystemPreferred);
+            return;
+        }
+        var path = target.AbsolutePath.Trim('/');
+        if (path is "" or "embed/close")
+        {
+            e.Cancel = true;
+            _ = CloseAsync();
+        }
+    }
+
+    void OnNavigated(object? sender, WebNavigatedEventArgs e)
+    {
+        if (e.Result != WebNavigationResult.Success && _viewModel.ErrorMessage is null)
+            _viewModel.ErrorMessage = $"Couldn't load {_viewModel.Title}. Check your connection and try again.";
+    }
+
+    async void OnClose(object? sender, EventArgs e) => await CloseAsync();
+
+    static Task CloseAsync() => Shell.Current.GoToAsync("..");
+}
+
 public partial class LauncherPage : ViewModelPage
 {
     readonly LauncherViewModel _viewModel;

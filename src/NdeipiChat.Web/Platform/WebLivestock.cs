@@ -83,6 +83,9 @@ public sealed class WebCryptoP256Signer(IJSRuntime js) : IP256Signer
 
     public async Task<string> SignAsync(string privateKeyPkcs8, byte[] payload) =>
         await js.InvokeAsync<string>("ndeipi.p256.sign", privateKeyPkcs8, payload);
+
+    public async Task<bool> VerifyAsync(string publicKeySpki, byte[] payload, string signature) =>
+        await js.InvokeAsync<bool>("ndeipi.p256.verify", publicKeySpki, payload, signature);
 }
 
 /// <summary>
