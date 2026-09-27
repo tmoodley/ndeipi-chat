@@ -4,6 +4,7 @@
     <Project Path="src/NdeipiChat.App/NdeipiChat.App.csproj" />
     <Project Path="src/NdeipiChat.Client.Core/NdeipiChat.Client.Core.csproj" />
     <Project Path="src/NdeipiChat.Contracts/NdeipiChat.Contracts.csproj" />
+    <Project Path="src/NdeipiChat.SubApps.Events/NdeipiChat.SubApps.Events.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Inventory/NdeipiChat.SubApps.Inventory.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Sdk/NdeipiChat.SubApps.Sdk.csproj" />
     <Project Path="src/NdeipiChat.Web/NdeipiChat.Web.csproj" />

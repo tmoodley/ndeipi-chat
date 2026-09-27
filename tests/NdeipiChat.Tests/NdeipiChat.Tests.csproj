@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\NdeipiChat.Client.Core\NdeipiChat.Client.Core.csproj" />
     <ProjectReference Include="..\..\src\NdeipiChat.SubApps.Sdk\NdeipiChat.SubApps.Sdk.csproj" />
     <ProjectReference Include="..\..\src\NdeipiChat.SubApps.Inventory\NdeipiChat.SubApps.Inventory.csproj" />
+    <ProjectReference Include="..\..\src\NdeipiChat.SubApps.Events\NdeipiChat.SubApps.Events.csproj" />
     <ProjectReference Include="..\..\tools\NdeipiChat.SubAppSigner\NdeipiChat.SubAppSigner.csproj" />
   </ItemGroup>
 

@@ -50,6 +50,21 @@ A sub-app never shows a sign-in of its own (SR-03-02).
 6. **Publish.** The API finds the bundle and its hash itself. If the bundle is missing from a
    deployment, the app is left out of everyone's manifest rather than failing when opened.
 
+
+## What the shell provides
+
+`SubAppContext` carries, besides the user and the signed-in `Api` client:
+
+- **`Realtime`** (`ISubAppRealtime`): live messages on topics such as `events:{id}`, over the
+  shell's own SignalR connection. The API decides who may follow a topic. A module registers an
+  `ITopicPolicy` for its prefix and publishes with `ChatNotifier.PublishAsync`. The shell
+  re-subscribes after a reconnect.
+- **`Device`** (`ISubAppDevice`): ECDSA P-256 keys that never leave the device, plus small stored
+  values, both private to the sub-app and the user. The web shell uses Web Crypto and
+  localStorage.
+
+Both are null in a shell that doesn't offer them, so check before using them.
+
 ## Signing
 
 Sub-app bundles are signed by a **publisher key** (SRS NFR-02-01): ECDSA P-256 over the assembly

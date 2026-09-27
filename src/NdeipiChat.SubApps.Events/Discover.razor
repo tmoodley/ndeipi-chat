@@ -1,0 +1,102 @@
+@* The catalog (SRS FR-1.1, FR-1.2): upcoming events by city and category, fetched a page at a
+   time as the list scrolls. *@
+
+<div class="ev-filters">
+    <select @bind="City" @bind:after="RefreshAsync" title="City">
+        <option value="">All cities</option>
+        @foreach (var city in _cities)
+        {
+            <option value="@city">@city</option>
+        }
+    </select>
+</div>
+<div class="ev-filters">
+    <button class="ev-pill @(_category is null ? "active" : "")" @onclick="() => PickAsync(null)">All</button>
+    @foreach (var category in EventCategories.All)
+    {
+        <button class="ev-pill @(_category == category ? "active" : "")" @onclick="() => PickAsync(category)">@EventCategories.Label(category)</button>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@if (_total == 0)
+{
+    <div class="empty"><p>No upcoming events@(City is { Length: > 0 } ? $" in {City}" : "") yet.</p></div>
+}
+
+<div>
+    <Virtualize @ref="_list" TItem="EventSummaryDto" ItemsProvider="LoadAsync" ItemSize="72" OverscanCount="6">
+        <ItemContent>
+            <div class="ev-row" @key="context.Id" @onclick="() => App.Go(new EventsView.Event(context.Id))">
+                <div class="ev-date"><b>@Format.Day(context.StartsAt)</b><span>@Format.Month(context.StartsAt)</span></div>
+                <div class="ev-main">
+                    <span class="name">@context.Title</span>
+                    <span class="muted small">@context.Venue · @context.City · @EventCategories.Label(context.Category)</span>
+                </div>
+                <div class="ev-side">
+                    @if (context.Available == 0)
+                    {
+                        <span class="ev-sold">Sold out</span>
+                    }
+                    else
+                    {
+                        <span>@(context.LowestPrice is "0" ? "Free" : $"from {Format.Price(context.LowestPrice, context.Currency)}")</span>
+                    }
+                </div>
+            </div>
+        </ItemContent>
+        <Placeholder>
+            <div class="ev-row"><div class="ev-main muted">Loading…</div></div>
+        </Placeholder>
+    </Virtualize>
+</div>
+
+@code {
+    [CascadingParameter] public EventsApp App { get; set; } = null!;
+
+    Virtualize<EventSummaryDto>? _list;
+    IReadOnlyList<string> _cities = [];
+    string? _category, _error;
+    int? _total;
+
+    string City { get; set; } = "";
+
+    async ValueTask<ItemsProviderResult<EventSummaryDto>> LoadAsync(ItemsProviderRequest request)
+    {
+        try
+        {
+            var query = $"{EventsApi.Base}?skip={request.StartIndex}&take={Math.Min(request.Count, 50)}"
+                + (City.Length > 0 ? "&city=" + Uri.EscapeDataString(City) : "")
+                + (_category is null ? "" : "&category=" + _category);
+            var page = await App.Api.GetAsync<EventPageDto>(query);
+            var changed = _total != page.Total || !_cities.SequenceEqual(page.Cities);
+            (_cities, _total, _error) = (page.Cities, page.Total, null);
+            if (changed)
+                StateHasChanged();
+            return new ItemsProviderResult<EventSummaryDto>(page.Events, page.Total);
+        }
+        catch (EventsException ex)
+        {
+            _error = ex.Message;
+            StateHasChanged();
+            return new ItemsProviderResult<EventSummaryDto>([], 0);
+        }
+    }
+
+    async Task PickAsync(string? category)
+    {
+        _category = category;
+        await RefreshAsync();
+    }
+
+    async Task RefreshAsync()
+    {
+        _total = null;
+        if (_list is not null)
+            await _list.RefreshDataAsync();
+    }
+}

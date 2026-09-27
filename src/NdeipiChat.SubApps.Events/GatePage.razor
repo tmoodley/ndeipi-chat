@@ -1,0 +1,232 @@
+@* The gate scanner (SRS FR-5.2). It checks codes against a ticket list kept on this device, so it
+   keeps admitting people with no signal, and uploads admissions whenever it can. *@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@if (Context.Device is null)
+{
+    <div class="empty"><p>Scanning needs the Ndeipi app or chat.ndeipi.com in a browser.</p></div>
+}
+else
+{
+    <h2>@(_book?.List?.Title ?? "Scan tickets")</h2>
+    <p class="muted small">
+        @if (_book?.List is { } list)
+        {
+            @($"{_book.TicketCount} tickets · {_book.AdmittedCount} in · list from {Format.Time(list.SyncedAt)}")
+        }
+        else
+        {
+            @("No ticket list on this device yet.")
+        }
+        @if (_book?.Pending.Count > 0)
+        {
+            @($" · {_book.Pending.Count} waiting to upload")
+        }
+        @if (_offline)
+        {
+            <strong> · offline</strong>
+        }
+    </p>
+    <div class="ev-actions">
+        <button class="secondary" disabled="@_syncing" @onclick="SyncAsync">@(_syncing ? "Syncing…" : "Sync")</button>
+        @if (_cameraOn)
+        {
+            <button class="secondary" @onclick="StopCameraAsync">Stop camera</button>
+        }
+        else
+        {
+            <button class="primary" @onclick="StartCameraAsync">Scan with camera</button>
+        }
+    </div>
+
+    <video @ref="_video" class="ev-video" playsinline muted style="display: @(_cameraOn ? "block" : "none")"></video>
+
+    <form class="inline-form" style="margin-top: 12px" @onsubmit="CheckTypedAsync">
+        <input @ref="_input" @bind="_typed" placeholder="Or type / paste the code (NDT1:…)" autocomplete="off" />
+        <button type="submit" class="secondary" disabled="@string.IsNullOrWhiteSpace(_typed)">Check</button>
+    </form>
+
+    @if (_last is { } scan)
+    {
+        <div class="ev-verdict @(scan.Verdict switch { GateVerdict.Admit => "ok", GateVerdict.AlreadyAdmitted => "warn", _ => "bad" })">
+            @(scan.Verdict switch
+            {
+                GateVerdict.Admit => "✓ Let them in",
+                GateVerdict.AlreadyAdmitted => "Already in",
+                _ => "✕ Don't admit"
+            })
+            <small>@scan.Message</small>
+        </div>
+    }
+
+    @if (_message is not null)
+    {
+        <p class="@(_offline ? "muted" : "error")">@_message</p>
+    }
+
+    @if (_conflicts.Count > 0)
+    {
+        <div class="card">
+            <h3>Let in twice</h3>
+            <p class="muted small">Another gate uploaded these first. The earlier time stands.</p>
+            <ul class="ev-log">
+                @foreach (var c in _conflicts)
+                {
+                    <li><span>@(_book?.List?.Tickets.FirstOrDefault(t => t.TicketId == c.TicketId)?.HolderName ?? c.TicketId.ToString("N")[..8])</span><span>@(c.FirstAdmittedAt is { } at ? Format.Time(at) : c.Outcome)</span></li>
+                }
+            </ul>
+        </div>
+    }
+
+    @if (_log.Count > 0)
+    {
+        <h3>Recent</h3>
+        <ul class="ev-log">
+            @foreach (var (at, entry) in _log)
+            {
+                <li><span>@(entry.Ticket?.HolderName ?? "—") · @entry.Verdict</span><span class="muted">@Format.Time(at)</span></li>
+            }
+        </ul>
+    }
+}
+
+@code {
+    [CascadingParameter] public EventsApp App { get; set; } = null!;
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    GateBook? _book;
+    GateScan? _last;
+    readonly List<(DateTimeOffset At, GateScan Scan)> _log = [];
+    readonly List<AdmissionResultDto> _conflicts = [];
+    string? _typed, _message;
+    bool _syncing, _offline, _cameraOn;
+    ElementReference _video, _input;
+    IJSObjectReference? _scanner;
+    DotNetObjectReference<GatePage>? _self;
+    PeriodicTimer? _timer;
+    readonly CancellationTokenSource _lifetime = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Context.Device is null)
+            return;
+        _book = new GateBook(Id, Context.Device);
+        await _book.LoadAsync();
+        await SyncAsync();
+        _ = AutoSyncAsync();
+    }
+
+    /// <summary>Uploads admissions and refreshes the list every half minute, whenever there's signal.</summary>
+    async Task AutoSyncAsync()
+    {
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(_lifetime.Token))
+                await InvokeAsync(SyncAsync);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    async Task SyncAsync()
+    {
+        if (_book is null || _syncing)
+            return;
+        (_syncing, _message) = (true, null);
+        StateHasChanged();
+        try
+        {
+            var conflicts = await _book.UploadAsync(async request =>
+                (await App.Api.SendAsync<List<AdmissionResultDto>>(HttpMethod.Post, $"{EventsApi.Base}/{Id}/admissions", request))!);
+            _conflicts.InsertRange(0, conflicts.Where(c => c.Outcome == AdmissionOutcomes.AlreadyAdmitted));
+            await _book.ApplyListAsync(await App.Api.GetAsync<GateListDto>($"{EventsApi.Base}/{Id}/gate"));
+            _offline = false;
+        }
+        catch (EventsException ex)
+        {
+            _offline = ex.Offline;
+            _message = ex.Offline ? "No signal. Scanning still works; admissions upload when it's back." : ex.Message;
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    async Task CheckTypedAsync()
+    {
+        await CheckAsync(_typed);
+        _typed = null;
+        await _input.FocusAsync();
+    }
+
+    [JSInvokable]
+    public Task OnScanned(string code) => InvokeAsync(async () =>
+    {
+        await CheckAsync(code);
+        StateHasChanged();
+    });
+
+    async Task CheckAsync(string? code)
+    {
+        if (_book is null)
+            return;
+        var now = DateTimeOffset.UtcNow;
+        _last = await _book.CheckAsync(code, now);
+        _log.Insert(0, (now, _last));
+        if (_log.Count > 30)
+            _log.RemoveAt(_log.Count - 1);
+        if (_last.Verdict == GateVerdict.Admit && !_offline)
+            _ = InvokeAsync(SyncAsync);
+    }
+
+    async Task StartCameraAsync()
+    {
+        try
+        {
+            _scanner ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/NdeipiChat.SubApps.Events/scanner.js");
+            _self ??= DotNetObjectReference.Create(this);
+            _cameraOn = true;
+            StateHasChanged();
+            if (!await _scanner.InvokeAsync<bool>("start", _video, _self))
+            {
+                _cameraOn = false;
+                _message = "This browser can't read QR codes from the camera. Type or paste the code instead, or use a handheld scanner.";
+            }
+        }
+        catch (JSException ex)
+        {
+            _cameraOn = false;
+            _message = "Couldn't open the camera: " + ex.Message;
+        }
+    }
+
+    async Task StopCameraAsync()
+    {
+        _cameraOn = false;
+        if (_scanner is not null)
+            await _scanner.InvokeVoidAsync("stop", _video);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await _lifetime.CancelAsync();
+        _timer?.Dispose();
+        try
+        {
+            if (_scanner is not null)
+            {
+                await _scanner.InvokeVoidAsync("stop", _video);
+                await _scanner.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

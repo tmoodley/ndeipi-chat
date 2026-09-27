@@ -1,0 +1,159 @@
+@* Creating and editing an event: details, ticket tiers, publishing, and who may scan tickets. *@
+
+<form class="form" @onsubmit="SaveAsync">
+    <label class="field">Title <input @bind="_title" maxlength="160" required /></label>
+    <label class="field">
+        Category
+        <select @bind="_category">
+            @foreach (var category in EventCategories.All)
+            {
+                <option value="@category">@EventCategories.Label(category)</option>
+            }
+        </select>
+    </label>
+    <div class="inline-form">
+        <label class="field">City <input @bind="_city" maxlength="80" placeholder="e.g. Harare" required /></label>
+        <label class="field">Venue <input @bind="_venue" maxlength="160" required /></label>
+    </div>
+    <label class="field">Starts <input type="datetime-local" @bind="_startsAt" required /></label>
+    <label class="field">Description <textarea @bind="_description" rows="4" maxlength="4000"></textarea></label>
+
+    <h3>Tickets</h3>
+    <div class="ev-grid muted small"><span>Name</span><span>Price (@_currency)</span><span>Seats</span><span></span></div>
+    @foreach (var tier in _tiers)
+    {
+        <div class="ev-grid" @key="tier">
+            <input @bind="tier.Name" placeholder="General" maxlength="80" />
+            <input @bind="tier.Price" inputmode="decimal" placeholder="0" />
+            <input type="number" min="1" @bind="tier.Capacity" />
+            <button type="button" class="link danger" title="Remove" @onclick="() => _tiers.Remove(tier)">✕</button>
+        </div>
+    }
+    <div class="ev-actions">
+        <button type="button" class="secondary" disabled="@(_tiers.Count >= 10)" @onclick="() => _tiers.Add(new Tier())">Add a tier</button>
+        <button type="submit" class="primary" disabled="@_busy">@(_event is null ? "Create" : "Save")</button>
+    </div>
+</form>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@if (_event is not null)
+{
+    <div class="card">
+        <h3>@(_event.IsPublished ? "On sale" : "Draft")</h3>
+        <p class="muted small">@(_event.IsPublished ? "Anyone can find this event and buy tickets." : "Only you and your scanners can see this event.")</p>
+        <div class="ev-actions">
+            <button class="@(_event.IsPublished ? "secondary" : "primary")" disabled="@_busy" @onclick="TogglePublishedAsync">@(_event.IsPublished ? "Stop sales" : "Publish")</button>
+            <button class="secondary" @onclick="() => App.Go(new EventsView.Gate(_event.Id))">Scan tickets</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Scanners</h3>
+        <p class="muted small">People who may scan tickets at the gate, by the email on their Ndeipi account.</p>
+        <form class="inline-form" @onsubmit="AddValidatorAsync">
+            <input type="email" @bind="_validatorEmail" placeholder="name@example.com" />
+            <button type="submit" class="secondary" disabled="@(_busy || string.IsNullOrWhiteSpace(_validatorEmail))">Add</button>
+        </form>
+        <ul class="list">
+            @foreach (var v in _validators)
+            {
+                <li class="row static" @key="v.Id">
+                    <div class="row-main"><span class="name">@v.DisplayName</span></div>
+                    <button class="link danger" disabled="@_busy" @onclick="() => RemoveValidatorAsync(v)">Remove</button>
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public EventsApp App { get; set; } = null!;
+    [Parameter] public Guid? Id { get; set; }
+
+    sealed class Tier
+    {
+        public Guid? Id { get; init; }
+        public string Name { get; set; } = "General";
+        public string Price { get; set; } = "0";
+        public int Capacity { get; set; } = 100;
+    }
+
+    EventDetailDto? _event;
+    List<Tier> _tiers = [new()];
+    List<UserDto> _validators = [];
+    string _title = "", _category = EventCategories.Music, _city = "", _venue = "", _description = "", _currency = "USDC";
+    string? _validatorEmail, _error;
+    DateTime _startsAt = DateTime.Today.AddDays(14).AddHours(19);
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id is not { } id)
+            return;
+        await RunAsync(async () =>
+        {
+            Show(await App.Api.GetAsync<EventDetailDto>($"{EventsApi.Base}/{id}"));
+            _validators = await App.Api.GetAsync<List<UserDto>>($"{EventsApi.Base}/{id}/validators");
+        });
+    }
+
+    void Show(EventDetailDto e)
+    {
+        _event = e;
+        (_title, _category, _city, _venue, _description, _currency) = (e.Title, e.Category, e.City, e.Venue, e.Description, e.Currency.ToUpperInvariant());
+        _startsAt = e.StartsAt.ToLocalTime().DateTime;
+        _tiers = e.Tiers.Select(t => new Tier { Id = t.Id, Name = t.Name, Price = t.Price, Capacity = t.Capacity }).ToList();
+    }
+
+    Task SaveAsync() => RunAsync(async () =>
+    {
+        var request = new SaveEventRequest(_title, _description, _category, _city, _venue,
+            new DateTimeOffset(DateTime.SpecifyKind(_startsAt, DateTimeKind.Local)),
+            _tiers.Select(t => new SaveTierRequest(t.Id, t.Name, t.Price, t.Capacity)).ToList());
+        var saved = _event is null
+            ? await App.Api.SendAsync<EventDetailDto>(HttpMethod.Post, EventsApi.Base, request)
+            : await App.Api.SendAsync<EventDetailDto>(HttpMethod.Put, $"{EventsApi.Base}/{_event.Id}", request);
+        var created = _event is null;
+        Show(saved!);
+        if (created)
+            App.Replace(new EventsView.Edit(saved!.Id));
+    });
+
+    Task TogglePublishedAsync() => RunAsync(async () =>
+        Show((await App.Api.SendAsync<EventDetailDto>(HttpMethod.Post, $"{EventsApi.Base}/{_event!.Id}/{(_event.IsPublished ? "unpublish" : "publish")}", new { }))!));
+
+    Task AddValidatorAsync() => RunAsync(async () =>
+    {
+        var added = await App.Api.SendAsync<UserDto>(HttpMethod.Post, $"{EventsApi.Base}/{_event!.Id}/validators", new AddValidatorRequest(_validatorEmail ?? ""));
+        if (added is not null && _validators.All(v => v.Id != added.Id))
+            _validators.Add(added);
+        _validatorEmail = null;
+    });
+
+    Task RemoveValidatorAsync(UserDto validator) => RunAsync(async () =>
+    {
+        await App.Api.SendAsync(HttpMethod.Delete, $"{EventsApi.Base}/{_event!.Id}/validators/{validator.Id}");
+        _validators.Remove(validator);
+    });
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (EventsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
