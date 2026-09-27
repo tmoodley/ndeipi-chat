@@ -193,6 +193,12 @@ loaded at runtime will be listed:
 An app a user has access to, but that this version of the client doesn't include (like `trading`
 above), shows as "Not on the web yet" on the site, and as an update prompt in the app.
 
+**Sub-apps loaded at runtime (step 2).** An app configured with an `Assembly` is a Razor Class
+Library the web shell downloads when it's first opened. The shell checks the download against the
+manifest's SHA-256 and renders it at `apps/{id}`, passing on the user's sign-in. Inventory
+(`src/NdeipiChat.SubApps.Inventory`) is the first. [docs/sub-apps.md](docs/sub-apps.md) covers how
+it works and how to add one.
+
 ## Running the app
 
 1. `dotnet workload install maui`.

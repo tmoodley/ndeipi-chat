@@ -11,7 +11,7 @@ public static class ShamwariModule
 
     public static void MapShamwaris(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api/shamwaris").RequireAuthorization().RequireSubApp(SubApps.Shamwaris);
+        var api = app.MapGroup("/api/shamwaris").RequireAuthorization().RequireSubApp(BuiltInApps.Shamwaris);
 
         api.MapGet("", async (HttpContext http, CurrentUserService users, ShamwariService shamwaris) =>
         {

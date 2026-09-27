@@ -67,7 +67,7 @@ public sealed class ShellNavigator : INavigator
     {
         if (Shell.Current is AppShell shell && shell.TabRouteFor(appId) is { } tab)
             return shell.GoToAsync($"//main/{tab}");
-        if (appId == SubApps.Wallet)
+        if (appId == BuiltInApps.Wallet)
             return Shell.Current.GoToAsync($"//main/launcher/{Routes.Wallet}");
         if (AppShell.SubAppPages.ContainsKey(appId))
             return Shell.Current.GoToAsync($"//main/launcher/{AppShell.PageRoute(appId)}");

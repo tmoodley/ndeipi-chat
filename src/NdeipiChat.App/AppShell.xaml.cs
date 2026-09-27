@@ -15,11 +15,11 @@ public partial class AppShell : Shell
     /// </summary>
     public static readonly IReadOnlyDictionary<string, Type> SubAppPages = new Dictionary<string, Type>
     {
-        [SubApps.Chats] = typeof(ChatsPage),
-        [SubApps.Feed] = typeof(FeedPage),
-        [SubApps.Shamwaris] = typeof(ContactsPage),
-        [SubApps.Herd] = typeof(HerdPage),
-        [SubApps.Wallet] = typeof(WalletPage)
+        [BuiltInApps.Chats] = typeof(ChatsPage),
+        [BuiltInApps.Feed] = typeof(FeedPage),
+        [BuiltInApps.Shamwaris] = typeof(ContactsPage),
+        [BuiltInApps.Herd] = typeof(HerdPage),
+        [BuiltInApps.Wallet] = typeof(WalletPage)
     };
 
     readonly LauncherViewModel _launcher;
@@ -31,10 +31,10 @@ public partial class AppShell : Shell
         _launcher = launcher;
         _tabs = new()
         {
-            [SubApps.Chats] = ChatsTab,
-            [SubApps.Feed] = FeedTab,
-            [SubApps.Shamwaris] = ShamwarisTab,
-            [SubApps.Herd] = HerdTab
+            [BuiltInApps.Chats] = ChatsTab,
+            [BuiltInApps.Feed] = FeedTab,
+            [BuiltInApps.Shamwaris] = ShamwarisTab,
+            [BuiltInApps.Herd] = HerdTab
         };
 
         Routing.RegisterRoute(Routes.Chat, typeof(ChatPage));
@@ -44,7 +44,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(Routes.RegisterCow, typeof(RegisterCowPage));
         Routing.RegisterRoute(Routes.Cow, typeof(CowDetailPage));
         Routing.RegisterRoute(Routes.ComposePost, typeof(ComposePostPage));
-        foreach (var (id, page) in SubAppPages.Where(p => p.Key != SubApps.Wallet))
+        foreach (var (id, page) in SubAppPages.Where(p => p.Key != BuiltInApps.Wallet))
             Routing.RegisterRoute(PageRoute(id), page);
 
         _launcher.ManifestChanged += () => MainThread.BeginInvokeOnMainThread(ShowPinnedTabs);

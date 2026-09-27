@@ -86,8 +86,8 @@ else
 
     string? BadgeFor(string appId) => appId switch
     {
-        SubApps.Chats when Chats.TotalUnread > 0 => Chats.TotalUnread > 99 ? "99+" : Chats.TotalUnread.ToString(),
-        SubApps.Shamwaris when Contacts.Incoming.Count > 0 => Contacts.Incoming.Count.ToString(),
+        BuiltInApps.Chats when Chats.TotalUnread > 0 => Chats.TotalUnread > 99 ? "99+" : Chats.TotalUnread.ToString(),
+        BuiltInApps.Shamwaris when Contacts.Incoming.Count > 0 => Contacts.Incoming.Count.ToString(),
         _ => null
     };
 
@@ -119,9 +119,9 @@ else
     async Task LoadAppsAsync()
     {
         await Launcher.LoadCommand.ExecuteAsync(null);
-        if (Launcher.Allows(SubApps.Chats))
+        if (Launcher.Allows(BuiltInApps.Chats))
             _ = Chats.RefreshCommand.ExecuteAsync(null);
-        if (Launcher.Allows(SubApps.Shamwaris))
+        if (Launcher.Allows(BuiltInApps.Shamwaris))
             _ = Contacts.LoadCommand.ExecuteAsync(null);
     }
 

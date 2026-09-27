@@ -1,0 +1,151 @@
+@* The Inventory sub-app. The shell loads this library the first time Inventory is opened and
+   renders this component; everything it needs comes through SubAppContext. *@
+@attribute [SubAppRoot(InventoryContract.AppId)]
+@using System.Net.Http.Json
+
+<header class="bar">
+    <button class="bar-back link" title="Back to your apps" @onclick="Context.NavigateToLauncher">‹</button>
+    <h1>Inventory</h1>
+</header>
+
+<div class="page">
+    <p class="muted small">@Context.DisplayName's stock · @_items.Sum(i => i.Quantity) items across @_items.Count lines</p>
+
+    <form class="form" @onsubmit="AddAsync">
+        <div class="inline-form">
+            <input @bind="_name" @bind:event="oninput" placeholder="Item, e.g. Maize seed 10 kg" maxlength="@InventoryContract.MaxNameLength" />
+            <input class="narrow" type="number" min="0" @bind="_quantity" title="Quantity" />
+        </div>
+        <div class="inline-form">
+            <input @bind="_sku" placeholder="SKU (optional)" />
+            <input @bind="_location" placeholder="Where it's kept (optional)" />
+            <button type="submit" class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))">Add</button>
+        </div>
+    </form>
+
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+
+    <input class="search" type="search" @bind="_filter" @bind:event="oninput" placeholder="Search by name, SKU or place" />
+
+    @if (!_loaded)
+    {
+        <p class="muted">Loading…</p>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="empty"><p>Nothing in stock yet. Add your first item above.</p></div>
+    }
+    else
+    {
+        <ul class="list">
+            @foreach (var item in Visible)
+            {
+                <li class="row static" @key="item.Id">
+                    <div class="row-main">
+                        <span class="name">@item.Name</span>
+                        <span class="preview">@string.Join(" · ", new[] { item.Sku, item.Location }.Where(s => !string.IsNullOrEmpty(s)))</span>
+                    </div>
+                    <button class="secondary small" disabled="@(_busy || item.Quantity == 0)" @onclick="() => AdjustAsync(item, -1)">−</button>
+                    <strong class="quantity">@item.Quantity</strong>
+                    <button class="secondary small" disabled="@_busy" @onclick="() => AdjustAsync(item, 1)">+</button>
+                    <button class="link danger" disabled="@_busy" @onclick="() => RemoveAsync(item)">Remove</button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    List<InventoryItemDto> _items = [];
+    bool _loaded, _busy;
+    string _name = "", _filter = "";
+    string? _sku, _location, _error;
+    int _quantity = 1;
+
+    IEnumerable<InventoryItemDto> Visible => string.IsNullOrWhiteSpace(_filter)
+        ? _items
+        : _items.Where(i => new[] { i.Name, i.Sku, i.Location }.Any(s => s?.Contains(_filter.Trim(), StringComparison.CurrentCultureIgnoreCase) == true));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RunAsync(async () => _items = await Context.Api.GetFromJsonAsync<List<InventoryItemDto>>(InventoryContract.ItemsPath, ContractJson.Options) ?? []);
+        _loaded = true;
+    }
+
+    Task AddAsync() => RunAsync(async () =>
+    {
+        var created = await SendAsync(HttpMethod.Post, InventoryContract.ItemsPath, new SaveInventoryItemRequest(_name, _sku, _location, _quantity));
+        _items.Insert(0, created);
+        (_name, _sku, _location, _quantity) = ("", null, null, 1);
+    });
+
+    Task AdjustAsync(InventoryItemDto item, int delta) => RunAsync(async () =>
+    {
+        var saved = await SendAsync(HttpMethod.Put, $"{InventoryContract.ItemsPath}/{item.Id}",
+            new SaveInventoryItemRequest(item.Name, item.Sku, item.Location, Math.Max(0, item.Quantity + delta)));
+        _items[_items.IndexOf(item)] = saved;
+    });
+
+    Task RemoveAsync(InventoryItemDto item) => RunAsync(async () =>
+    {
+        using var response = await Context.Api.DeleteAsync($"{InventoryContract.ItemsPath}/{item.Id}");
+        response.EnsureSuccessStatusCode();
+        _items.Remove(item);
+    });
+
+    async Task<InventoryItemDto> SendAsync(HttpMethod method, string path, SaveInventoryItemRequest body)
+    {
+        using var request = new HttpRequestMessage(method, path) { Content = JsonContent.Create(body, options: ContractJson.Options) };
+        using var response = await Context.Api.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(await ProblemTitleAsync(response));
+        return (await response.Content.ReadFromJsonAsync<InventoryItemDto>(ContractJson.Options))!;
+    }
+
+    async Task RunAsync(Func<Task> work)
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            await work();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.StatusCode switch
+            {
+                null => "Can't reach the server. Check your connection.",
+                System.Net.HttpStatusCode.Forbidden => "You don't have access to Inventory.",
+                System.Net.HttpStatusCode.Unauthorized => "Your sign-in has expired. Reload the page.",
+                _ => "Something went wrong. Please try again."
+            };
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    static async Task<string> ProblemTitleAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var problem = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (problem.TryGetProperty("title", out var title) && title.GetString() is { } text)
+                return text;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+        }
+        return "Something went wrong. Please try again.";
+    }
+}

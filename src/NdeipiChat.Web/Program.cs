@@ -22,6 +22,8 @@ builder.Services.AddSingleton<BrowserStorage>();
 builder.Services.AddSingleton<ITokenStore, BrowserTokenStore>();
 builder.Services.AddSingleton<IBrowserAuthenticator, RedirectOnlyAuthenticator>();
 builder.Services.AddSingleton<WebSignIn>();
+builder.Services.AddSingleton<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
+builder.Services.AddSingleton<SubAppLoader>();
 builder.Services.AddSingleton<INavigator, WebNavigator>();
 builder.Services.AddSingleton<IDialogs, WebDialogs>();
 builder.Services.AddSingleton<WebDispatcher>();

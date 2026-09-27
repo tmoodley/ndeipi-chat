@@ -267,3 +267,16 @@ public sealed class PostLike
     public Guid UserId { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>A stock line in the Inventory sub-app, kept per user.</summary>
+public sealed class InventoryItem
+{
+    public Guid Id { get; set; }
+    public Guid OwnerId { get; set; }
+    public required string Name { get; set; }
+    public string? Sku { get; set; }
+    public string? Location { get; set; }
+    public int Quantity { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}

@@ -36,7 +36,7 @@ public static class BankingModule
 
     public static void MapBanking(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api/banking").RequireAuthorization().RequireSubApp(SubApps.Wallet);
+        var api = app.MapGroup("/api/banking").RequireAuthorization().RequireSubApp(BuiltInApps.Wallet);
 
         api.MapGet("/status", async (HttpContext http, CurrentUserService users, BankingService banking) =>
         {
