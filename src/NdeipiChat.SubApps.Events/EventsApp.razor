@@ -1,0 +1,134 @@
+@* The Events sub-app (SRS "Ndeipi.Modules.Events", sprint 1): discover events, hold and buy
+   tickets, show a ticket's rolling QR code, organize events and scan tickets at the gate. The shell
+   loads this library the first time Events is opened; everything it needs comes through SubAppContext. *@
+@attribute [SubAppRoot(EventsContract.AppId)]
+
+<style>
+    .ev-tabs { display: flex; gap: 6px; padding: 8px 16px 0; }
+    .ev-tabs button { flex: 1; background: var(--surface); color: var(--text); border-radius: 18px; padding: 8px 10px; font-size: 14px; }
+    .ev-tabs button.active { background: var(--brand); color: #fff; font-weight: 600; }
+    .ev-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .ev-filters select { flex: 1 1 140px; }
+    .ev-pill { background: var(--surface); color: var(--text); border-radius: 16px; padding: 6px 12px; font-size: 13px; }
+    .ev-pill.active { background: var(--brand); color: #fff; }
+    .ev-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--divider); cursor: pointer; min-height: 60px; }
+    .ev-date { width: 48px; flex-shrink: 0; text-align: center; background: var(--surface); border-radius: 8px; padding: 4px 0; }
+    .ev-date b { display: block; font-size: 20px; }
+    .ev-date span { font-size: 11px; color: var(--muted); }
+    .ev-main { flex: 1; min-width: 0; }
+    .ev-main .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ev-side { text-align: right; font-size: 13px; }
+    .ev-sold { color: var(--danger, #c0392b); font-weight: 600; }
+    .ev-tier { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--divider); }
+    .ev-tier .ev-main small { color: var(--muted); }
+    .ev-tier select { width: 64px; }
+    .ev-hold { border: 2px solid var(--brand); }
+    .ev-countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
+    .ev-qr { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 0; }
+    .ev-qr img { width: min(80vw, 300px); height: auto; image-rendering: pixelated; background: #fff; padding: 8px; border-radius: 8px; }
+    .ev-bar { width: min(80vw, 300px); height: 4px; background: var(--divider); border-radius: 2px; overflow: hidden; }
+    .ev-bar div { height: 100%; background: var(--brand); transition: width 1s linear; }
+    .ev-verdict { border-radius: 12px; padding: 18px; text-align: center; font-size: 18px; font-weight: 700; margin-top: 12px; color: #fff; }
+    .ev-verdict.ok { background: #1e8e3e; }
+    .ev-verdict.warn { background: #b26a00; }
+    .ev-verdict.bad { background: #c0392b; }
+    .ev-verdict small { display: block; font-weight: 400; font-size: 14px; margin-top: 4px; }
+    .ev-video { width: 100%; max-height: 50vh; border-radius: 10px; background: #000; margin-top: 12px; }
+    .ev-log { font-size: 13px; }
+    .ev-log li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--divider); }
+    .ev-grid { display: grid; grid-template-columns: 1fr 90px 80px 32px; gap: 6px; align-items: center; }
+    .ev-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+</style>
+
+<header class="bar">
+    <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+    <h1>@Title</h1>
+</header>
+
+@if (IsTopLevel)
+{
+    <nav class="ev-tabs">
+        <button class="@(_view is EventsView.Discover ? "active" : "")" @onclick="() => Go(new EventsView.Discover())">Discover</button>
+        <button class="@(_view is EventsView.Tickets ? "active" : "")" @onclick="() => Go(new EventsView.Tickets())">My tickets</button>
+        <button class="@(_view is EventsView.Organize ? "active" : "")" @onclick="() => Go(new EventsView.Organize())">Organize</button>
+    </nav>
+}
+
+<div class="page">
+    <CascadingValue Value="this" IsFixed="true">
+        @switch (_view)
+        {
+            case EventsView.Discover:
+                <Discover />
+                break;
+            case EventsView.Event e:
+                <EventPage @key="e.Id" Id="e.Id" />
+                break;
+            case EventsView.Tickets:
+                <MyTickets />
+                break;
+            case EventsView.Ticket t:
+                <TicketPage @key="t.Id" Id="t.Id" />
+                break;
+            case EventsView.Organize:
+                <Organize />
+                break;
+            case EventsView.Edit ed:
+                <EditEvent @key="ed.Id" Id="ed.Id" />
+                break;
+            case EventsView.Gate g:
+                <GatePage @key="g.Id" Id="g.Id" />
+                break;
+        }
+    </CascadingValue>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    EventsView _view = new EventsView.Discover();
+    readonly Stack<EventsView> _history = new();
+
+    public EventsApi Api { get; private set; } = null!;
+
+    protected override void OnInitialized() => Api = new EventsApi(Context.Api);
+
+    bool IsTopLevel => _view is EventsView.Discover or EventsView.Tickets or EventsView.Organize;
+
+    string Title => _view switch
+    {
+        EventsView.Tickets or EventsView.Ticket => "My tickets",
+        EventsView.Organize or EventsView.Edit => "Organize",
+        EventsView.Gate => "Gate",
+        _ => "Events"
+    };
+
+    /// <summary>Opens a page; top-level tabs start a fresh history.</summary>
+    public void Go(EventsView view)
+    {
+        if (view is EventsView.Discover or EventsView.Tickets or EventsView.Organize)
+            _history.Clear();
+        else
+            _history.Push(_view);
+        _view = view;
+        StateHasChanged();
+    }
+
+    /// <summary>Replaces the current page, e.g. a new event's editor with the saved event's.</summary>
+    public void Replace(EventsView view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
+
+    public Task BackAsync()
+    {
+        if (_history.TryPop(out var previous))
+        {
+            _view = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return Context.NavigateToLauncher();
+    }
+}

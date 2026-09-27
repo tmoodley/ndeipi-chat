@@ -210,6 +210,31 @@ one, the app checks the bundle's signature itself, with the keys compiled into i
 its sign-in to the web shell, so there's no second login. See
 [docs/sub-apps.md](docs/sub-apps.md#on-the-phone).
 
+### Events and tickets
+
+Events (`src/NdeipiChat.SubApps.Events`, API under `/api/events`) is sprint 1 of the Events &
+Ticketing SRS, built as a runtime-loaded sub-app.
+
+- **Catalog.** Upcoming published events, filtered by city and category, loaded a page at a time as
+  the list scrolls. An event's page shows the seats left in each tier, updated live over SignalR.
+- **Holds.** "Get" holds seats for 10 minutes. Seats move only through conditional
+  `UPDATE … WHERE Capacity - Sold - Held >= n`, and a check constraint backs that up, so two
+  buyers can't get the last seat. A background sweeper puts expired holds back on sale.
+- **Checkout.** Free tiers issue tickets at once. Paid tiers send a Bridge wallet transfer from
+  the buyer to the organizer, with no fee, and issue tickets when Bridge confirms it (webhook or
+  poller). A failed payment frees the seats. Both people need a verified wallet.
+- **Tickets.** Opening a ticket makes a P-256 key on that device and registers its public half.
+  The QR code is the device's signature over the ticket id and the current 15-second window, so a
+  screenshot goes stale and a copied code can't be regenerated. Moving a ticket to another device
+  stops the old device's codes working.
+- **Gate.** Organizers and the scanners they add by email download the event's ticket list
+  (public keys only) and check codes on the device, so the gate keeps working without signal.
+  Admissions upload when there's signal, and the first gate to upload a ticket wins. On browsers
+  without `BarcodeDetector` (desktop Chrome on Windows, for one), type or paste the code, or use a
+  handheld scanner that types.
+- **Organizers.** Creating events needs the Clerk role `organizer`
+  (`{ "roles": ["organizer"] }`). Anyone can buy tickets.
+
 ## Running the app
 
 1. `dotnet workload install maui`.

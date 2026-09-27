@@ -29,6 +29,7 @@ builder.Services.AddSingleton<WebSignIn>();
 builder.Services.AddSingleton<WebEmbedding>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddSingleton<SubAppLoader>();
+builder.Services.AddSingleton<ShellRealtime>();
 builder.Services.AddSingleton<INavigator, WebNavigator>();
 builder.Services.AddSingleton<IDialogs, WebDialogs>();
 builder.Services.AddSingleton<WebDispatcher>();

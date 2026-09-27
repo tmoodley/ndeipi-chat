@@ -15,6 +15,7 @@ public sealed class ChatConnection : IAsyncDisposable
 {
     readonly HubConnection _hub;
     readonly SemaphoreSlim _startLock = new(1, 1);
+    readonly Dictionary<string, int> _topics = new(StringComparer.Ordinal);
 
     public ChatConnection(ClientOptions options, AuthService auth, Action<HttpConnectionOptions>? configureHttp = null)
     {
@@ -36,12 +37,15 @@ public sealed class ChatConnection : IAsyncDisposable
         _hub.On<BankingStatusDto>(nameof(IChatClient.BankingStatusChanged), b => BankingStatusChanged?.Invoke(b));
         _hub.On(nameof(IChatClient.ShamwarisChanged), () => ShamwarisChanged?.Invoke());
         _hub.On<PostNftDto>(nameof(IChatClient.PostNftChanged), n => PostNftChanged?.Invoke(n));
+        _hub.On<TopicMessageDto>(nameof(IChatClient.TopicMessage), m => TopicMessageReceived?.Invoke(m));
 
         _hub.Reconnecting += _ => Raise(StateChanged);
-        _hub.Reconnected += _ =>
+        _hub.Reconnected += async _ =>
         {
+            // A reconnect is a new connection, in none of the old one's groups.
+            await ResubscribeAsync();
             Reconnected?.Invoke();
-            return Raise(StateChanged);
+            StateChanged?.Invoke();
         };
         _hub.Closed += _ => Raise(StateChanged);
     }
@@ -54,6 +58,7 @@ public sealed class ChatConnection : IAsyncDisposable
     public event Action<BankingStatusDto>? BankingStatusChanged;
     public event Action? ShamwarisChanged;
     public event Action<PostNftDto>? PostNftChanged;
+    public event Action<TopicMessageDto>? TopicMessageReceived;
     public event Action? Reconnected;
     public event Action? StateChanged;
 
@@ -71,6 +76,7 @@ public sealed class ChatConnection : IAsyncDisposable
                 try
                 {
                     await _hub.StartAsync(ct);
+                    await ResubscribeAsync();
                     StateChanged?.Invoke();
                 }
                 catch (Exception) when (!ct.IsCancellationRequested)
@@ -87,6 +93,63 @@ public sealed class ChatConnection : IAsyncDisposable
     }
 
     public Task StopAsync() => _hub.StopAsync();
+
+    /// <summary>
+    /// Starts receiving <see cref="TopicMessageReceived"/> for a topic, now if connected and again
+    /// after every reconnect. Counted: each call needs its own <see cref="UnsubscribeAsync"/>.
+    /// Throws <see cref="HubException"/> if the server won't allow it.
+    /// </summary>
+    public async Task SubscribeAsync(string topic)
+    {
+        lock (_topics)
+            _topics[topic] = _topics.GetValueOrDefault(topic) + 1;
+        if (_hub.State != HubConnectionState.Connected)
+            return;
+        try
+        {
+            await _hub.InvokeAsync(ChatHubContract.Subscribe, topic);
+        }
+        catch (HubException)
+        {
+            await UnsubscribeAsync(topic);
+            throw;
+        }
+    }
+
+    public async Task UnsubscribeAsync(string topic)
+    {
+        lock (_topics)
+        {
+            if (!_topics.TryGetValue(topic, out var count))
+                return;
+            if (count > 1)
+            {
+                _topics[topic] = count - 1;
+                return;
+            }
+            _topics.Remove(topic);
+        }
+        if (_hub.State == HubConnectionState.Connected)
+            await _hub.SendAsync(ChatHubContract.Unsubscribe, topic);
+    }
+
+    async Task ResubscribeAsync()
+    {
+        string[] topics;
+        lock (_topics)
+            topics = [.. _topics.Keys];
+        foreach (var topic in topics)
+        {
+            try
+            {
+                await _hub.InvokeAsync(ChatHubContract.Subscribe, topic);
+            }
+            catch (Exception)
+            {
+                // No longer allowed (an event unpublished), or the connection dropped again; the next reconnect retries.
+            }
+        }
+    }
 
     public Task<MessageDto> SendMessageAsync(SendMessageRequest request, CancellationToken ct = default) =>
         _hub.InvokeAsync<MessageDto>(ChatHubContract.SendMessage, request, ct);

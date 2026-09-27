@@ -17,6 +17,7 @@ public sealed class BankingService(
     IOptions<BridgeOptions> options,
     ChatNotifier notifier,
     MessageStateService messageState,
+    IEnumerable<IBankTransferListener> listeners,
     TimeProvider clock,
     ILogger<BankingService> log)
 {
@@ -240,7 +241,20 @@ public sealed class BankingService(
         transfer.UpdatedAt = clock.GetUtcNow();
         await db.SaveChangesAsync(ct);
 
-        if (changed)
-            await messageState.SetAsync(transfer.MessageId, new BankTransferState(transfer.Id, status, providerState, error), ct);
+        if (!changed)
+            return;
+        if (transfer.MessageId is { } messageId)
+            await messageState.SetAsync(messageId, new BankTransferState(transfer.Id, status, providerState, error), ct);
+        foreach (var listener in listeners)
+            await listener.TransferChangedAsync(transfer, ct);
     }
+}
+
+/// <summary>
+/// Told whenever a Bridge transfer's status changes -- however it heard (submission, webhook or
+/// poller). Ticket orders use it to issue tickets once the payment is confirmed.
+/// </summary>
+public interface IBankTransferListener
+{
+    Task TransferChangedAsync(BankTransfer transfer, CancellationToken ct);
 }

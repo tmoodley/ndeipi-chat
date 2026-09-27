@@ -25,6 +25,12 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<PostMedia> PostMedia => Set<PostMedia>();
     public DbSet<PostLike> PostLikes => Set<PostLike>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
+    public DbSet<EventListing> Events => Set<EventListing>();
+    public DbSet<TicketTier> TicketTiers => Set<TicketTier>();
+    public DbSet<TicketHold> TicketHolds => Set<TicketHold>();
+    public DbSet<TicketOrder> TicketOrders => Set<TicketOrder>();
+    public DbSet<Ticket> Tickets => Set<Ticket>();
+    public DbSet<EventValidator> EventValidators => Set<EventValidator>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -61,6 +67,69 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(i => i.Location).HasMaxLength(120);
             e.HasIndex(i => new { i.OwnerId, i.UpdatedAt });
             e.HasOne<User>().WithMany().HasForeignKey(i => i.OwnerId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<EventListing>(e =>
+        {
+            e.ToTable("Events");
+            e.Property(v => v.Title).HasMaxLength(160);
+            e.Property(v => v.Description).HasMaxLength(4000);
+            e.Property(v => v.Category).HasMaxLength(32);
+            e.Property(v => v.City).HasMaxLength(80);
+            e.Property(v => v.Venue).HasMaxLength(160);
+            e.Property(v => v.Currency).HasMaxLength(16);
+            e.HasIndex(v => new { v.IsPublished, v.City, v.StartsAt });
+            e.HasIndex(v => new { v.OrganizerId, v.StartsAt });
+            e.HasOne(v => v.Organizer).WithMany().HasForeignKey(v => v.OrganizerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(v => v.Tiers).WithOne().HasForeignKey(t => t.EventId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<TicketTier>(e =>
+        {
+            e.Property(t => t.Name).HasMaxLength(80);
+            e.Property(t => t.Price).HasPrecision(18, 2);
+            // Under the conditional updates, the database itself refuses to oversell.
+            e.ToTable(t => t.HasCheckConstraint("CK_TicketTiers_Capacity", "[Sold] >= 0 AND [Held] >= 0 AND [Sold] + [Held] <= [Capacity]"));
+        });
+
+        model.Entity<TicketHold>(e =>
+        {
+            e.Property(h => h.Amount).HasPrecision(18, 2);
+            e.Property(h => h.Status).HasMaxLength(16);
+            e.HasIndex(h => new { h.Status, h.ExpiresAt });
+            e.HasIndex(h => new { h.UserId, h.CreatedAt });
+            e.HasOne<TicketTier>().WithMany().HasForeignKey(h => h.TierId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(h => h.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<TicketOrder>(e =>
+        {
+            e.Property(o => o.Amount).HasPrecision(18, 2);
+            e.Property(o => o.Currency).HasMaxLength(16);
+            e.Property(o => o.Status).HasMaxLength(16);
+            e.Property(o => o.Error).HasMaxLength(400);
+            e.HasIndex(o => o.HoldId).IsUnique();
+            e.HasIndex(o => new { o.BuyerId, o.CreatedAt });
+            e.HasOne<TicketHold>().WithMany().HasForeignKey(o => o.HoldId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(o => o.BuyerId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<Ticket>(e =>
+        {
+            e.Property(t => t.Status).HasMaxLength(16);
+            e.Property(t => t.HolderPublicKey).HasMaxLength(200);
+            e.Property(t => t.AdmittedBy).HasMaxLength(120);
+            e.HasIndex(t => new { t.OwnerId, t.CreatedAt });
+            e.HasIndex(t => t.EventId);
+            e.HasOne<TicketOrder>().WithMany().HasForeignKey(t => t.OrderId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(t => t.OwnerId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<EventValidator>(e =>
+        {
+            e.HasKey(v => new { v.EventId, v.UserId });
+            e.HasOne<EventListing>().WithMany().HasForeignKey(v => v.EventId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(v => v.UserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());
@@ -178,6 +247,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(t => t.Error).HasMaxLength(500);
             e.HasIndex(t => t.BridgeTransferId).IsUnique().HasFilter("[BridgeTransferId] IS NOT NULL");
             e.HasIndex(t => t.MessageId);
+            e.HasIndex(t => t.OrderId).HasFilter("[OrderId] IS NOT NULL");
             e.HasIndex(t => t.Status);
         });
 

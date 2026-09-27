@@ -1,0 +1,57 @@
+@* The signed-in person's tickets, soonest first. *@
+
+@if (_tickets is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else if (_tickets.Count == 0)
+{
+    <div class="empty">
+        <p>No tickets yet.</p>
+        <button class="primary" @onclick="() => App.Go(new EventsView.Discover())">Find an event</button>
+    </div>
+}
+else
+{
+    @foreach (var ticket in _tickets)
+    {
+        <div class="ev-row" @key="ticket.Id" @onclick="() => App.Go(new EventsView.Ticket(ticket.Id))">
+            <div class="ev-date"><b>@Format.Day(ticket.StartsAt)</b><span>@Format.Month(ticket.StartsAt)</span></div>
+            <div class="ev-main">
+                <span class="name">@ticket.EventTitle</span>
+                <span class="muted small">@ticket.TierName · @ticket.Venue, @ticket.City</span>
+            </div>
+            <div class="ev-side">
+                @(ticket.Status switch
+                {
+                    TicketStatuses.Admitted => "Used",
+                    TicketStatuses.Revoked => "Cancelled",
+                    _ => "Show"
+                })
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] public EventsApp App { get; set; } = null!;
+
+    List<TicketDto>? _tickets;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var tickets = await App.Api.GetAsync<List<TicketDto>>($"{EventsApi.Base}/tickets");
+            // Upcoming first; past events after, most recent first.
+            var cutoff = DateTimeOffset.UtcNow.AddHours(-12);
+            _tickets = [.. tickets.Where(t => t.StartsAt >= cutoff).OrderBy(t => t.StartsAt),
+                        .. tickets.Where(t => t.StartsAt < cutoff).OrderByDescending(t => t.StartsAt)];
+        }
+        catch (EventsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

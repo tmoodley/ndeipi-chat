@@ -166,8 +166,14 @@ public sealed class BankingProfile
 public sealed class BankTransfer
 {
     public Guid Id { get; set; }
-    public Guid MessageId { get; set; }
-    public Guid ConversationId { get; set; }
+
+    /// <summary>For money sent in a chat: the message and its conversation.</summary>
+    public Guid? MessageId { get; set; }
+    public Guid? ConversationId { get; set; }
+
+    /// <summary>For a ticket purchase: the order it pays for.</summary>
+    public Guid? OrderId { get; set; }
+
     public Guid SenderId { get; set; }
     public Guid RecipientId { get; set; }
     public decimal Amount { get; set; }
@@ -279,4 +285,98 @@ public sealed class InventoryItem
     public int Quantity { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>An event in the Events sub-app: one organizer, one venue, several ticket tiers.</summary>
+public sealed class EventListing
+{
+    public Guid Id { get; set; }
+    public Guid OrganizerId { get; set; }
+    public User Organizer { get; set; } = null!;
+    public required string Title { get; set; }
+    public string Description { get; set; } = "";
+    public required string Category { get; set; }
+    public required string City { get; set; }
+    public required string Venue { get; set; }
+    public DateTimeOffset StartsAt { get; set; }
+
+    /// <summary>What tickets are priced and paid in: the Ndeipi wallet's currency (Bridge), e.g. "usdc".</summary>
+    public required string Currency { get; set; }
+
+    public bool IsPublished { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    public List<TicketTier> Tiers { get; set; } = [];
+}
+
+/// <summary>
+/// A tier of tickets. <see cref="Held"/> counts seats in live holds, <see cref="Sold"/> seats
+/// paid for; what's left to sell is Capacity - Sold - Held, changed only by conditional updates.
+/// </summary>
+public sealed class TicketTier
+{
+    public Guid Id { get; set; }
+    public Guid EventId { get; set; }
+    public required string Name { get; set; }
+    public decimal Price { get; set; }
+    public int Capacity { get; set; }
+    public int Sold { get; set; }
+    public int Held { get; set; }
+    public int Position { get; set; }
+}
+
+/// <summary>Seats set aside for one buyer while they pay, for up to ten minutes (SRS FR-2.1).</summary>
+public sealed class TicketHold
+{
+    public Guid Id { get; set; }
+    public Guid EventId { get; set; }
+    public Guid TierId { get; set; }
+    public Guid UserId { get; set; }
+    public int Quantity { get; set; }
+    public decimal Amount { get; set; }
+    public required string Status { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class TicketOrder
+{
+    public Guid Id { get; set; }
+    public Guid HoldId { get; set; }
+    public Guid EventId { get; set; }
+    public Guid TierId { get; set; }
+    public Guid BuyerId { get; set; }
+    public int Quantity { get; set; }
+    public decimal Amount { get; set; }
+    public required string Currency { get; set; }
+    public required string Status { get; set; }
+    public string? Error { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>
+/// One admission. The holder's device signs its rolling QR codes with a key whose public half is
+/// <see cref="HolderPublicKey"/>; gates check them offline against that.
+/// </summary>
+public sealed class Ticket
+{
+    public Guid Id { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid EventId { get; set; }
+    public Guid TierId { get; set; }
+    public Guid OwnerId { get; set; }
+    public required string Status { get; set; }
+    public string? HolderPublicKey { get; set; }
+    public DateTimeOffset? AdmittedAt { get; set; }
+    public string? AdmittedBy { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>Someone an organizer lets scan tickets at an event's gates.</summary>
+public sealed class EventValidator
+{
+    public Guid EventId { get; set; }
+    public Guid UserId { get; set; }
 }

@@ -194,7 +194,7 @@ public sealed class BankTransferHandler(ChatDbContext db, BankingService banking
 
     public async Task AfterSendAsync(MessageContext context, ChatMessage message, CancellationToken ct)
     {
-        var transferId = await db.BankTransfers.Where(t => t.MessageId == message.Id).Select(t => t.Id).FirstAsync(ct);
+        var transferId = await db.BankTransfers.Where(t => t.MessageId == (Guid?)message.Id).Select(t => t.Id).FirstAsync(ct);
         await banking.SubmitTransferAsync(transferId, ct);
     }
 }

@@ -1,0 +1,157 @@
+@* A ticket's QR code (SRS FR-5.1). It changes every 15 seconds: each code is this device's
+   signature of the ticket id and the current window, made with a key that never leaves the
+   device. A screenshot goes stale in seconds, and nobody else can make the next one. *@
+@implements IDisposable
+
+@if (_ticket is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    <h2>@_ticket.EventTitle</h2>
+    <p class="muted">@Format.When(_ticket.StartsAt) · @_ticket.Venue, @_ticket.City</p>
+    <p><strong>@_ticket.TierName</strong> · @Context.DisplayName</p>
+
+    @if (_ticket.Status == TicketStatuses.Admitted)
+    {
+        <div class="empty"><p>This ticket has been scanned in. Enjoy the event!</p></div>
+    }
+    else if (_ticket.Status == TicketStatuses.Revoked)
+    {
+        <div class="empty"><p>This ticket was cancelled.</p></div>
+    }
+    else if (Context.Device is null)
+    {
+        <div class="empty"><p>Open this ticket in the Ndeipi app or at chat.ndeipi.com to show its code.</p></div>
+    }
+    else if (_elsewhere)
+    {
+        <div class="card">
+            <p>This ticket's code is on another device. Show it here instead? The other device's code will stop working.</p>
+            <div class="ev-actions">
+                <button class="primary" disabled="@_busy" @onclick="MoveHereAsync">Show it on this device</button>
+            </div>
+        </div>
+    }
+    else if (_qr is not null)
+    {
+        <div class="ev-qr">
+            <img src="@_qr" alt="Ticket code" />
+            <div class="ev-bar"><div style="width: @(SecondsLeft * 100 / EventsContract.QrWindowSeconds)%"></div></div>
+            <span class="muted small">New code in @SecondsLeft s · works without signal</span>
+            <span class="muted small mono">@_ticket.Id.ToString("N")[..8].ToUpperInvariant()</span>
+        </div>
+    }
+    else
+    {
+        <p class="muted">Preparing your code…</p>
+    }
+
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+}
+
+@code {
+    [CascadingParameter] public EventsApp App { get; set; } = null!;
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    TicketDto? _ticket;
+    string? _qr, _error;
+    bool _elsewhere, _busy;
+    long _window = -1;
+    Timer? _timer;
+
+    string KeyName => $"ticket.{Id:N}";
+    int SecondsLeft => EventsContract.QrWindowSeconds - (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % EventsContract.QrWindowSeconds);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Cached, so the ticket still opens at a gate with no signal.
+            var tickets = await App.Api.GetAsync<List<TicketDto>>($"{EventsApi.Base}/tickets");
+            _ticket = tickets.FirstOrDefault(t => t.Id == Id);
+            if (_ticket is not null && Context.Device is { } device)
+                await device.SetValueAsync(KeyName, ContractJson.Write(_ticket));
+        }
+        catch (EventsException ex) when (ex.Offline && Context.Device is { } device)
+        {
+            _ticket = await device.GetValueAsync(KeyName) is { } json ? ContractJson.Read<TicketDto>(json) : null;
+            if (_ticket is null)
+                _error = ex.Message;
+        }
+        catch (EventsException ex)
+        {
+            _error = ex.Message;
+        }
+
+        if (_ticket is not { Status: TicketStatuses.Valid } || Context.Device is not { } d)
+            return;
+
+        var mine = await d.GetPublicKeyAsync(KeyName);
+        if (_ticket.HolderPublicKey is null)
+            await BindAsync();
+        else if (mine != _ticket.HolderPublicKey)
+            _elsewhere = true;
+
+        if (!_elsewhere)
+        {
+            await RenderCodeAsync();
+            _timer = new Timer(_ => InvokeAsync(RenderCodeAsync), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+    }
+
+    /// <summary>A new key on this device; its public half goes to the server, for gates to check against.</summary>
+    async Task BindAsync()
+    {
+        var publicKey = await Context.Device!.CreateKeyAsync(KeyName);
+        await App.Api.SendAsync(HttpMethod.Post, $"{EventsApi.Base}/tickets/{Id}/holder-key", new BindHolderKeyRequest(publicKey));
+        _ticket = _ticket! with { HolderPublicKey = publicKey };
+        await Context.Device.SetValueAsync(KeyName, ContractJson.Write(_ticket));
+    }
+
+    async Task MoveHereAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await BindAsync();
+            _elsewhere = false;
+            await RenderCodeAsync();
+            _timer ??= new Timer(_ => InvokeAsync(RenderCodeAsync), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+        }
+        catch (EventsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task RenderCodeAsync()
+    {
+        var window = EventsContract.WindowAt(DateTimeOffset.UtcNow);
+        if (window != _window && Context.Device is { } device)
+        {
+            var signature = await device.SignAsync(KeyName, EventsContract.QrPayload(Id, window));
+            if (signature is null)
+            {
+                _elsewhere = true;
+            }
+            else
+            {
+                _qr = Format.QrDataUrl(EventsContract.QrText(Id, window, signature));
+                _window = window;
+            }
+        }
+        StateHasChanged();
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

@@ -1,0 +1,47 @@
+@* Events this person organizes, or scans tickets for. Creating one needs the organizer role. *@
+
+<div class="ev-actions">
+    <button class="primary" @onclick="() => App.Go(new EventsView.Edit(null))">New event</button>
+</div>
+
+@if (_events is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else if (_events.Count == 0)
+{
+    <div class="empty"><p>Events you organize, or scan tickets for, show up here.</p></div>
+}
+else
+{
+    @foreach (var e in _events)
+    {
+        <div class="ev-row" @key="e.Id" @onclick="() => App.Go(new EventsView.Event(e.Id))">
+            <div class="ev-date"><b>@Format.Day(e.StartsAt)</b><span>@Format.Month(e.StartsAt)</span></div>
+            <div class="ev-main">
+                <span class="name">@e.Title</span>
+                <span class="muted small">@e.Venue · @e.City</span>
+            </div>
+            <div class="ev-side">@e.Available left</div>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] public EventsApp App { get; set; } = null!;
+
+    List<EventSummaryDto>? _events;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _events = await App.Api.GetAsync<List<EventSummaryDto>>($"{EventsApi.Base}/mine");
+        }
+        catch (EventsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}
