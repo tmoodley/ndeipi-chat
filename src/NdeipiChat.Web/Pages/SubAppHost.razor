@@ -1,0 +1,87 @@
+@page "/apps/{AppId}"
+@inject LauncherViewModel Launcher
+@inject SubAppLoader Loader
+@inject ChatSession Session
+@inject IHttpClientFactory HttpClients
+@inject NavigationManager Navigation
+
+@* Hosts a sub-app loaded at runtime (SRS SR-02-03): <DynamicComponent> renders its root component
+   inside an error boundary, so a failing sub-app can't take the shell down with it. It gets the
+   shell's sign-in through SubAppContext (SR-03-02) and never shows a login of its own. *@
+
+<PageTitle>@(_app?.Title ?? "App") · Ndeipi</PageTitle>
+
+@if (_error is not null)
+{
+    <header class="bar">
+        <a class="bar-back" href="" title="Back to your apps">‹</a>
+        <h1>@(_app?.Title ?? "App")</h1>
+    </header>
+    <div class="empty">
+        <p>@_error</p>
+        <a class="button primary" href="">Back to your apps</a>
+    </div>
+}
+else if (_root is null || _context is null)
+{
+    <div class="empty"><p>Opening @(_app?.Title ?? "the app")…</p></div>
+}
+else
+{
+    <ErrorBoundary @ref="_boundary">
+        <ChildContent>
+            <CascadingValue Value="_context" IsFixed="true">
+                <DynamicComponent Type="_root" />
+            </CascadingValue>
+        </ChildContent>
+        <ErrorContent>
+            <header class="bar">
+                <a class="bar-back" href="" title="Back to your apps">‹</a>
+                <h1>@_app?.Title</h1>
+            </header>
+            <div class="empty">
+                <p>@_app?.Title ran into a problem. The rest of Ndeipi is fine.</p>
+                <button class="primary" @onclick="() => _boundary?.Recover()">Try again</button>
+            </div>
+        </ErrorContent>
+    </ErrorBoundary>
+}
+
+@code {
+    [Parameter] public string AppId { get; set; } = "";
+
+    SubAppDto? _app;
+    Type? _root;
+    SubAppContext? _context;
+    string? _error;
+    ErrorBoundary? _boundary;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        (_root, _context, _error) = (null, null, null);
+        if (!Launcher.IsLoaded)
+            await Launcher.LoadCommand.ExecuteAsync(null);
+
+        _app = Launcher.Apps.FirstOrDefault(a => a.Id.Equals(AppId, StringComparison.OrdinalIgnoreCase))?.App;
+        if (_app is null)
+        {
+            _error = "This app isn't available to you.";
+            return;
+        }
+
+        try
+        {
+            _root = await Loader.LoadAsync(_app);
+            _context = new SubAppContext(
+                _app.Id,
+                Session.MyUserId,
+                Session.Me?.DisplayName ?? "",
+                HttpClients.CreateClient(ChatApi.HttpClientName),
+                () => { Navigation.NavigateTo(""); return Task.CompletedTask; });
+        }
+        catch (SubAppLoadException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

@@ -206,20 +206,20 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
         await launcher.LoadCommand.ExecuteAsync(null);
 
         Assert.Equal(["Chats", "Feed", "Shamwaris", "Herd"], launcher.Pinned.Select(a => a.Title));
-        Assert.True(launcher.Allows(SubApps.Wallet));
+        Assert.True(launcher.Allows(BuiltInApps.Wallet));
 
         // Launch two, close one: the shell stays up, the other keeps running.
-        var herd = launcher.Apps.Single(a => a.Id == SubApps.Herd);
-        await launcher.LaunchCommand.ExecuteAsync(launcher.Apps.Single(a => a.Id == SubApps.Chats));
+        var herd = launcher.Apps.Single(a => a.Id == BuiltInApps.Herd);
+        await launcher.LaunchCommand.ExecuteAsync(launcher.Apps.Single(a => a.Id == BuiltInApps.Chats));
         await launcher.LaunchCommand.ExecuteAsync(herd);
-        Assert.Equal([Routes.SubApp(SubApps.Chats), Routes.SubApp(SubApps.Herd)], client.Navigator.Routes);
-        Assert.Equal([SubApps.Herd, SubApps.Chats], launcher.Running.Select(a => a.Id));
+        Assert.Equal([Routes.SubApp(BuiltInApps.Chats), Routes.SubApp(BuiltInApps.Herd)], client.Navigator.Routes);
+        Assert.Equal([BuiltInApps.Herd, BuiltInApps.Chats], launcher.Running.Select(a => a.Id));
         launcher.CloseCommand.Execute(herd);
-        Assert.Equal([SubApps.Chats], launcher.Running.Select(a => a.Id));
+        Assert.Equal([BuiltInApps.Chats], launcher.Running.Select(a => a.Id));
         Assert.False(herd.IsRunning);
 
         // Pinning is saved on the server, so it follows the user.
-        await launcher.TogglePinCommand.ExecuteAsync(launcher.Apps.Single(a => a.Id == SubApps.Wallet));
+        await launcher.TogglePinCommand.ExecuteAsync(launcher.Apps.Single(a => a.Id == BuiltInApps.Wallet));
         await launcher.TogglePinCommand.ExecuteAsync(herd);
         var elsewhere = client.Launcher(new InMemorySettingsStore());
         await elsewhere.LoadCommand.ExecuteAsync(null);

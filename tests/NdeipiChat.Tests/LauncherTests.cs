@@ -29,9 +29,10 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
 
         var manifest = await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
 
-        Assert.Equal([SubApps.Chats, SubApps.Feed, SubApps.Shamwaris, SubApps.Herd, SubApps.Wallet], manifest.Apps.Select(a => a.Id));
-        Assert.Equal([true, true, true, true, false], manifest.Apps.Select(a => a.Pinned));
-        var herd = manifest.Apps.Single(a => a.Id == SubApps.Herd);
+        // Built-in apps, then Inventory, which appsettings.json adds as a runtime-loaded sub-app.
+        Assert.Equal([BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Shamwaris, BuiltInApps.Herd, BuiltInApps.Wallet, InventoryContract.AppId], manifest.Apps.Select(a => a.Id));
+        Assert.Equal([true, true, true, true, false, false], manifest.Apps.Select(a => a.Pinned));
+        var herd = manifest.Apps.Single(a => a.Id == BuiltInApps.Herd);
         Assert.Equal(("Herd", "herd", "1.0.0", (string?)null, (string?)null), (herd.Title, herd.Route, herd.Version, herd.BundleUri, herd.Sha256));
         Assert.Contains("livestock", herd.Scopes);
         Assert.Equal(manifest.Version, (await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath)).Version);
@@ -44,11 +45,11 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
         var before = await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
 
         using var response = await user.Http.PutAsJsonAsync(LauncherContract.PinsPath,
-            new SetPinsRequest([SubApps.Wallet, "no-such-app", SubApps.Chats, SubApps.Wallet]), ContractJson.Options);
+            new SetPinsRequest([BuiltInApps.Wallet, "no-such-app", BuiltInApps.Chats, BuiltInApps.Wallet]), ContractJson.Options);
         var pinned = (await response.Content.ReadFromJsonAsync<LauncherManifestDto>(ContractJson.Options))!;
 
-        Assert.Equal([SubApps.Wallet, SubApps.Chats], pinned.Apps.Where(a => a.Pinned).Select(a => a.Id));
-        Assert.Equal(SubApps.Wallet, pinned.Apps[0].Id);
+        Assert.Equal([BuiltInApps.Wallet, BuiltInApps.Chats], pinned.Apps.Where(a => a.Pinned).Select(a => a.Id));
+        Assert.Equal(BuiltInApps.Wallet, pinned.Apps[0].Id);
         Assert.NotEqual(before.Version, pinned.Version);
         Assert.Equal(pinned.Version, (await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath)).Version);
     }
@@ -71,8 +72,8 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
             (await ClientFor(server, user).GetFromJsonAsync<LauncherManifestDto>(LauncherContract.ManifestPath, ContractJson.Options))!
                 .Apps.Select(a => a.Id).ToArray();
 
-        Assert.DoesNotContain(SubApps.Herd, await AppsOf(member));
-        Assert.Contains(SubApps.Herd, await AppsOf(farmer));
+        Assert.DoesNotContain(BuiltInApps.Herd, await AppsOf(member));
+        Assert.Contains(BuiltInApps.Herd, await AppsOf(farmer));
         Assert.DoesNotContain("trading", await AppsOf(farmer));
         Assert.Contains("trading", await AppsOf(trader));
 
@@ -84,9 +85,9 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
 
         // Pinning an app you can't have does nothing.
-        using var pin = await ClientFor(server, member).PutAsJsonAsync(LauncherContract.PinsPath, new SetPinsRequest([SubApps.Herd, SubApps.Chats]), ContractJson.Options);
+        using var pin = await ClientFor(server, member).PutAsJsonAsync(LauncherContract.PinsPath, new SetPinsRequest([BuiltInApps.Herd, BuiltInApps.Chats]), ContractJson.Options);
         var pinned = (await pin.Content.ReadFromJsonAsync<LauncherManifestDto>(ContractJson.Options))!;
-        Assert.Equal([SubApps.Chats], pinned.Apps.Where(a => a.Pinned).Select(a => a.Id));
+        Assert.Equal([BuiltInApps.Chats], pinned.Apps.Where(a => a.Pinned).Select(a => a.Id));
     }
 
     [Fact]
@@ -97,7 +98,7 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
         var client = ClientFor(server, user);
 
         var manifest = await client.GetFromJsonAsync<LauncherManifestDto>(LauncherContract.ManifestPath, ContractJson.Options);
-        Assert.DoesNotContain(manifest!.Apps, a => a.Id == SubApps.Wallet);
+        Assert.DoesNotContain(manifest!.Apps, a => a.Id == BuiltInApps.Wallet);
         using var banking = await client.GetAsync("api/banking/status");
         Assert.Equal(HttpStatusCode.Forbidden, banking.StatusCode);
     }

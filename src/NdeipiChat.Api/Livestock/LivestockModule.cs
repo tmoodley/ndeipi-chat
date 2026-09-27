@@ -35,7 +35,7 @@ public static class LivestockModule
 
     public static void MapLivestock(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup(LivestockContract.BasePath).RequireAuthorization().RequireSubApp(SubApps.Herd);
+        var api = app.MapGroup(LivestockContract.BasePath).RequireAuthorization().RequireSubApp(BuiltInApps.Herd);
 
         api.MapPost("/operator-keys", async (OperatorKeyRequest request, HttpContext http, CurrentUserService users, ChatDbContext db, TimeProvider clock) =>
         {

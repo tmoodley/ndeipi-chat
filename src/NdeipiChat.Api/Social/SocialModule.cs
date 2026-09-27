@@ -21,7 +21,7 @@ public static class SocialModule
 
     public static void MapSocial(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup(SocialContract.PostsPath).RequireAuthorization().RequireSubApp(SubApps.Feed);
+        var api = app.MapGroup(SocialContract.PostsPath).RequireAuthorization().RequireSubApp(BuiltInApps.Feed);
 
         api.MapGet("", async (Guid? before, Guid? author, HttpContext http, CurrentUserService users, PostService posts) =>
         {

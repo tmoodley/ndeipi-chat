@@ -29,6 +29,12 @@ public sealed class SubAppOptions
     /// <summary>Any one of these Clerk roles lets a user have the app. Empty means everyone.</summary>
     public string[]? RequiredRoles { get; set; }
 
+    /// <summary>
+    /// A sub-app the web shell loads at runtime: its assembly name, e.g. "NdeipiChat.SubApps.Inventory".
+    /// The manifest then carries the published bundle's URI and SHA-256, worked out from the files.
+    /// </summary>
+    public string? Assembly { get; set; }
+
     public string? BundleUri { get; set; }
     public string? Sha256 { get; set; }
 }
@@ -55,7 +61,8 @@ public sealed record SubApp(
     IReadOnlyList<string> Scopes,
     IReadOnlyList<string> RequiredRoles,
     string? BundleUri,
-    string? Sha256)
+    string? Sha256,
+    string? Assembly = null)
 {
     public bool AllowedFor(User user)
     {
@@ -67,16 +74,16 @@ public sealed record SubApp(
 }
 
 /// <summary>Builds each user's launcher manifest (SRS SR-01) and decides who may use which sub-app (SR-03-03).</summary>
-public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, ChatDbContext db)
+public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, ChatDbContext db, SubAppBundles bundles)
 {
     /// <summary>The sub-apps that ship with the shell.</summary>
     static readonly SubApp[] Catalogue =
     [
-        new(SubApps.Chats, "Chats", "Messages, and money and tokens sent in chats.", "💬", "chats", "1.0.0", "1.0.0", 10, true, ["chat"], [], null, null),
-        new(SubApps.Feed, "Feed", "Photo posts, which you can mint as NFTs.", "📷", "feed", "1.0.0", "1.0.0", 20, true, ["social", "nft"], [], null, null),
-        new(SubApps.Shamwaris, "Shamwaris", "Your friends, and adding people by email or phone.", "👥", "shamwaris", "1.0.0", "1.0.0", 30, true, ["contacts"], [], null, null),
-        new(SubApps.Wallet, "Wallet", "Identity verification, balances and receiving wallets.", "👛", "wallet", "1.0.0", "1.0.0", 40, false, ["banking"], [], null, null),
-        new(SubApps.Herd, "Herd", "Register cattle and track their health.", "🐄", "herd", "1.0.0", "1.0.0", 50, true, ["livestock"], [], null, null)
+        new(BuiltInApps.Chats, "Chats", "Messages, and money and tokens sent in chats.", "💬", "chats", "1.0.0", "1.0.0", 10, true, ["chat"], [], null, null),
+        new(BuiltInApps.Feed, "Feed", "Photo posts, which you can mint as NFTs.", "📷", "feed", "1.0.0", "1.0.0", 20, true, ["social", "nft"], [], null, null),
+        new(BuiltInApps.Shamwaris, "Shamwaris", "Your friends, and adding people by email or phone.", "👥", "shamwaris", "1.0.0", "1.0.0", 30, true, ["contacts"], [], null, null),
+        new(BuiltInApps.Wallet, "Wallet", "Identity verification, balances and receiving wallets.", "👛", "wallet", "1.0.0", "1.0.0", 40, false, ["banking"], [], null, null),
+        new(BuiltInApps.Herd, "Herd", "Register cattle and track their health.", "🐄", "herd", "1.0.0", "1.0.0", 50, true, ["livestock"], [], null, null)
     ];
 
     public IReadOnlyList<SubApp> All()
@@ -95,7 +102,23 @@ public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, Ch
                 continue;
             apps.Add(Merge(new SubApp(id.ToLowerInvariant(), o.Title, "", "▦", o.Route, "1.0.0", "1.0.0", 100, false, [], [], null, null), o));
         }
-        return apps.OrderBy(a => a.Order).ThenBy(a => a.Title, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return apps
+            .Select(WithBundle)
+            .OfType<SubApp>()
+            .OrderBy(a => a.Order)
+            .ThenBy(a => a.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+    }
+
+    /// <summary>
+    /// A runtime-loaded sub-app with its published bundle's URI and hash filled in; null (left out)
+    /// if the bundle isn't published, since the shell couldn't open it.
+    /// </summary>
+    SubApp? WithBundle(SubApp app)
+    {
+        if (app.Assembly is null || app.BundleUri is not null)
+            return app;
+        return bundles.Find(app.Assembly) is { } bundle ? app with { BundleUri = bundle.Uri, Sha256 = bundle.Sha256 } : null;
     }
 
     public SubApp? Find(string id) => All().FirstOrDefault(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -108,7 +131,7 @@ public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, Ch
         var pins = PinsOf(user, apps);
         var dtos = apps.Select(a => new SubAppDto(
             a.Id, a.Title, a.Description, a.Icon, a.Route, a.Version, a.MinShellVersion, a.Scopes,
-            a.Order, pins.Contains(a.Id), a.BundleUri, a.Sha256)).ToList();
+            a.Order, pins.Contains(a.Id), a.BundleUri, a.Sha256, a.Assembly)).ToList();
 
         // Pinned apps first, in the user's order; then the rest in catalogue order.
         dtos = dtos.Where(d => d.Pinned).OrderBy(d => pins.IndexOf(d.Id))
@@ -149,7 +172,8 @@ public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, Ch
         Scopes = o.Scopes ?? app.Scopes,
         RequiredRoles = o.RequiredRoles?.Select(r => r.Trim().ToLowerInvariant()).Where(r => r.Length > 0).ToArray() ?? app.RequiredRoles,
         BundleUri = o.BundleUri ?? app.BundleUri,
-        Sha256 = o.Sha256 ?? app.Sha256
+        Sha256 = o.Sha256 ?? app.Sha256,
+        Assembly = o.Assembly ?? app.Assembly
     };
 
     static string VersionOf(IReadOnlyList<SubAppDto> apps) =>
@@ -162,6 +186,7 @@ public static class LauncherModule
     {
         services.Configure<LauncherOptions>(config.GetSection(LauncherOptions.Section));
         services.AddScoped<LauncherService>();
+        services.AddSingleton<SubAppBundles>();
         return services;
     }
 

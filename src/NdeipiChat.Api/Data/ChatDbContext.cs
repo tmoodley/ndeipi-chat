@@ -24,6 +24,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<Post> Posts => Set<Post>();
     public DbSet<PostMedia> PostMedia => Set<PostMedia>();
     public DbSet<PostLike> PostLikes => Set<PostLike>();
+    public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -51,6 +52,15 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.HasOne(p => p.Author).WithMany().HasForeignKey(p => p.AuthorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.Mint).WithMany().HasForeignKey(p => p.MintTransferId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(p => p.Media).WithOne().HasForeignKey(m => m.PostId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<InventoryItem>(e =>
+        {
+            e.Property(i => i.Name).HasMaxLength(120);
+            e.Property(i => i.Sku).HasMaxLength(64);
+            e.Property(i => i.Location).HasMaxLength(120);
+            e.HasIndex(i => new { i.OwnerId, i.UpdatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(i => i.OwnerId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());
