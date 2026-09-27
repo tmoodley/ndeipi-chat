@@ -533,6 +533,9 @@ public sealed class LivestockTests(TestApp app) : IClassFixture<TestApp>
             Signatures++;
             return _inner.SignAsync(privateKeyPkcs8, payload);
         }
+
+        public Task<bool> VerifyAsync(string publicKeySpki, byte[] payload, string signature) =>
+            _inner.VerifyAsync(publicKeySpki, payload, signature);
     }
 
     sealed class FixedLocation : ILocationProvider

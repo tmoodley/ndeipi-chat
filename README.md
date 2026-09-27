@@ -199,6 +199,11 @@ manifest's SHA-256 and renders it at `apps/{id}`, passing on the user's sign-in.
 (`src/NdeipiChat.SubApps.Inventory`) is the first. [docs/sub-apps.md](docs/sub-apps.md) covers how
 it works and how to add one.
 
+**Signed sub-apps (step 3).** Publishing the API signs every sub-app bundle with the publisher key
+at `~/.ndeipi/subapp-publisher.key`. The shell only runs bundles signed by a key compiled into it.
+A Release publish fails if the key is missing. Back the key up, and see
+[docs/sub-apps.md](docs/sub-apps.md#signing) for rotating it.
+
 ## Running the app
 
 1. `dotnet workload install maui`.

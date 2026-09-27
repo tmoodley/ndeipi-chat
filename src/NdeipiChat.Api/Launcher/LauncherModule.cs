@@ -45,6 +45,12 @@ public sealed class LauncherOptions
 
     /// <summary>By sub-app id, e.g. "herd": { "RequiredRoles": [ "farmer" ] }.</summary>
     public Dictionary<string, SubAppOptions> Apps { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The publisher's signatures for sub-app bundles, written at release time by
+    /// tools/NdeipiChat.SubAppSigner. Relative paths are under the content root.
+    /// </summary>
+    public string SignaturesPath { get; set; } = NdeipiChat.Contracts.SubAppSigning.SignaturesFileName;
 }
 
 /// <summary>A sub-app after the catalogue and configuration are merged.</summary>
@@ -62,7 +68,9 @@ public sealed record SubApp(
     IReadOnlyList<string> RequiredRoles,
     string? BundleUri,
     string? Sha256,
-    string? Assembly = null)
+    string? Assembly = null,
+    string? SigningKeyId = null,
+    string? Signature = null)
 {
     public bool AllowedFor(User user)
     {
@@ -118,7 +126,9 @@ public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, Ch
     {
         if (app.Assembly is null || app.BundleUri is not null)
             return app;
-        return bundles.Find(app.Assembly) is { } bundle ? app with { BundleUri = bundle.Uri, Sha256 = bundle.Sha256 } : null;
+        return bundles.Find(app.Assembly) is { } bundle
+            ? app with { BundleUri = bundle.Uri, Sha256 = bundle.Sha256, SigningKeyId = bundle.Signature?.KeyId, Signature = bundle.Signature?.Signature }
+            : null;
     }
 
     public SubApp? Find(string id) => All().FirstOrDefault(a => a.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -131,7 +141,7 @@ public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, Ch
         var pins = PinsOf(user, apps);
         var dtos = apps.Select(a => new SubAppDto(
             a.Id, a.Title, a.Description, a.Icon, a.Route, a.Version, a.MinShellVersion, a.Scopes,
-            a.Order, pins.Contains(a.Id), a.BundleUri, a.Sha256, a.Assembly)).ToList();
+            a.Order, pins.Contains(a.Id), a.BundleUri, a.Sha256, a.Assembly, a.SigningKeyId, a.Signature)).ToList();
 
         // Pinned apps first, in the user's order; then the rest in catalogue order.
         dtos = dtos.Where(d => d.Pinned).OrderBy(d => pins.IndexOf(d.Id))

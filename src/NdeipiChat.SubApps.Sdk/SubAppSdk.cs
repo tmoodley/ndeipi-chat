@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Security.Cryptography;
 
 namespace NdeipiChat.SubApps.Sdk;
 
@@ -26,22 +25,6 @@ public sealed record SubAppContext(
     string DisplayName,
     HttpClient Api,
     Func<Task> NavigateToLauncher);
-
-public static class SubAppIntegrity
-{
-    /// <summary>
-    /// Whether a bundle is exactly the one the manifest names (SRS NFR-02-01): its SHA-256, as
-    /// lower-case hex, must match. A manifest without a hash never matches.
-    /// </summary>
-    public static bool Matches(byte[] bundle, string? expectedSha256)
-    {
-        if (expectedSha256 is not { Length: 64 } || !expectedSha256.All(char.IsAsciiHexDigit))
-            return false;
-        return CryptographicOperations.FixedTimeEquals(SHA256.HashData(bundle), Convert.FromHexString(expectedSha256));
-    }
-
-    public static string Sha256Hex(byte[] bundle) => Convert.ToHexString(SHA256.HashData(bundle)).ToLowerInvariant();
-}
 
 public static class SubAppDiscovery
 {
