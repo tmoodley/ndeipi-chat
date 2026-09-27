@@ -69,6 +69,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Tokens:Known:0:Standard"] = "erc20",
             ["Tokens:Known:0:ContractAddress"] = KnownTokenContract,
             ["Tokens:Known:0:Decimals"] = "6",
+            ["Gigs:TokenSymbol"] = "NMX",
             ["Bridge:BaseUrl"] = "https://bridge.test/v0/",
             ["Bridge:ApiKey"] = "bridge-test-key",
             ["Bridge:WebhookPublicKey"] = WebhookKey.ExportSubjectPublicKeyInfoPem(),

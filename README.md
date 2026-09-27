@@ -235,6 +235,33 @@ Ticketing SRS, built as a runtime-loaded sub-app.
 - **Organizers.** Creating events needs the Clerk role `organizer`
   (`{ "roles": ["organizer"] }`). Anyone can buy tickets.
 
+### Gigs
+
+Gigs (`src/NdeipiChat.SubApps.Gigs`, API under `/api/gigs`) implements the Gigs SRS as a
+runtime-loaded sub-app, except for escrow and profile NFTs (see below).
+
+- **Profiles.** Workers set what they do, up to five skills and where they're based, and switch
+  between available and offline. Available workers appear on the map, live. Others only see a
+  rough area (2 decimal places, about a kilometre). A gig's exact place is shared only between its
+  client and the worker who takes it.
+- **Posting.** Tap the map to post a gig there, tap a worker to offer one to them, or use
+  **Start a gig** in a chat's "+" panel. In a direct chat, the gig goes to the other person.
+- **Dispatch.** A new gig is offered to the 5 nearest available workers with the skill, within
+  50 km, who get a live alert. A worker who comes online is offered open gigs nearby. When
+  everyone offered declines, it goes to the next nearest.
+- **Workspace.** The first worker to accept gets the gig, and a direct chat with the client
+  opens. The gig page shows the gig and that chat side by side.
+- **Payment.** When the client approves the work, the budget goes from their wallet to the
+  worker's in NdeipiCoin (`Gigs:TokenSymbol`, which must be under `Tokens:Known`), as a transfer in
+  the gig's chat, with no fee. Retrying can't pay twice. Both sides then rate each other, and the
+  worker's stars go on their profile.
+- **Map.** OpenStreetMap tiles through Leaflet, loaded from cdnjs when a map is first shown.
+
+Not built yet:
+- **Escrow.** The SRS wants the budget locked in a smart contract when a gig is taken. No such
+  contract exists, so for now the client pays when they approve the work.
+- **Profile NFTs.** These need their own contract.
+
 ## Running the app
 
 1. `dotnet workload install maui`.

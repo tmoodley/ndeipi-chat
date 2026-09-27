@@ -73,7 +73,10 @@ public sealed partial class WebSubAppViewModel(
                 return;
             }
 
-            Url = await auth.CreateWebHandoffAsync(app.Route);
+            // Opened with a query (e.g. a gig started from a chat): keep it, but only on this app's own page.
+            var route = parameters.TryGetValue(Routes.SubAppRouteParameter, out var r) && r is string asked
+                && asked.StartsWith(app.Route + "?", StringComparison.Ordinal) ? asked : app.Route;
+            Url = await auth.CreateWebHandoffAsync(route);
         }
         catch (Exception ex) when (ex is AuthException or HttpRequestException)
         {

@@ -31,6 +31,9 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<TicketOrder> TicketOrders => Set<TicketOrder>();
     public DbSet<Ticket> Tickets => Set<Ticket>();
     public DbSet<EventValidator> EventValidators => Set<EventValidator>();
+    public DbSet<GigProfile> GigProfiles => Set<GigProfile>();
+    public DbSet<Gig> Gigs => Set<Gig>();
+    public DbSet<GigOffer> GigOffers => Set<GigOffer>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -130,6 +133,43 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.HasKey(v => new { v.EventId, v.UserId });
             e.HasOne<EventListing>().WithMany().HasForeignKey(v => v.EventId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(v => v.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<GigProfile>(e =>
+        {
+            e.HasKey(p => p.UserId);
+            e.Property(p => p.Headline).HasMaxLength(160);
+            e.Property(p => p.Skills).HasMaxLength(200);
+            e.Property(p => p.Region).HasMaxLength(80);
+            // Dispatch narrows by a latitude band before measuring distances.
+            e.HasIndex(p => new { p.IsAvailable, p.Latitude });
+            e.HasOne(p => p.User).WithOne().HasForeignKey<GigProfile>(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<Gig>(e =>
+        {
+            e.Property(g => g.Title).HasMaxLength(120);
+            e.Property(g => g.Description).HasMaxLength(2000);
+            e.Property(g => g.Skill).HasMaxLength(32);
+            e.Property(g => g.Region).HasMaxLength(80);
+            e.Property(g => g.Budget).HasPrecision(38, 18);
+            e.Property(g => g.TokenSymbol).HasMaxLength(20);
+            e.Property(g => g.Status).HasMaxLength(16);
+            e.HasIndex(g => new { g.ClientId, g.CreatedAt });
+            e.HasIndex(g => new { g.WorkerId, g.CreatedAt });
+            e.HasIndex(g => new { g.Status, g.Latitude });
+            e.HasOne(g => g.Client).WithMany().HasForeignKey(g => g.ClientId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(g => g.Worker).WithMany().HasForeignKey(g => g.WorkerId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t => t.HasCheckConstraint("CK_Gigs_Stars", "([WorkerStars] IS NULL OR [WorkerStars] BETWEEN 1 AND 5) AND ([ClientStars] IS NULL OR [ClientStars] BETWEEN 1 AND 5)"));
+        });
+
+        model.Entity<GigOffer>(e =>
+        {
+            e.HasKey(o => new { o.GigId, o.WorkerId });
+            e.Property(o => o.Status).HasMaxLength(16);
+            e.HasIndex(o => new { o.WorkerId, o.Status });
+            e.HasOne<Gig>().WithMany().HasForeignKey(o => o.GigId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(o => o.WorkerId).OnDelete(DeleteBehavior.Restrict);
         });
 
         model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());

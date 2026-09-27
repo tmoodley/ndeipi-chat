@@ -1,0 +1,160 @@
+@* Posting a gig (SRS FR-02): from a spot on the map, for a worker picked on the map, or from a chat.
+   It's then offered to the nearest suitable available workers, or to the one person chosen. *@
+@implements IAsyncDisposable
+
+@if (View.WorkerName is { } name)
+{
+    <p>Offering this gig to <strong>@name</strong> only.</p>
+}
+else if (View.ConversationId is not null)
+{
+    <p class="muted">Started from a chat. In a one-to-one chat, the gig goes to the other person; otherwise it's offered to people nearby.</p>
+}
+
+<form class="form" @onsubmit="PostAsync">
+    <label class="field">What needs doing <input @bind="_title" maxlength="120" placeholder="e.g. Photograph a wedding in Borrowdale" required /></label>
+    <label class="field">
+        Kind of work
+        <select @bind="_skill">
+            @foreach (var skill in GigSkills.All)
+            {
+                <option value="@skill">@GigSkills.Label(skill)</option>
+            }
+        </select>
+    </label>
+    <label class="field">Details <textarea @bind="_description" rows="3" maxlength="2000" placeholder="When, how long, anything to bring"></textarea></label>
+    <div class="inline-form">
+        <label class="field">Budget (@_symbol) <input @bind="_budget" inputmode="decimal" placeholder="50" required /></label>
+        <label class="field">Area <input @bind="_region" maxlength="80" placeholder="e.g. Avondale, Harare" /></label>
+    </div>
+
+    <p class="muted small">Where: @Format.Place(_latitude, _longitude). Tap the map to move it. Workers see only the rough area until one takes the gig.</p>
+    <div @ref="_element" class="gg-map" style="height: 30vh"></div>
+    <div class="gg-actions">
+        <button type="button" class="secondary" @onclick="HereAsync">Use my location</button>
+        <button type="submit" class="primary" disabled="@_busy">Post gig</button>
+    </div>
+    <p class="muted small">The budget is paid from your wallet to the worker's in @_symbol when you approve the work. Ndeipi takes no fee.</p>
+</form>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@code {
+    [CascadingParameter] public GigsApp App { get; set; } = null!;
+    [Parameter] public GigsView.NewGig View { get; set; } = null!;
+
+    string _title = "", _skill = GigSkills.All[0], _description = "", _budget = "", _symbol = "NDEIPI";
+    string? _region, _error;
+    double _latitude, _longitude;
+    bool _busy;
+    ElementReference _element;
+    IJSObjectReference? _map;
+    DotNetObjectReference<NewGig>? _self;
+
+    protected override async Task OnInitializedAsync()
+    {
+        (_latitude, _longitude) = (View.Latitude, View.Longitude);
+        // From a chat there's no spot yet: start from the client's own profile, or where they are.
+        if (View.ConversationId is not null)
+        {
+            if (App.MyProfile is { } me)
+                (_latitude, _longitude, _region) = (me.Latitude, me.Longitude, me.Region);
+            else if (await App.LocateAsync() is { } here)
+                (_latitude, _longitude) = here;
+        }
+        try
+        {
+            _symbol = (await App.Api.GetAsync<Settings>($"{GigsApi.Base}/settings"))?.TokenSymbol ?? _symbol;
+        }
+        catch (GigsException)
+        {
+        }
+    }
+
+    sealed record Settings(string TokenSymbol);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        try
+        {
+            var module = await App.MapModule;
+            _self = DotNetObjectReference.Create(this);
+            _map = await module.InvokeAsync<IJSObjectReference>("create", _element, _self, _latitude, _longitude, 13);
+            await module.InvokeVoidAsync("pick", _map, _latitude, _longitude);
+        }
+        catch (JSException)
+        {
+            // No map (offline): the place still comes from where it was started, or "Use my location".
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnMapClick(double latitude, double longitude)
+    {
+        (_latitude, _longitude) = (latitude, longitude);
+        await (await App.MapModule).InvokeVoidAsync("pick", _map, latitude, longitude);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OnWorkerClick(string _) => Task.CompletedTask;
+
+    [JSInvokable]
+    public Task OnGigClick(string _) => Task.CompletedTask;
+
+    async Task HereAsync()
+    {
+        if (await App.LocateAsync() is not { } here)
+        {
+            _error = "Couldn't get your location. Tap the map instead.";
+            return;
+        }
+        (_latitude, _longitude) = here;
+        if (_map is not null)
+        {
+            var module = await App.MapModule;
+            await module.InvokeVoidAsync("pick", _map, _latitude, _longitude);
+            await module.InvokeVoidAsync("center", _map, _latitude, _longitude, 14);
+        }
+    }
+
+    async Task PostAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var gig = await App.Api.SendAsync<GigDto>(HttpMethod.Post, GigsApi.Base,
+                new CreateGigRequest(_title, _description, _skill, _latitude, _longitude, _region, _budget.Trim(), View.ConversationId, View.WorkerId));
+            App.Replace(new GigsView.Gig(gig!.Id));
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_map is not null)
+            {
+                await (await App.MapModule).InvokeVoidAsync("destroy", _map);
+                await _map.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

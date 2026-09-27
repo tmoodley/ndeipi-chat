@@ -1,0 +1,168 @@
+@* The spatial map: available workers (approximate places, updated live) and your own gigs. Tap the
+   map to post a gig there, or a worker to offer one to them. *@
+@implements IAsyncDisposable
+
+<p class="muted small">Tap the map to post a gig there, or tap a blue dot to offer one to that person.</p>
+
+<div @ref="_element" class="gg-map"></div>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@if (_picked is { } p)
+{
+    <div class="card">
+        <p><strong>Post a gig here?</strong> <span class="muted small">@Format.Place(p.Latitude, p.Longitude)</span></p>
+        <div class="gg-actions">
+            <button class="primary" @onclick="() => App.Go(new GigsView.NewGig(p.Latitude, p.Longitude))">Post a gig here</button>
+            <button class="secondary" @onclick="ClearPickAsync">Cancel</button>
+        </div>
+    </div>
+}
+else if (_worker is { } w)
+{
+    <div class="card">
+        <p><strong>@w.DisplayName</strong> · @Format.Stars(w.Rating, w.RatingCount) · @w.CompletedGigs gigs done</p>
+        <p>@w.Headline</p>
+        <p class="muted small">@string.Join(", ", w.Skills.Select(GigSkills.Label))@(w.Region is null ? "" : $" · {w.Region}")</p>
+        <div class="gg-actions">
+            <button class="primary" @onclick="() => App.Go(new GigsView.NewGig(_center.Latitude, _center.Longitude, w.UserId, w.DisplayName))">Offer a gig</button>
+            <button class="secondary" @onclick="() => _worker = null">Close</button>
+        </div>
+    </div>
+}
+
+<p class="muted small">@_workers.Count(x => x.Value.IsAvailable) people available · @_mine.Count active gigs of yours</p>
+
+@code {
+    [CascadingParameter] public GigsApp App { get; set; } = null!;
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    ElementReference _element;
+    IJSObjectReference? _map;
+    DotNetObjectReference<MapPage>? _self;
+    IAsyncDisposable? _live;
+    readonly Dictionary<Guid, MapWorkerDto> _workers = [];
+    List<GigDto> _mine = [];
+    (double Latitude, double Longitude)? _picked;
+    (double Latitude, double Longitude) _center = (Format.DefaultLatitude, Format.DefaultLongitude);
+    GigProfileDto? _worker;
+    string? _error;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+        try
+        {
+            if (App.MyProfile is { } me)
+                _center = (me.Latitude, me.Longitude);
+            else if (await App.LocateAsync() is { } here)
+                _center = here;
+
+            var module = await App.MapModule;
+            _self = DotNetObjectReference.Create(this);
+            _map = await module.InvokeAsync<IJSObjectReference>("create", _element, _self, _center.Latitude, _center.Longitude, 11);
+
+            var map = await App.Api.GetAsync<GigMapDto>($"{GigsApi.Base}/map");
+            foreach (var worker in map!.Workers)
+                await PutWorkerAsync(worker);
+            _mine = map.MyGigs.Where(g => g.IsClient || g.IsWorker).ToList();
+            foreach (var gig in _mine)
+                await module.InvokeVoidAsync("put", _map, "gig", gig.Id, gig.Latitude, gig.Longitude, $"{gig.Title} · {Format.Status(gig)}");
+
+            if (Context.Realtime is { } realtime)
+                _live = await realtime.SubscribeAsync(GigsContract.MapTopic, OnWorkerChangedAsync);
+        }
+        catch (Exception ex) when (ex is GigsException or JSException)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception) when (_map is not null)
+        {
+            // Live updates unavailable (offline); the map still shows what it loaded.
+        }
+        StateHasChanged();
+    }
+
+    async Task PutWorkerAsync(MapWorkerDto worker)
+    {
+        var module = await App.MapModule;
+        if (worker.IsAvailable)
+        {
+            _workers[worker.UserId] = worker;
+            await module.InvokeVoidAsync("put", _map, "worker", worker.UserId, worker.Latitude, worker.Longitude,
+                $"{worker.DisplayName} · {string.Join(", ", worker.Skills.Select(GigSkills.Label))}");
+        }
+        else
+        {
+            _workers.Remove(worker.UserId);
+            await module.InvokeVoidAsync("remove", _map, "worker", worker.UserId);
+        }
+    }
+
+    async Task OnWorkerChangedAsync(System.Text.Json.JsonElement payload)
+    {
+        if (_map is null || ContractJson.Read<MapWorkerDto>(payload) is not { } worker || worker.UserId == Context.UserId)
+            return;
+        await PutWorkerAsync(worker);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnMapClick(double latitude, double longitude)
+    {
+        (_picked, _worker, _center) = ((latitude, longitude), null, (latitude, longitude));
+        await (await App.MapModule).InvokeVoidAsync("pick", _map, latitude, longitude);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnWorkerClick(string userId)
+    {
+        _picked = null;
+        await (await App.MapModule).InvokeVoidAsync("pick", _map, null, null);
+        try
+        {
+            _worker = await App.Api.GetAsync<GigProfileDto>($"{GigsApi.Base}/profiles/{userId}");
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public Task OnGigClick(string gigId)
+    {
+        App.Go(new GigsView.Gig(Guid.Parse(gigId)));
+        return Task.CompletedTask;
+    }
+
+    async Task ClearPickAsync()
+    {
+        _picked = null;
+        await (await App.MapModule).InvokeVoidAsync("pick", _map, null, null);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_live is not null)
+            await _live.DisposeAsync();
+        try
+        {
+            if (_map is not null)
+            {
+                await (await App.MapModule).InvokeVoidAsync("destroy", _map);
+                await _map.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

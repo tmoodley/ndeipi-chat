@@ -1,0 +1,74 @@
+@* Offers waiting for you, gigs you're hiring for, and gigs you're working on. *@
+@implements IDisposable
+
+@if (_gigs is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else if (_gigs.Count == 0)
+{
+    <div class="empty">
+        <p>No gigs yet. Post one from the map, or set up your work profile to get offers.</p>
+        <button class="primary" @onclick="() => App.Go(new GigsView.Map())">Open the map</button>
+    </div>
+}
+else
+{
+    @Section("Offered to you", _gigs.Where(g => g.MyOffer == GigOfferStatuses.Offered && g.Status == GigStatuses.Open))
+    @Section("Working on", _gigs.Where(g => g.IsWorker))
+    @Section("Hiring", _gigs.Where(g => g.IsClient))
+}
+
+@code {
+    [CascadingParameter] public GigsApp App { get; set; } = null!;
+
+    List<GigDto>? _gigs;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.News += OnNews;
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _gigs = await App.Api.GetAsync<List<GigDto>>(GigsApi.Base) ?? [];
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    void OnNews(GigNewsDto news) => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    RenderFragment Section(string title, IEnumerable<GigDto> gigs) => __builder =>
+    {
+        var list = gigs.ToList();
+        if (list.Count == 0)
+            return;
+        <h3>@title</h3>
+        @foreach (var gig in list)
+        {
+            <div class="gg-row" @key="(title, gig.Id)" @onclick="() => App.Go(new GigsView.Gig(gig.Id))">
+                <div class="gg-main">
+                    <span class="name">@gig.Title</span>
+                    <span class="muted small">@GigSkills.Label(gig.Skill)@(gig.Region is null ? "" : $" · {gig.Region}")@(gig.DistanceKm is null ? "" : $" · {Format.Km(gig.DistanceKm)}")</span>
+                </div>
+                <div class="gg-side">
+                    <div>@Format.Money(gig.Budget, gig.TokenSymbol)</div>
+                    <span class="gg-badge @(gig.MyOffer == GigOfferStatuses.Offered && gig.Status == GigStatuses.Open ? "hot" : "")">@Format.Status(gig)</span>
+                </div>
+            </div>
+        }
+    };
+
+    public void Dispose() => App.News -= OnNews;
+}

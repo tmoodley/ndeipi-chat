@@ -21,6 +21,16 @@
 </div>
 
 @code {
+    /// <summary>apps/{id}, optionally with a plain query such as "?chat={guid}".</summary>
+    static bool IsSubAppPage(string next)
+    {
+        if (!next.StartsWith(WebSubApps.LoadedAppsPrefix + "/", StringComparison.Ordinal))
+            return false;
+        var (path, query) = next.IndexOf('?') is var q and >= 0 ? (next[..q], next[(q + 1)..]) : (next, "");
+        return path.Skip(WebSubApps.LoadedAppsPrefix.Length + 1).All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')
+            && query.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' or '=' or '&');
+    }
+
     string? _error;
 
     protected override async Task OnInitializedAsync()
@@ -49,8 +59,7 @@
             await Coordinator.SignedInAsync();
 
             // Straight on to the sub-app the phone asked for; only a sub-app page, never an outside URL.
-            if (query.GetValueOrDefault("next") is { } next && next.StartsWith(WebSubApps.LoadedAppsPrefix + "/", StringComparison.Ordinal)
-                && next.Skip(WebSubApps.LoadedAppsPrefix.Length + 1).All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+            if (query.GetValueOrDefault("next") is { } next && IsSubAppPage(next))
                 Navigation.NavigateTo(next, replace: true);
         }
         catch (Exception ex) when (ex is AuthException or ApiException)
