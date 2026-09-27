@@ -24,6 +24,10 @@ builder.Services.AddSingleton<IBrowserAuthenticator, RedirectOnlyAuthenticator>(
 builder.Services.AddSingleton<WebSignIn>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddSingleton<SubAppLoader>();
+// Sub-apps must be signed by a publisher key built into this shell (NFR-02-01). Local development
+// runs the bundles the API builds on the fly, which nothing has signed.
+builder.Services.AddSingleton(SubAppTrust.Of(requireSignature: !builder.HostEnvironment.IsDevelopment(), PublisherKeys.All));
+builder.Services.AddSingleton<SubAppVerifier>();
 builder.Services.AddSingleton<INavigator, WebNavigator>();
 builder.Services.AddSingleton<IDialogs, WebDialogs>();
 builder.Services.AddSingleton<WebDispatcher>();

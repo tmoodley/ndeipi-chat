@@ -43,6 +43,9 @@ public interface IP256Signer
 {
     Task<(string PublicKeySpki, string PrivateKeyPkcs8)> CreateKeyAsync();
     Task<string> SignAsync(string privateKeyPkcs8, byte[] payload);
+
+    /// <summary>Whether <paramref name="signature"/> is the key's signature of <paramref name="payload"/>; false if malformed.</summary>
+    Task<bool> VerifyAsync(string publicKeySpki, byte[] payload, string signature);
 }
 
 public sealed class DotNetP256Signer : IP256Signer
@@ -58,6 +61,20 @@ public sealed class DotNetP256Signer : IP256Signer
         using var ecdsa = ECDsa.Create();
         ecdsa.ImportPkcs8PrivateKey(Convert.FromBase64String(privateKeyPkcs8), out _);
         return Task.FromResult(Convert.ToBase64String(ecdsa.SignData(payload, HashAlgorithmName.SHA256)));
+    }
+
+    public Task<bool> VerifyAsync(string publicKeySpki, byte[] payload, string signature)
+    {
+        try
+        {
+            using var ecdsa = ECDsa.Create();
+            ecdsa.ImportSubjectPublicKeyInfo(Convert.FromBase64String(publicKeySpki), out _);
+            return Task.FromResult(ecdsa.VerifyData(payload, Convert.FromBase64String(signature), HashAlgorithmName.SHA256));
+        }
+        catch (Exception ex) when (ex is FormatException or CryptographicException)
+        {
+            return Task.FromResult(false);
+        }
     }
 }
 

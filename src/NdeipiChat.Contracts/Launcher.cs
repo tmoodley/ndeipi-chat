@@ -31,6 +31,8 @@ public sealed record LauncherManifestDto(string Version, IReadOnlyList<SubAppDto
 /// for built-in ones. The shell fetches the bundle, checks its SHA-256, then loads the assembly.
 /// </summary>
 /// <param name="Assembly">The assembly to load, e.g. "NdeipiChat.SubApps.Inventory".</param>
+/// <param name="SigningKeyId">Which publisher key signed the bundle (<see cref="SubAppSigning.KeyId"/>); null if unsigned.</param>
+/// <param name="Signature">The publisher's signature over <see cref="SubAppSigning.Payload"/>, base64; null if unsigned.</param>
 /// <param name="Route">Where the shell opens it, e.g. "chats" or "herd".</param>
 /// <param name="Scopes">What it's allowed to use, e.g. "banking" or "livestock".</param>
 /// <param name="MinShellVersion">The oldest shell that can host it, as a semantic version.</param>
@@ -47,7 +49,9 @@ public sealed record SubAppDto(
     bool Pinned,
     string? BundleUri,
     string? Sha256,
-    string? Assembly = null);
+    string? Assembly = null,
+    string? SigningKeyId = null,
+    string? Signature = null);
 
 /// <summary>The sub-apps to pin, in order. Ids the user can't use are ignored.</summary>
 public sealed record SetPinsRequest(IReadOnlyList<string> AppIds);

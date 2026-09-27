@@ -87,6 +87,15 @@
       sign: async (privateKeyPkcs8, data) => {
         const key = await crypto.subtle.importKey('pkcs8', fromBase64(privateKeyPkcs8), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
         return toBase64(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, data));
+      },
+      // Sub-app signatures (a publisher's key, not the operator's). False for anything malformed.
+      verify: async (publicKeySpki, data, signature) => {
+        try {
+          const key = await crypto.subtle.importKey('spki', fromBase64(publicKeySpki), { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+          return await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, fromBase64(signature), data);
+        } catch {
+          return false;
+        }
       }
     },
 

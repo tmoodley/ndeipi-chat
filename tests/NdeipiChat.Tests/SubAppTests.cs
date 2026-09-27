@@ -28,8 +28,8 @@ public sealed class SubAppTests(TestApp app) : IClassFixture<TestApp>
         // What the shell does before loading it: download the bundle the site serves, and check it.
         using var browser = app.CreateClient();
         var bundle = await browser.GetByteArrayAsync(inventory.BundleUri);
-        Assert.True(SubAppIntegrity.Matches(bundle, inventory.Sha256));
-        Assert.False(SubAppIntegrity.Matches([.. bundle, 0], inventory.Sha256));
+        Assert.True(SubAppSigning.HashMatches(bundle, inventory.Sha256));
+        Assert.False(SubAppSigning.HashMatches([.. bundle, 0], inventory.Sha256));
 
         // Built-in apps ship with the shell: nothing to download.
         var chats = manifest.Apps.Single(a => a.Id == BuiltInApps.Chats);
@@ -61,7 +61,7 @@ public sealed class SubAppTests(TestApp app) : IClassFixture<TestApp>
     [InlineData("not-a-hash")]
     [InlineData("zz00000000000000000000000000000000000000000000000000000000000000")]
     public void A_bundle_never_matches_a_missing_or_malformed_hash(string? hash) =>
-        Assert.False(SubAppIntegrity.Matches([1, 2, 3], hash));
+        Assert.False(SubAppSigning.HashMatches([1, 2, 3], hash));
 
     [Fact]
     public void The_shell_finds_a_sub_apps_root_component_by_its_id()
