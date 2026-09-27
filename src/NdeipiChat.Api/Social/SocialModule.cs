@@ -1,3 +1,4 @@
+using NdeipiChat.Api.Launcher;
 using Microsoft.AspNetCore.Mvc;
 using NdeipiChat.Api.Auth;
 using NdeipiChat.Api.Chat;
@@ -20,7 +21,7 @@ public static class SocialModule
 
     public static void MapSocial(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup(SocialContract.PostsPath).RequireAuthorization();
+        var api = app.MapGroup(SocialContract.PostsPath).RequireAuthorization().RequireSubApp(SubApps.Feed);
 
         api.MapGet("", async (Guid? before, Guid? author, HttpContext http, CurrentUserService users, PostService posts) =>
         {

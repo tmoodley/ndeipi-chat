@@ -38,6 +38,8 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(u => u.Phone).HasMaxLength(20);
             e.HasIndex(u => u.Phone);
             e.Property(u => u.AvatarUrl).HasMaxLength(1000);
+            e.Property(u => u.Roles).HasMaxLength(400);
+            e.Property(u => u.PinnedApps).HasMaxLength(400);
             e.HasMany(u => u.Wallets).WithOne().HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The launcher: a grid of four apps. -->
+<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+  <g fill="none" stroke="#191919" stroke-width="1.8" stroke-linejoin="round">
+    <rect x="4.5" y="4.5" width="8" height="8" rx="2.5"/>
+    <rect x="15.5" y="4.5" width="8" height="8" rx="2.5"/>
+    <rect x="4.5" y="15.5" width="8" height="8" rx="2.5"/>
+    <rect x="15.5" y="15.5" width="8" height="8" rx="2.5"/>
+  </g>
+</svg>

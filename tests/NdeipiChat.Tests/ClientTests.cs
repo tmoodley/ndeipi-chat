@@ -197,6 +197,50 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
+    public async Task The_launcher_opens_pins_and_closes_sub_apps_and_works_offline()
+    {
+        var user = await app.CreateUserAsync("Launcher Client");
+        await using var client = await ClientHarness.SignInAsync(app, user);
+        var device = new InMemorySettingsStore();
+        var launcher = client.Launcher(device);
+        await launcher.LoadCommand.ExecuteAsync(null);
+
+        Assert.Equal(["Chats", "Feed", "Shamwaris", "Herd"], launcher.Pinned.Select(a => a.Title));
+        Assert.True(launcher.Allows(SubApps.Wallet));
+
+        // Launch two, close one: the shell stays up, the other keeps running.
+        var herd = launcher.Apps.Single(a => a.Id == SubApps.Herd);
+        await launcher.LaunchCommand.ExecuteAsync(launcher.Apps.Single(a => a.Id == SubApps.Chats));
+        await launcher.LaunchCommand.ExecuteAsync(herd);
+        Assert.Equal([Routes.SubApp(SubApps.Chats), Routes.SubApp(SubApps.Herd)], client.Navigator.Routes);
+        Assert.Equal([SubApps.Herd, SubApps.Chats], launcher.Running.Select(a => a.Id));
+        launcher.CloseCommand.Execute(herd);
+        Assert.Equal([SubApps.Chats], launcher.Running.Select(a => a.Id));
+        Assert.False(herd.IsRunning);
+
+        // Pinning is saved on the server, so it follows the user.
+        await launcher.TogglePinCommand.ExecuteAsync(launcher.Apps.Single(a => a.Id == SubApps.Wallet));
+        await launcher.TogglePinCommand.ExecuteAsync(herd);
+        var elsewhere = client.Launcher(new InMemorySettingsStore());
+        await elsewhere.LoadCommand.ExecuteAsync(null);
+        Assert.Equal(["Chats", "Feed", "Shamwaris", "Wallet"], elsewhere.Pinned.Select(a => a.Title));
+
+        // Offline, this device shows the apps it last saw.
+        var offline = new ChatApi(new HttpClient(new NoConnection()) { BaseAddress = app.Server.BaseAddress });
+        var cut = client.Launcher(device, offline);
+        await cut.LoadCommand.ExecuteAsync(null);
+        Assert.True(cut.IsOffline);
+        Assert.Equal(["Chats", "Feed", "Shamwaris", "Wallet"], cut.Pinned.Select(a => a.Title));
+        Assert.Empty(client.Dialogs.Alerts);
+    }
+
+    sealed class NoConnection : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct) =>
+            throw new HttpRequestException("No connection.");
+    }
+
+    [Fact]
     public void Kinds_this_build_does_not_know_render_as_a_placeholder()
     {
         var extensions = new ChatExtensions([new TextMessageRenderer()], []);
@@ -259,6 +303,7 @@ public sealed class ClientHarness : IAsyncDisposable
     public ContactsViewModel Contacts() => new(Api, Session, Navigator, Dialogs, Ui);
     public FeedViewModel Feed() => new(Api, Session, Navigator, Dialogs, Ui, TimeProvider.System);
     public ComposePostViewModel Compose(FeedViewModel feed) => new(Api, feed, Navigator);
+    public LauncherViewModel Launcher(ISettingsStore settings, ChatApi? api = null) => new(api ?? Api, Session, Navigator, Dialogs, settings);
 
     public async ValueTask DisposeAsync()
     {

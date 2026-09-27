@@ -19,6 +19,13 @@ public sealed class User
     public string? Phone { get; set; }
 
     public string? AvatarUrl { get; set; }
+
+    /// <summary>Roles from Clerk's public metadata, comma-separated (e.g. "farmer,trader"); they decide which sub-apps the user gets.</summary>
+    public string Roles { get; set; } = "";
+
+    /// <summary>Sub-app ids the user pinned in the launcher, comma-separated, in order; null for the defaults.</summary>
+    public string? PinnedApps { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ProfileSyncedAt { get; set; }
 

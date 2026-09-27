@@ -5,6 +5,7 @@
 @inject ChatSession Session
 @inject ChatsViewModel Chats
 @inject ContactsViewModel Contacts
+@inject LauncherViewModel Launcher
 @inject WebDispatcher Dispatcher
 @inject NavigationManager Navigation
 
@@ -24,28 +25,22 @@ else if (!_signedIn)
 else
 {
     <div class="shell">
+        @* The launcher, then the apps the user pinned there (on a phone, the first four), then Me. *@
         <nav class="tabs">
             <div class="brand"><span class="logo small">N</span> Ndeipi</div>
-            <NavLink href="chats" class="tab">
-                <span class="icon">💬</span><span>Chats</span>
-                @if (Chats.TotalUnread > 0)
-                {
-                    <span class="badge">@(Chats.TotalUnread > 99 ? "99+" : Chats.TotalUnread)</span>
-                }
+            <NavLink href="" Match="NavLinkMatch.All" class="tab">
+                <span class="icon">▦</span><span>Apps</span>
             </NavLink>
-            <NavLink href="feed" class="tab">
-                <span class="icon">📷</span><span>Feed</span>
-            </NavLink>
-            <NavLink href="shamwaris" class="tab">
-                <span class="icon">👥</span><span>Shamwaris</span>
-                @if (Contacts.Incoming.Count > 0)
-                {
-                    <span class="badge">@Contacts.Incoming.Count</span>
-                }
-            </NavLink>
-            <NavLink href="herd" class="tab">
-                <span class="icon">🐄</span><span>Herd</span>
-            </NavLink>
+            @foreach (var app in Launcher.Pinned.Where(a => WebSubApps.HasPages(a.Route)).Take(MaxPinnedTabs))
+            {
+                <NavLink href="@app.Route" class="tab" @key="app.Id">
+                    <span class="icon">@app.Icon</span><span>@app.Title</span>
+                    @if (BadgeFor(app.Id) is { } badge)
+                    {
+                        <span class="badge">@badge</span>
+                    }
+                </NavLink>
+            }
             <NavLink href="me" class="tab">
                 <span class="icon">👤</span><span>Me</span>
             </NavLink>
@@ -55,22 +50,53 @@ else
             {
                 <div class="offline">Connecting…</div>
             }
-            @Body
+            @if (DeniedApp is not null)
+            {
+                <div class="empty">
+                    <h2>You don't have access to this app</h2>
+                    <p>It isn't switched on for your account. Ask your administrator if you need it.</p>
+                    <a class="button primary" href="">Back to your apps</a>
+                </div>
+            }
+            else
+            {
+                @Body
+            }
         </main>
     </div>
 }
 
 @code {
+    /// <summary>Pinned apps in the bottom bar on a phone: with Apps and Me, that's six.</summary>
+    const int MaxPinnedTabs = 4;
+
     bool _started, _signedIn;
 
-    bool IsSignInPage =>
-        Navigation.ToBaseRelativePath(Navigation.Uri).Split('?', '#')[0].TrimEnd('/') is WebNavigator.SignInPath or WebNavigator.CallbackPath;
+    string RelativePath => Navigation.ToBaseRelativePath(Navigation.Uri);
+
+    bool IsSignInPage => RelativePath.Split('?', '#')[0].TrimEnd('/') is WebNavigator.SignInPath or WebNavigator.CallbackPath;
+
+    /// <summary>
+    /// The sub-app on screen, if the manifest leaves it out: the user's roles don't allow it, or it's
+    /// switched off. The API refuses it too; this just says so instead of showing errors.
+    /// </summary>
+    string? DeniedApp => Launcher.IsLoaded && WebSubApps.OwnerOf(RelativePath) is { } owner && !Launcher.Allows(owner)
+        ? owner
+        : null;
+
+    string? BadgeFor(string appId) => appId switch
+    {
+        SubApps.Chats when Chats.TotalUnread > 0 => Chats.TotalUnread > 99 ? "99+" : Chats.TotalUnread.ToString(),
+        SubApps.Shamwaris when Contacts.Incoming.Count > 0 => Contacts.Incoming.Count.ToString(),
+        _ => null
+    };
 
     protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
         Dispatcher.Changed += Refresh;
         Session.Connection.StateChanged += Refresh;
+        Launcher.ManifestChanged += Refresh;
 
         // Signed in: connect and stay on the page asked for. Otherwise: the sign-in page.
         try
@@ -82,21 +108,30 @@ else
             // A saved sign-in the server no longer accepts; AuthService has already cleared it.
             Navigation.NavigateTo(WebNavigator.SignInPath, replace: true);
         }
+        // The manifest before any page: it decides which pages this user may see.
         _signedIn = await Auth.IsSignedInAsync();
-        _started = true;
-
         if (_signedIn)
-        {
-            // Fills the tab badges before those tabs are opened.
+            await LoadAppsAsync();
+        _started = true;
+    }
+
+    /// <summary>The manifest, then the badges of the apps it allows.</summary>
+    async Task LoadAppsAsync()
+    {
+        await Launcher.LoadCommand.ExecuteAsync(null);
+        if (Launcher.Allows(SubApps.Chats))
             _ = Chats.RefreshCommand.ExecuteAsync(null);
+        if (Launcher.Allows(SubApps.Shamwaris))
             _ = Contacts.LoadCommand.ExecuteAsync(null);
-        }
     }
 
     /// <summary>Signing in or out always ends in a navigation, so that's when to look again.</summary>
     void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _ = InvokeAsync(async () =>
     {
+        var wasSignedIn = _signedIn;
         _signedIn = await Auth.IsSignedInAsync();
+        if (_signedIn && !wasSignedIn)
+            await LoadAppsAsync();
         StateHasChanged();
     });
 
@@ -107,5 +142,6 @@ else
         Navigation.LocationChanged -= OnLocationChanged;
         Dispatcher.Changed -= Refresh;
         Session.Connection.StateChanged -= Refresh;
+        Launcher.ManifestChanged -= Refresh;
     }
 }

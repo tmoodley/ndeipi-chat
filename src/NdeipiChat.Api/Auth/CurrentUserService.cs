@@ -56,6 +56,7 @@ public sealed class CurrentUserService(
             user.EmailVerified = profile.PrimaryEmailVerified;
             user.Phone = ShamwariContact.NormalizePhone(profile.VerifiedPhone);
             user.AvatarUrl = profile.ImageUrl;
+            user.Roles = string.Join(",", profile.Roles);
             user.ProfileSyncedAt = now;
         }
         if (user.DisplayName.Length == 0)

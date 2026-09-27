@@ -12,6 +12,8 @@ talk to, right in the conversation.
   and send money. See [Shamwaris](#shamwaris).
 - **Feed:** public photo posts with likes. Authors can mint a post as an NFT, which Ndeipi
   Enterprise Server mints from the same queue as token transfers. See [Feed and NFTs](#feed-and-nfts).
+- **Launcher:** the home screen, a grid of sub-apps from a manifest the server builds for each
+  user. Roles in Clerk decide who gets which app. See [Launcher and sub-apps](#launcher-and-sub-apps).
 - **Livestock registry:** farmers register cattle from a face photo and a side photo. Claude grades
   breed, body condition and visible health, and a muzzle-print model stops the same animal being
   registered twice. See [docs/livestock-registry.md](docs/livestock-registry.md).
@@ -152,6 +154,44 @@ Minting is off until the contract is set:
 
 `PublicBaseUrl` is the address used in tokenURIs and image links. They outlive any request, so
 set it to the public HTTPS address. It's blank in Development, where the request's own address is used.
+
+### Launcher and sub-apps
+
+The app and the site open on a launcher: a grid of sub-apps (Chats, Feed, Shamwaris, Wallet, Herd).
+This is step 1 of the Super App SRS, covering SR-01, SR-03-03 and the manifest cache part of
+NFR-03-01.
+
+- **Manifest.** `GET /api/launcher` returns the apps this user may use, with the SR-01-02 fields:
+  version, minimum shell version, scopes, and bundle URI and hash. Bundle URI and hash are empty
+  for built-in apps; they're for sub-apps loaded at runtime later. Clients keep the last manifest,
+  so the launcher works offline.
+- **Pinning.** ★ pins an app; pins are saved per user (`PUT /api/launcher/pins`). On the web, the
+  first four pinned apps go in the navigation. On a phone, the first three get tabs (Android shows
+  five tabs at most), and the rest open from the launcher.
+- **Opening and closing.** Launched apps show under **Open**, and ✕ closes one without restarting
+  the app (SR-01-03).
+- **Roles.** Give users roles in Clerk under **Users → (user) → Metadata → Public**:
+  `{ "roles": ["farmer"] }`. The API picks them up on the user's next profile sync (up to
+  `Clerk:ProfileRefreshInterval`, 12 hours).
+- **Access.** Apps a user's roles don't allow are left out of their manifest, and the API refuses
+  those apps' endpoints with a 403. Hiding them isn't the only protection.
+
+Configure apps under `Launcher:Apps`, by id. Built-in apps can be restricted, renamed, reordered,
+pinned by default or switched off. A new id adds an app to the manifest, which is how sub-apps
+loaded at runtime will be listed:
+
+```json
+"Launcher": {
+  "Apps": {
+    "herd": { "RequiredRoles": [ "farmer" ] },
+    "wallet": { "Enabled": false },
+    "trading": { "Title": "Trading Terminal", "Route": "trading", "Icon": "📈", "RequiredRoles": [ "trader" ] }
+  }
+}
+```
+
+An app a user has access to, but that this version of the client doesn't include (like `trading`
+above), shows as "Not on the web yet" on the site, and as an update prompt in the app.
 
 ## Running the app
 

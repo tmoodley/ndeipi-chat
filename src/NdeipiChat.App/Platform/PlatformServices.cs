@@ -53,13 +53,31 @@ public sealed class MauiBrowserAuthenticator : IBrowserAuthenticator
 public sealed class ShellNavigator : INavigator
 {
     public Task GoToAsync(string route, IDictionary<string, object>? parameters = null) =>
-        MainThread.InvokeOnMainThreadAsync(() => parameters is null
-            ? Shell.Current.GoToAsync(route)
-            : Shell.Current.GoToAsync(route, parameters));
+        MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            if (route == Routes.Launcher)
+                return Shell.Current.GoToAsync("//main/launcher");
+            if (route.StartsWith(Routes.SubAppPrefix, StringComparison.Ordinal))
+                return OpenSubAppAsync(route[Routes.SubAppPrefix.Length..]);
+            return parameters is null ? Shell.Current.GoToAsync(route) : Shell.Current.GoToAsync(route, parameters);
+        });
+
+    /// <summary>Its tab if one's showing; otherwise its page on top of the launcher.</summary>
+    static Task OpenSubAppAsync(string appId)
+    {
+        if (Shell.Current is AppShell shell && shell.TabRouteFor(appId) is { } tab)
+            return shell.GoToAsync($"//main/{tab}");
+        if (appId == SubApps.Wallet)
+            return Shell.Current.GoToAsync($"//main/launcher/{Routes.Wallet}");
+        if (AppShell.SubAppPages.ContainsKey(appId))
+            return Shell.Current.GoToAsync($"//main/launcher/{AppShell.PageRoute(appId)}");
+        // In the manifest, but not in this version of the app (sub-apps loaded at runtime come later).
+        return Shell.Current.DisplayAlertAsync("Not available yet", "This app isn't in this version of Ndeipi. Update the app to use it.", "OK");
+    }
 
     public Task GoBackAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync(".."));
 
-    public Task ShowMainAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync("//main/chats"));
+    public Task ShowMainAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync("//main/launcher"));
 
     public Task ShowSignInAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync("//signin"));
 }
