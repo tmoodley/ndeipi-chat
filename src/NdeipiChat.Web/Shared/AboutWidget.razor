@@ -1,0 +1,24 @@
+@* "About me" on a profile: the bio, and when they joined, where they are, their site. *@
+<section class="widget glass">
+    <div class="widget-head"><h3>About @(Profile.IsMe ? "me" : Profile.User.DisplayName.Split(' ')[0])</h3></div>
+    <p style="margin: 0; line-height: 1.6">@(Profile.Bio ?? (Profile.IsMe ? "Add a few lines about yourself under About." : "No bio yet."))</p>
+    <dl class="facts">
+        <dt>Joined</dt><dd>@Profile.JoinedAt.ToLocalTime().ToString("d MMMM yyyy")</dd>
+        @if (Profile.City is { } city)
+        {
+            <dt>City</dt><dd>@city</dd>
+        }
+        @if (Profile.Website is { } web)
+        {
+            <dt>Web</dt><dd><a href="@web" target="_blank" rel="noopener">@(new Uri(web).Host)</a></dd>
+        }
+        @if (Profile.User.Username is { } username)
+        {
+            <dt>Username</dt><dd>@@@username</dd>
+        }
+    </dl>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public SocialProfileDto Profile { get; set; } = null!;
+}

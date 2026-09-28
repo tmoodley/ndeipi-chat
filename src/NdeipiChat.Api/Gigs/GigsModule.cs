@@ -50,6 +50,15 @@ public static class GigsModule
             return Results.Ok(await gigs.SetAvailabilityAsync(me, request, http.RequestAborted));
         });
 
+        api.MapGet("/board/categories", async (GigsService gigs, HttpContext http) =>
+            Results.Ok(await gigs.CategoriesAsync(http.RequestAborted)));
+
+        api.MapGet("/board", async (string? skill, HttpContext http, CurrentUserService users, GigsService gigs) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await gigs.BoardAsync(me, skill, http.RequestAborted));
+        });
+
         api.MapGet("/map", async (HttpContext http, CurrentUserService users, GigsService gigs) =>
         {
             var me = await users.GetAsync(http.User, http.RequestAborted);

@@ -1,10 +1,18 @@
 @* One post: author, photos (swipe or scroll sideways when there are several), likes, caption, NFT. *@
 <article class="post">
     <header class="post-head">
-        <Avatar Url="@Post.AuthorAvatarUrl" Initials="@Post.AuthorInitials" Size="36" />
+        <a href="u/@Post.Post.Author.Id">
+            <HexAvatar Url="@Post.AuthorAvatarUrl" Initials="@Post.AuthorInitials" Tone="@SocialActions.ToneFor(Post.Post.Author.Id)" Size="44" />
+        </a>
         <div class="row-main">
-            <span class="name">@Post.AuthorName</span>
-            <a class="time" href="posts/@Post.Id">@Post.TimeText</a>
+            <a class="name name-link" href="u/@Post.Post.Author.Id">@Post.AuthorName</a>
+            <span class="time">
+                <a class="time" href="posts/@Post.Id">@Post.TimeText</a>
+                @if (Post.Post.Group is { } group)
+                {
+                    <text> · </text><a class="group-chip" href="groups/@group.Id">in @group.Name</a>
+                }
+            </span>
         </div>
         @if (Post.CanDelete)
         {
@@ -12,7 +20,12 @@
         }
     </header>
 
-    <div class="post-photos @(Post.HasSeveralPhotos ? "several" : "")">
+    @if (Post.Photos.Count == 0 && Post.HasCaption)
+    {
+        @* A text post: the words are the post. *@
+        <p class="caption" style="font-size: 17px; margin-top: 2px">@Post.Caption</p>
+    }
+    <div class="post-photos @(Post.HasSeveralPhotos ? "several" : "")" style="@(Post.Photos.Count == 0 ? "display:none" : "")">
         @foreach (var photo in Post.Photos)
         {
             <img src="@photo.Url" alt="" loading="lazy" width="@photo.Width" height="@photo.Height"
@@ -34,7 +47,7 @@
         }
     </div>
 
-    @if (Post.HasCaption)
+    @if (Post.HasCaption && Post.Photos.Count > 0)
     {
         <p class="caption"><strong>@Post.AuthorName</strong> @Post.Caption</p>
     }

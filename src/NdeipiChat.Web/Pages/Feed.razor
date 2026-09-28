@@ -1,33 +1,337 @@
 @page "/feed"
-@inherits ViewModelPage<FeedViewModel>
+@inject ChatApi Api
+@inject ChatSession Session
+@inject SocialActions Social
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
 
-<PageTitle>Feed · Ndeipi Chat</PageTitle>
+@* Social: your profile at the top; then the feed (everyone, or people you follow and your groups),
+   your groups, people to find, and your photos. *@
 
-<header class="bar">
-    <h1>Feed</h1>
-    <button class="bar-action text" @onclick="() => Vm.ComposeCommand.ExecuteAsync(null)">New post</button>
-</header>
+<PageTitle>Social · Ndeipi</PageTitle>
 
-<div class="feed">
-    @if (Vm.IsEmpty)
+<div class="sc-page">
+    @if (_me is { } me)
     {
-        <div class="empty">
-            <p>No posts yet.</p>
-            <button class="primary" @onclick="() => Vm.ComposeCommand.ExecuteAsync(null)">Share the first photo</button>
-        </div>
+        <ProfileHero Profile="me" StatClicked="OnStat">
+            <Actions>
+                <a class="button btn-a" href="u/@me.User.Id">View profile</a>
+                <a class="button btn-b" href="feed/new">New post</a>
+            </Actions>
+        </ProfileHero>
     }
-    @foreach (var post in Vm.Posts)
+
+    <nav class="sc-tabs glass">
+        <button class="sc-tab @On("foryou")" @onclick='() => GoAsync("foryou")'><span class="ico">🏠</span>For you</button>
+        <button class="sc-tab @On("following")" @onclick='() => GoAsync("following")'><span class="ico">⭐</span>Following</button>
+        <button class="sc-tab @On("groups")" @onclick='() => GoAsync("groups")'><span class="ico">👥</span>Groups</button>
+        <button class="sc-tab @On("people")" @onclick='() => GoAsync("people")'><span class="ico">🧭</span>People</button>
+        <button class="sc-tab @On("photos")" @onclick='() => GoAsync("photos")'><span class="ico">🖼️</span>Photos</button>
+    </nav>
+
+    @if (_error is not null)
     {
-        <PostCard @key="post.Id" Post="post" Feed="Vm" />
+        <p class="error">@_error</p>
     }
-    @if (Vm.HasMore)
+
+    @switch (_tab)
     {
-        <button class="secondary wide" disabled="@Vm.IsLoadingMore" @onclick="() => Vm.LoadMoreCommand.ExecuteAsync(null)">
-            @(Vm.IsLoadingMore ? "Loading…" : "Load more")
-        </button>
+        case "foryou" or "following":
+            <div class="sc-grid">
+                <div class="sc-col side">
+                    @if (_me is { } about)
+                    {
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>About me</h3><a href="u/@about.User.Id?tab=about">Edit</a></div>
+                            <p style="margin: 0">@(about.Bio ?? "Say a little about yourself on your profile.")</p>
+                            <dl class="facts">
+                                <dt>Joined</dt><dd>@about.JoinedAt.ToLocalTime().ToString("d MMMM yyyy")</dd>
+                                @if (about.City is { } city)
+                                {
+                                    <dt>City</dt><dd>@city</dd>
+                                }
+                                @if (about.Website is { } web)
+                                {
+                                    <dt>Web</dt><dd><a href="@web" target="_blank" rel="noopener">@(new Uri(web).Host)</a></dd>
+                                }
+                            </dl>
+                        </section>
+                    }
+                    <section class="widget glass">
+                        <div class="widget-head"><h3>My groups<em>@_myGroups.Count</em></h3><button @onclick='() => GoAsync("groups")'>See all</button></div>
+                        @foreach (var g in _myGroups.Take(6))
+                        {
+                            <a class="mini-row" href="groups/@g.Id" @key="g.Id">
+                                <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="44" Class="icon-hex" />
+                                <span class="grow"><strong>@g.Name</strong><small>@g.MemberCount members</small></span>
+                            </a>
+                        }
+                        @if (_myGroups.Count == 0)
+                        {
+                            <p class="muted small" style="margin: 0">Join a group or start one under Groups.</p>
+                        }
+                    </section>
+                </div>
+
+                <div class="sc-col">
+                    <SocialFeed Feed="_feed" Empty="@(_tab == "following" ? "Follow people or join groups, and their posts show up here." : "No posts yet. Be the first!")" />
+                </div>
+
+                <div class="sc-col side">
+                    <section class="widget glass">
+                        <div class="widget-head"><h3>Following<em>@_following.Count</em></h3></div>
+                        @foreach (var p in _following.Take(8))
+                        {
+                            <div class="mini-row" @key="p.User.Id">
+                                <a href="u/@p.User.Id"><HexAvatar Url="@p.User.AvatarUrl" Initials="@Display.Initials(p.User.DisplayName)" Tone="@SocialActions.ToneFor(p.User.Id)" Size="44" /></a>
+                                <a class="grow" href="u/@p.User.Id" style="color: var(--text)"><strong>@p.User.DisplayName</strong><small>@(p.Bio ?? $"{p.PostCount} posts")</small></a>
+                                @if (Social.CanChat)
+                                {
+                                    <button class="round-btn" title="Message" @onclick="() => Social.MessageAsync(p.User.Id)">💬</button>
+                                }
+                            </div>
+                        }
+                        @if (_following.Count == 0)
+                        {
+                            <p class="muted small" style="margin: 0">Nobody yet. Find people under People.</p>
+                        }
+                    </section>
+                    <section class="widget glass">
+                        <div class="widget-head"><h3>People to follow</h3><button @onclick='() => GoAsync("people")'>More</button></div>
+                        @foreach (var p in _suggested.Take(5))
+                        {
+                            <div class="mini-row" @key="p.User.Id">
+                                <a href="u/@p.User.Id"><HexAvatar Url="@p.User.AvatarUrl" Initials="@Display.Initials(p.User.DisplayName)" Tone="@SocialActions.ToneFor(p.User.Id)" Size="44" /></a>
+                                <a class="grow" href="u/@p.User.Id" style="color: var(--text)"><strong>@p.User.DisplayName</strong><small>@p.FollowerCount followers</small></a>
+                                <button class="round-btn" title="Follow" @onclick="() => FollowAsync(p)">＋</button>
+                            </div>
+                        }
+                    </section>
+                </div>
+            </div>
+            break;
+
+        case "groups":
+            <div class="sc-section-head">
+                <div><div class="kicker">Browse groups</div><div class="big">Groups<em>@_groups.Count</em></div></div>
+                <div class="links"><button @onclick="() => _creating = !_creating">@(_creating ? "Cancel" : "Create group +")</button></div>
+            </div>
+            <div class="sc-filter glass">
+                <input type="search" placeholder="Search groups" @bind="_groupQuery" @bind:event="oninput" @bind:after="LoadGroupsAsync" />
+                <div class="seg">
+                    <button class="@(_mineOnly ? "on" : "")" @onclick="() => SetMineAsync(true)">My groups</button>
+                    <button class="@(_mineOnly ? "" : "on")" @onclick="() => SetMineAsync(false)">Discover</button>
+                </div>
+            </div>
+            @if (_creating)
+            {
+                <form class="widget glass" @onsubmit="CreateGroupAsync">
+                    <div class="widget-head"><h3>New group</h3></div>
+                    <div class="inline-form">
+                        <input class="narrow" style="max-width: 80px; text-align: center; font-size: 22px" @bind="_newIcon" maxlength="4" title="Icon (an emoji)" />
+                        <input @bind="_newName" placeholder="Group name" maxlength="@SocialGraphContract.MaxGroupName" required />
+                    </div>
+                    <textarea @bind="_newDescription" placeholder="What's it about?" maxlength="@SocialGraphContract.MaxGroupDescription"></textarea>
+                    <textarea @bind="_newRules" placeholder="Rules (optional), one per line" maxlength="@SocialGraphContract.MaxGroupRules"></textarea>
+                    <div class="chips">
+                        @foreach (var tone in SocialGraphContract.GroupTones)
+                        {
+                            <button type="button" class="tile-icon tone-@tone" style="width: 30px; height: 30px; border-radius: 10px; outline: @(_newTone == tone ? "3px solid var(--text)" : "none")" title="@tone" @onclick="() => _newTone = tone"></button>
+                        }
+                    </div>
+                    <label class="drawer-row" style="padding: 0"><input type="checkbox" class="toggle" @bind="_newPrivate" /><span class="grow">Private: only members see posts, and you add them</span></label>
+                    <button type="submit" class="btn-a wide" disabled="@_busy">Create group</button>
+                </form>
+            }
+            <div class="card-grid">
+                @foreach (var g in _groups)
+                {
+                    <GroupCard @key="g.Id" Group="g" Join="JoinAsync" Joining="_busy" />
+                }
+            </div>
+            @if (_groups.Count == 0)
+            {
+                <div class="empty"><p>@(_mineOnly ? "You're not in any groups yet. Discover some, or create one." : "No groups found.")</p></div>
+            }
+            break;
+
+        case "people":
+            <div class="sc-section-head">
+                <div><div class="kicker">Find people</div><div class="big">People<em>@_people.Count</em></div></div>
+            </div>
+            <div class="sc-filter glass">
+                <input type="search" placeholder="Search by name" @bind="_peopleQuery" @bind:event="oninput" @bind:after="LoadPeopleAsync" />
+                <div class="seg">
+                    <button class="@(_peopleMode == "suggested" ? "on" : "")" @onclick='() => SetPeopleModeAsync("suggested")'>Suggested</button>
+                    <button class="@(_peopleMode == "following" ? "on" : "")" @onclick='() => SetPeopleModeAsync("following")'>Following</button>
+                    <button class="@(_peopleMode == "followers" ? "on" : "")" @onclick='() => SetPeopleModeAsync("followers")'>Followers</button>
+                </div>
+            </div>
+            <div class="card-grid">
+                @foreach (var p in _people)
+                {
+                    <PersonCard @key="p.User.Id" Person="p" />
+                }
+            </div>
+            @if (_people.Count == 0)
+            {
+                <div class="empty"><p>Nobody here yet.</p></div>
+            }
+            break;
+
+        case "photos":
+            <div class="sc-section-head">
+                <div><div class="kicker">Your</div><div class="big">Photos<em>@(_me?.Photos.Count ?? 0)</em></div></div>
+                <div class="links"><a href="feed/new">Upload photos +</a></div>
+            </div>
+            @if (_me is { Photos.Count: > 0 } withPhotos)
+            {
+                <div class="album-grid">
+                    @foreach (var photo in withPhotos.Photos)
+                    {
+                        <a class="album" @key="photo.Id" href="@photo.Url.Replace("/thumb", "/full")" target="_blank" rel="noopener">
+                            <span class="art" style="background: url('@photo.Url') center / cover"></span>
+                        </a>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty"><p>Photos you post show up here.</p></div>
+            }
+            break;
     }
 </div>
 
 @code {
-    protected override Task OnInitializedAsync() => Vm.RefreshCommand.ExecuteAsync(null);
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+
+    FeedViewModel _feed = null!;
+    SocialProfileDto? _me;
+    List<GroupSummaryDto> _myGroups = [], _groups = [];
+    List<PersonCardDto> _following = [], _suggested = [], _people = [];
+    string _tab = "foryou", _groupQuery = "", _peopleQuery = "", _peopleMode = "suggested";
+    string? _error;
+    bool _mineOnly = true, _creating, _busy, _newPrivate;
+    string _newName = "", _newDescription = "", _newRules = "", _newIcon = "👥", _newTone = "purple";
+
+    string On(string tab) => _tab == tab ? "on" : "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _feed = ActivatorUtilities.CreateInstance<FeedViewModel>(Services);
+        _tab = Tab is "following" or "groups" or "people" or "photos" ? Tab : "foryou";
+        await Task.WhenAll(LoadMeAsync(), LoadTabAsync());
+    }
+
+    async Task LoadMeAsync()
+    {
+        await Run(async () =>
+        {
+            var meId = Session.MyUserId;
+            _me = await Api.GetJsonAsync<SocialProfileDto>($"{SocialActions.Base}/profiles/{meId}");
+            _myGroups = await Api.GetJsonAsync<List<GroupSummaryDto>>($"{SocialActions.Base}/groups?mine=true");
+            _following = await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/profiles/{meId}/following");
+            _suggested = await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/people");
+        });
+    }
+
+    async Task GoAsync(string tab)
+    {
+        _tab = tab;
+        Navigation.NavigateTo(tab == "foryou" ? "feed" : $"feed?tab={tab}", replace: true);
+        await LoadTabAsync();
+    }
+
+    Task OnStat(string stat) => stat switch
+    {
+        "groups" => GoAsync("groups"),
+        "followers" => SetPeopleModeAndGoAsync("followers"),
+        "following" => SetPeopleModeAndGoAsync("following"),
+        _ => Task.CompletedTask
+    };
+
+    async Task SetPeopleModeAndGoAsync(string mode)
+    {
+        _peopleMode = mode;
+        await GoAsync("people");
+    }
+
+    Task LoadTabAsync() => _tab switch
+    {
+        "groups" => LoadGroupsAsync(),
+        "people" => LoadPeopleAsync(),
+        "photos" => Task.CompletedTask,
+        _ => LoadFeedAsync()
+    };
+
+    async Task LoadFeedAsync()
+    {
+        _feed.Scope = _tab == "following" ? FeedScopes.Following : null;
+        await _feed.RefreshCommand.ExecuteAsync(null);
+    }
+
+    Task LoadGroupsAsync() => Run(async () =>
+        _groups = await Api.GetJsonAsync<List<GroupSummaryDto>>($"{SocialActions.Base}/groups?mine={(_mineOnly && _groupQuery.Length == 0 ? "true" : "false")}&q={Uri.EscapeDataString(_groupQuery)}"));
+
+    async Task SetMineAsync(bool mine)
+    {
+        _mineOnly = mine;
+        await LoadGroupsAsync();
+    }
+
+    async Task SetPeopleModeAsync(string mode)
+    {
+        _peopleMode = mode;
+        await LoadPeopleAsync();
+    }
+
+    Task LoadPeopleAsync() => Run(async () =>
+    {
+        var meId = Session.MyUserId;
+        _people = _peopleQuery.Length > 0 || _peopleMode == "suggested"
+            ? await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/people?q={Uri.EscapeDataString(_peopleQuery)}")
+            : await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/profiles/{meId}/{_peopleMode}");
+    });
+
+    async Task FollowAsync(PersonCardDto person)
+    {
+        await Run(async () =>
+        {
+            await Social.FollowAsync(person.User.Id, true);
+            _suggested.Remove(person);
+            _following.Insert(0, person with { IFollow = true });
+        });
+    }
+
+    async Task JoinAsync(GroupSummaryDto group) => await Run(async () =>
+    {
+        var joined = await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{group.Id}/join");
+        _groups[_groups.IndexOf(group)] = joined.Group;
+        _myGroups.Add(joined.Group);
+    });
+
+    async Task CreateGroupAsync() => await Run(async () =>
+    {
+        var created = await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups",
+            new SaveGroupRequest(_newName, _newDescription, _newRules, _newIcon, _newTone, _newPrivate));
+        Navigation.NavigateTo($"groups/{created.Group.Id}");
+    });
+
+    async Task Run(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 }

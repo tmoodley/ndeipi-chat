@@ -1,0 +1,30 @@
+@* A group as a card: banner in its colour, its icon in a hexagon, members and posts, Join / Open. *@
+<article class="person-card glass">
+    <div class="strip tone-@Group.Tone"></div>
+    <a href="groups/@Group.Id">
+        <HexAvatar Icon="@Group.Icon" Tone="@("tone-" + Group.Tone)" Size="92" Class="icon-hex" />
+    </a>
+    <a class="who" href="groups/@Group.Id">@Group.Name</a>
+    <div class="bio">@(Group.IsPrivate ? "🔒 Private · " : "")@Group.Description</div>
+    <div class="sc-stats">
+        <div class="sc-stat"><b>@Group.MemberCount</b><span>Members</span></div>
+        <div class="sc-stat"><b>@Group.PostCount</b><span>Posts</span></div>
+    </div>
+    <div class="pair">
+        @if (Group.IsMember)
+        {
+            <a class="button btn-b" href="groups/@Group.Id">Open</a>
+        }
+        else
+        {
+            <button class="btn-a" disabled="@(Group.IsPrivate || Joining)" @onclick="() => Join.InvokeAsync(Group)">@(Group.IsPrivate ? "Invite only" : "Join +")</button>
+            <a class="button secondary" href="groups/@Group.Id">View</a>
+        }
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public GroupSummaryDto Group { get; set; } = null!;
+    [Parameter] public EventCallback<GroupSummaryDto> Join { get; set; }
+    [Parameter] public bool Joining { get; set; }
+}

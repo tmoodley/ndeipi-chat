@@ -1,0 +1,50 @@
+@* A person as a card: banner, hexagon avatar, stats, and Follow / Message. *@
+@inject SocialActions Social
+
+<article class="person-card glass">
+    <div class="strip @SocialActions.ToneFor(Person.User.Id)"></div>
+    <a href="u/@Person.User.Id">
+        <HexAvatar Url="@Person.User.AvatarUrl" Initials="@Display.Initials(Person.User.DisplayName)" Tone="@SocialActions.ToneFor(Person.User.Id)" Size="92"
+                   Badge="@(Person.IsShamwari ? "✓" : null)" />
+    </a>
+    <a class="who" href="u/@Person.User.Id">@Person.User.DisplayName</a>
+    <div class="bio">@(Person.Bio ?? Person.City ?? (Person.User.Username is { } u ? "@" + u : ""))</div>
+    <div class="sc-stats">
+        <div class="sc-stat"><b>@Person.PostCount</b><span>Posts</span></div>
+        <div class="sc-stat"><b>@_followers</b><span>Followers</span></div>
+    </div>
+    <div class="pair">
+        <button class="@(_following ? "secondary" : "btn-a")" disabled="@_busy" @onclick="ToggleFollowAsync">@(_following ? "Following ✓" : "Follow +")</button>
+        @if (Social.CanChat)
+        {
+            <button class="btn-b" disabled="@_busy" @onclick="() => Social.MessageAsync(Person.User.Id)">Message</button>
+        }
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public PersonCardDto Person { get; set; } = null!;
+
+    bool _following, _busy;
+    int _followers;
+
+    protected override void OnParametersSet() => (_following, _followers) = (Person.IFollow, Person.FollowerCount);
+
+    async Task ToggleFollowAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Social.FollowAsync(Person.User.Id, !_following);
+            _followers += _following ? -1 : 1;
+            _following = !_following;
+        }
+        catch (ApiException)
+        {
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

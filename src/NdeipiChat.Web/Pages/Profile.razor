@@ -1,0 +1,291 @@
+@page "/u/{Id:guid}"
+@inject ChatApi Api
+@inject SocialActions Social
+@inject IServiceProvider Services
+@inject NavigationManager Navigation
+
+@* A person's profile: who they are, what they post, their groups and photos, and ways to connect
+   across the apps: follow, message, pay, add as a Shamwari, hire. *@
+
+<PageTitle>@(_profile?.User.DisplayName ?? "Profile") · Ndeipi</PageTitle>
+
+<div class="sc-page">
+    @if (_profile is null)
+    {
+        <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+    }
+    else
+    {
+        var p = _profile;
+        <ProfileHero Profile="p" StatClicked="OnStat">
+            <Actions>
+                @if (p.IsMe)
+                {
+                    <button class="btn-a" @onclick='() => _tab = "about"'>Edit profile</button>
+                    <a class="button btn-b" href="feed/new">New post</a>
+                }
+                else
+                {
+                    <button class="@(p.IFollow ? "secondary" : "btn-a")" disabled="@_busy" @onclick="ToggleFollowAsync">@(p.IFollow ? "Following ✓" : "Follow +")</button>
+                    @if (Social.CanChat)
+                    {
+                        <button class="btn-b" disabled="@_busy" @onclick="() => Social.MessageAsync(p.User.Id)">Send message</button>
+                    }
+                }
+            </Actions>
+        </ProfileHero>
+
+        @if (!p.IsMe)
+        {
+            <div class="quick-row">
+                @if (Social.CanChat && Social.CanPay)
+                {
+                    <button class="quick green" @onclick='() => Social.MessageAsync(p.User.Id, "send-money")'><span class="ring">$</span>Send money</button>
+                }
+                @if (Social.CanChat)
+                {
+                    <button class="quick blue" @onclick='() => Social.MessageAsync(p.User.Id, "transfer")'><span class="ring">🪙</span>Send tokens</button>
+                }
+                @if (p.Gig is not null && Social.CanHire)
+                {
+                    <button class="quick brown" @onclick="() => Social.Hire(p.User.Id)"><span class="ring">🧰</span>Hire</button>
+                }
+                @if (!p.IsShamwari)
+                {
+                    <button class="quick purple" disabled="@_busy" @onclick="AddShamwariAsync"><span class="ring">🤝</span>@(_shamwariAsked ? "Asked ✓" : "Add Shamwari")</button>
+                }
+            </div>
+        }
+
+        <nav class="sc-tabs glass">
+            <button class="sc-tab @On("timeline")" @onclick='() => _tab = "timeline"'><span class="ico">📰</span>Timeline</button>
+            <button class="sc-tab @On("about")" @onclick='() => _tab = "about"'><span class="ico">🙂</span>About</button>
+            <button class="sc-tab @On("groups")" @onclick='() => _tab = "groups"'><span class="ico">👥</span>Groups</button>
+            <button class="sc-tab @On("photos")" @onclick='() => _tab = "photos"'><span class="ico">🖼️</span>Photos</button>
+            <button class="sc-tab @On("followers")" @onclick='() => ShowPeopleAsync("followers")'><span class="ico">⭐</span>Followers</button>
+            <button class="sc-tab @On("following")" @onclick='() => ShowPeopleAsync("following")'><span class="ico">➡️</span>Following</button>
+        </nav>
+
+        @if (_error is not null)
+        {
+            <p class="error">@_error</p>
+        }
+
+        @switch (_tab)
+        {
+            case "timeline":
+                <div class="sc-grid">
+                    <div class="sc-col side">
+                        <AboutWidget Profile="p" />
+                        @if (p.Gig is { } gig)
+                        {
+                            <section class="widget glass">
+                                <div class="widget-head"><h3>Work</h3>@if (!p.IsMe && Social.CanHire) {<button @onclick="() => Social.Hire(p.User.Id)">Hire</button>}</div>
+                                <p style="margin: 0; font-weight: 600">@gig.Headline</p>
+                                <div class="chips">
+                                    @foreach (var skill in gig.Skills)
+                                    {
+                                        <span class="chip-tag">@GigSkills.Label(skill)</span>
+                                    }
+                                </div>
+                                <p class="muted small" style="margin: 0">@(gig.Rating is { } r ? $"★ {r:0.0} from {gig.RatingCount}" : "No ratings yet") · @gig.CompletedGigs gigs done@(gig.IsAvailable ? " · available now" : "")</p>
+                            </section>
+                        }
+                    </div>
+                    <div class="sc-col">
+                        <SocialFeed Feed="_feed" CanPost="p.IsMe" Empty="@(p.IsMe ? "Nothing posted yet." : $"{p.User.DisplayName} hasn't posted yet.")" />
+                    </div>
+                    <div class="sc-col side">
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Photos<em>@p.Photos.Count</em></h3><button @onclick='() => _tab = "photos"'>See all</button></div>
+                            @if (p.Photos.Count == 0)
+                            {
+                                <p class="muted small" style="margin: 0">No photos yet.</p>
+                            }
+                            <div class="photo-grid">
+                                @foreach (var photo in p.Photos.Take(11))
+                                {
+                                    <img src="@photo.Url" alt="" loading="lazy" @key="photo.Id" />
+                                }
+                                @if (p.Photos.Count > 11)
+                                {
+                                    <button class="more" @onclick='() => _tab = "photos"'>+@(p.Photos.Count - 11)</button>
+                                }
+                            </div>
+                        </section>
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Groups<em>@p.Groups.Count</em></h3></div>
+                            @foreach (var g in p.Groups.Take(6))
+                            {
+                                <a class="mini-row" href="groups/@g.Id" @key="g.Id">
+                                    <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="44" Class="icon-hex" />
+                                    <span class="grow"><strong>@g.Name</strong><small>@g.MemberCount members</small></span>
+                                </a>
+                            }
+                        </section>
+                    </div>
+                </div>
+                break;
+
+            case "about":
+                <div class="sc-grid two">
+                    <div class="sc-col"><AboutWidget Profile="p" /></div>
+                    <div class="sc-col">
+                        @if (p.IsMe)
+                        {
+                            <form class="widget glass" @onsubmit="SaveAsync">
+                                <div class="widget-head"><h3>Edit your profile</h3></div>
+                                <label class="field"><span class="label">About you</span><textarea @bind="_bio" maxlength="@SocialGraphContract.MaxBio" placeholder="What you do, what you're into"></textarea></label>
+                                <div class="inline-form">
+                                    <label class="field" style="flex: 1"><span class="label">City</span><input @bind="_city" maxlength="80" /></label>
+                                    <label class="field" style="flex: 1"><span class="label">Website</span><input @bind="_website" maxlength="200" placeholder="example.com" /></label>
+                                </div>
+                                <button type="submit" class="btn-a wide" disabled="@_busy">Save</button>
+                                <p class="muted small" style="margin: 0">Your name and photo come from your account. Your work profile is in Gigs.</p>
+                            </form>
+                        }
+                        else
+                        {
+                            <section class="widget glass">
+                                <div class="widget-head"><h3>Connections</h3></div>
+                                <dl class="facts">
+                                    <dt>Shamwari</dt><dd>@(p.IsShamwari ? "Yes, you can chat and send money" : "Not yet")</dd>
+                                    <dt>Follows you</dt><dd>@(p.FollowsMe ? "Yes" : "No")</dd>
+                                    <dt>You follow</dt><dd>@(p.IFollow ? "Yes" : "No")</dd>
+                                </dl>
+                            </section>
+                        }
+                    </div>
+                </div>
+                break;
+
+            case "groups":
+                <div class="card-grid">
+                    @foreach (var g in p.Groups)
+                    {
+                        <GroupCard @key="g.Id" Group="g" Join="JoinAsync" />
+                    }
+                </div>
+                @if (p.Groups.Count == 0)
+                {
+                    <div class="empty"><p>No groups yet.</p></div>
+                }
+                break;
+
+            case "photos":
+                <div class="sc-section-head"><div><div class="kicker">Browse @p.User.DisplayName.Split(' ')[0]'s</div><div class="big">Latest photos<em>@p.Photos.Count</em></div></div></div>
+                <div class="album-grid">
+                    @foreach (var photo in p.Photos)
+                    {
+                        <a class="album" @key="photo.Id" href="@photo.Url.Replace("/thumb", "/full")" target="_blank" rel="noopener">
+                            <span class="art" style="background: url('@photo.Url') center / cover"></span>
+                        </a>
+                    }
+                </div>
+                @if (p.Photos.Count == 0)
+                {
+                    <div class="empty"><p>No photos yet.</p></div>
+                }
+                break;
+
+            default:
+                <div class="card-grid">
+                    @foreach (var person in _people)
+                    {
+                        <PersonCard @key="person.User.Id" Person="person" />
+                    }
+                </div>
+                @if (_people.Count == 0)
+                {
+                    <div class="empty"><p>Nobody yet.</p></div>
+                }
+                break;
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+
+    SocialProfileDto? _profile;
+    FeedViewModel _feed = null!;
+    List<PersonCardDto> _people = [];
+    string _tab = "timeline";
+    string? _error, _bio, _city, _website;
+    bool _busy, _shamwariAsked;
+
+    string On(string tab) => _tab == tab ? "on" : "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _feed = ActivatorUtilities.CreateInstance<FeedViewModel>(Services);
+        _feed.AuthorId = Id;
+        _tab = Tab ?? "timeline";
+        _profile = null;
+        await Run(async () =>
+        {
+            _profile = await Api.GetJsonAsync<SocialProfileDto>($"{SocialActions.Base}/profiles/{Id}");
+            (_bio, _city, _website) = (_profile.Bio, _profile.City, _profile.Website);
+        });
+        await _feed.RefreshCommand.ExecuteAsync(null);
+        if (_tab is "followers" or "following")
+            await ShowPeopleAsync(_tab);
+    }
+
+    async Task OnStat(string stat)
+    {
+        if (stat is "followers" or "following")
+            await ShowPeopleAsync(stat);
+        else
+            _tab = stat;
+    }
+
+    async Task ShowPeopleAsync(string which)
+    {
+        _tab = which;
+        await Run(async () => _people = await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/profiles/{Id}/{which}"));
+    }
+
+    async Task ToggleFollowAsync() => await Run(async () =>
+    {
+        var follow = !_profile!.IFollow;
+        await Social.FollowAsync(Id, follow);
+        _profile = _profile with { IFollow = follow, FollowerCount = _profile.FollowerCount + (follow ? 1 : -1) };
+    });
+
+    async Task AddShamwariAsync() => await Run(async () =>
+    {
+        await Social.AddShamwariAsync(Id);
+        _shamwariAsked = true;
+    });
+
+    async Task SaveAsync() => await Run(async () =>
+    {
+        _profile = await Api.SendJsonAsync<SocialProfileDto>(HttpMethod.Put, $"{SocialActions.Base}/profile", new SaveSocialProfileRequest(_bio, _city, _website));
+        _tab = "timeline";
+    });
+
+    async Task JoinAsync(GroupSummaryDto group) => await Run(async () =>
+    {
+        await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{group.Id}/join");
+        Navigation.NavigateTo($"groups/{group.Id}");
+    });
+
+    async Task Run(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

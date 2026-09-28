@@ -16,7 +16,16 @@
     <section class="conversation">
         <header class="conversation-head glass">
             <a class="icon-button button back" href="chats" title="Back">‹</a>
-            <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
+            @if (Other is { } other && Launcher.Allows(BuiltInApps.Feed))
+            {
+                <a href="u/@other.Id" title="@other.DisplayName's profile">
+                    <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
+                </a>
+            }
+            else
+            {
+                <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
+            }
             <div class="who">
                 <strong>@Vm.Title</strong>
                 @if (Vm.TypingText is not null)
@@ -91,7 +100,10 @@
     string _tab = "transfer";
     bool _open, _hidden;
 
-    string DefaultTab => Launcher.Allows(BuiltInApps.Wallet) ? "send-money" : "transfer";
+    /// <summary>In a one-to-one chat, the other person.</summary>
+    UserDto? Other => Vm.Conversation is { Type: ConversationType.Direct } c ? c.Members.FirstOrDefault(m => m.Id != Session.MyUserId) : null;
+
+    string DefaultTab =>Launcher.Allows(BuiltInApps.Wallet) ? "send-money" : "transfer";
 
     bool Showing(string tab) => _tab == tab && (_open || !_hidden);
 

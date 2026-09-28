@@ -1,0 +1,31 @@
+@* A profile's header: cover banner, hexagon avatar over it, stats on one side, actions on the other. *@
+<section class="sc-hero glass">
+    <div class="sc-cover @SocialActions.ToneFor(Profile.User.Id)"></div>
+    <div class="sc-hero-body">
+        <div class="sc-stats">
+            <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("timeline")'><b>@Profile.PostCount</b><span>Posts</span></button>
+            <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("followers")'><b>@Profile.FollowerCount</b><span>Followers</span></button>
+            <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("following")'><b>@Profile.FollowingCount</b><span>Following</span></button>
+            <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("groups")'><b>@Profile.GroupCount</b><span>Groups</span></button>
+        </div>
+        <div>
+            <HexAvatar Url="@Profile.User.AvatarUrl" Initials="@Display.Initials(Profile.User.DisplayName)" Tone="@SocialActions.ToneFor(Profile.User.Id)" Size="128"
+                       Badge="@(Profile.IsShamwari ? "✓" : Profile.Gig is { Rating: { } r } ? $"★{r:0.#}" : null)" />
+            <div class="sc-identity">
+                <div class="name">@Profile.User.DisplayName</div>
+                <div class="sub">@SubLine</div>
+            </div>
+        </div>
+        <div class="sc-actions">@Actions</div>
+    </div>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public SocialProfileDto Profile { get; set; } = null!;
+    [Parameter] public RenderFragment? Actions { get; set; }
+    [Parameter] public EventCallback<string> StatClicked { get; set; }
+
+    string SubLine => Profile.Website is { } w
+        ? new Uri(w).Host
+        : Profile.City ?? (Profile.User.Username is { } u ? "@" + u : "Ndeipi");
+}

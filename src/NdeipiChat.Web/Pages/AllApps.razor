@@ -1,0 +1,60 @@
+@page "/all-apps"
+@inherits ViewModelPage<LauncherViewModel>
+
+@* Every app on one page: search, your pinned apps, and everything else, with Edit to pin or unpin. *@
+
+<PageTitle>All apps · Ndeipi</PageTitle>
+
+<header class="bar">
+    <a class="bar-back" href="" title="Home">‹</a>
+    <h1>All apps</h1>
+    <button class="bar-action text" @onclick="() => _editing = !_editing">@(_editing ? "Done" : "Edit")</button>
+</header>
+
+<div class="page">
+    <input type="search" class="search" @bind="_query" @bind:event="oninput" placeholder="Search apps" />
+
+    @if (_editing)
+    {
+        <p class="muted small">Tap ☆ to pin an app to your home screen and navigation, ★ to unpin it.</p>
+    }
+
+    @if (Pinned.Any())
+    {
+        <div class="section-head" style="margin-top: 16px"><h3>Pinned</h3></div>
+        <div class="app-grid" style="margin-top: 10px">
+            @foreach (var app in Pinned)
+            {
+                <AppTile @key="app.Id" App="app" Launcher="Vm" ShowPin="_editing" />
+            }
+        </div>
+    }
+
+    <div class="section-head" style="margin-top: 22px"><h3>@(_editing ? "Every app" : "More apps")</h3></div>
+    <div class="app-grid" style="margin-top: 10px">
+        @foreach (var app in Others)
+        {
+            <AppTile @key="app.Id" App="app" Launcher="Vm" ShowPin="_editing" />
+        }
+    </div>
+    @if (!Pinned.Any() && !Others.Any())
+    {
+        <div class="empty"><p>No apps match "@_query".</p></div>
+    }
+</div>
+
+@code {
+    string _query = "";
+    bool _editing;
+
+    bool Matches(SubAppItemViewModel app) => _query.Length == 0
+        || app.Title.Contains(_query.Trim(), StringComparison.CurrentCultureIgnoreCase)
+        || app.Description.Contains(_query.Trim(), StringComparison.CurrentCultureIgnoreCase);
+
+    IEnumerable<SubAppItemViewModel> Pinned => Vm.Pinned.Where(Matches);
+
+    /// <summary>While editing, every app (pinned ones too) so pins can be toggled in one place.</summary>
+    IEnumerable<SubAppItemViewModel> Others => Vm.Apps.Where(a => (_editing || !a.IsPinned) && Matches(a));
+
+    protected override Task OnInitializedAsync() => Vm.IsLoaded ? Task.CompletedTask : Vm.LoadCommand.ExecuteAsync(null);
+}

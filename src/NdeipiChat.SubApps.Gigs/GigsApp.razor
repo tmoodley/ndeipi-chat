@@ -49,6 +49,7 @@
 @if (IsTopLevel)
 {
     <nav class="gg-tabs">
+        <button class="@(_view is GigsView.Board ? "active" : "")" @onclick="() => Go(new GigsView.Board())">Board</button>
         <button class="@(_view is GigsView.Map ? "active" : "")" @onclick="() => Go(new GigsView.Map())">Map</button>
         <button class="@(_view is GigsView.Mine ? "active" : "")" @onclick="() => Go(new GigsView.Mine())">My gigs@(Offers > 0 ? $" ({Offers})" : "")</button>
         <button class="@(_view is GigsView.Profile ? "active" : "")" @onclick="() => Go(new GigsView.Profile())">Work</button>
@@ -59,6 +60,9 @@
     <CascadingValue Value="this" IsFixed="true">
         @switch (_view)
         {
+            case GigsView.Board:
+                <BoardPage />
+                break;
             case GigsView.Map:
                 <MapPage />
                 break;
@@ -81,7 +85,7 @@
 @code {
     [CascadingParameter] public SubAppContext Context { get; set; } = null!;
 
-    GigsView _view = new GigsView.Map();
+    GigsView _view = new GigsView.Board();
     readonly Stack<GigsView> _history = new();
     GigDto? _toast;
     IAsyncDisposable? _news;
@@ -103,10 +107,22 @@
     {
         Api = new GigsApi(Context.Api);
 
+        var query = Context.Query.Split('&').Select(p => p.Split('=', 2)).Where(p => p.Length == 2).ToDictionary(p => p[0], p => p[1]);
         // Opened from a chat's "+" panel: straight to posting a gig for that chat.
-        var chat = Context.Query.Split('&').Select(p => p.Split('=', 2)).FirstOrDefault(p => p is ["chat", _])?[1];
-        if (Guid.TryParse(chat, out var conversationId))
+        if (Guid.TryParse(query.GetValueOrDefault("chat"), out var conversationId))
             _view = new GigsView.NewGig(Format.DefaultLatitude, Format.DefaultLongitude, ConversationId: conversationId);
+        // "Hire" on someone's Social profile: a gig offered to them, placed where they work.
+        if (Guid.TryParse(query.GetValueOrDefault("hire"), out var hireId))
+        {
+            try
+            {
+                if (await Api.GetAsync<GigProfileDto>($"{GigsApi.Base}/profiles/{hireId}") is { } worker)
+                    _view = new GigsView.NewGig(worker.Latitude, worker.Longitude, worker.UserId, worker.DisplayName);
+            }
+            catch (GigsException)
+            {
+            }
+        }
 
         try
         {
@@ -144,7 +160,7 @@
         return InvokeAsync(StateHasChanged);
     }
 
-    bool IsTopLevel => _view is GigsView.Map or GigsView.Mine or GigsView.Profile;
+    bool IsTopLevel => _view is GigsView.Board or GigsView.Map or GigsView.Mine or GigsView.Profile;
 
     string Title => _view switch
     {
@@ -156,7 +172,7 @@
 
     public void Go(GigsView view)
     {
-        if (view is GigsView.Map or GigsView.Mine or GigsView.Profile)
+        if (view is GigsView.Board or GigsView.Map or GigsView.Mine or GigsView.Profile)
             _history.Clear();
         else
             _history.Push(_view);
@@ -205,7 +221,8 @@
     {
         if (_news is not null)
             await _news.DisposeAsync();
-        if (_mapModule is { IsCompletedSuccessfully: true })
-            await (await _mapModule).DisposeAsync();
+        // The map module isn't disposed here: Blazor can dispose this component before the map
+        // pages inside it, and they still need the module to take their maps down. Leaving Gigs
+        // with it disposed first was the "Something went wrong" bar.
     }
 }

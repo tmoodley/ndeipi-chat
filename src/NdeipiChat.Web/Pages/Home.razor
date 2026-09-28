@@ -133,10 +133,10 @@
     <div class="app-grid">
         @foreach (var app in Vm.Pinned)
         {
-            <AppTile @key="app.Id" App="app" Launcher="Vm" />
+            <AppTile @key="app.Id" App="app" Launcher="Vm" ShowPin="false" />
         }
         <div class="app-tile">
-            <button class="app-open" @onclick="() => Ui.OpenDrawer()">
+            <button class="app-open" @onclick='() => Navigation.NavigateTo("all-apps")'>
                 <span class="app-icon tile-icon tone-purple">▦</span>
                 <span class="app-title">All apps</span>
             </button>
@@ -219,7 +219,26 @@
         .Concat(Contacts.Shamwaris.Select(s => s.User))
         .DistinctBy(u => u.Id);
 
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        // Chats and Shamwaris load in the background after sign-in, often after Home first draws.
+        Chats.Conversations.CollectionChanged += OnListsChanged;
+        Contacts.Shamwaris.CollectionChanged += OnListsChanged;
+        Contacts.Incoming.CollectionChanged += OnListsChanged;
+    }
+
+    void OnListsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
+
     protected override Task OnInitializedAsync() => Vm.IsLoaded ? Task.CompletedTask : Vm.LoadCommand.ExecuteAsync(null);
+
+    public override void Dispose()
+    {
+        Chats.Conversations.CollectionChanged -= OnListsChanged;
+        Contacts.Shamwaris.CollectionChanged -= OnListsChanged;
+        Contacts.Incoming.CollectionChanged -= OnListsChanged;
+        base.Dispose();
+    }
 
     async Task ShowBalanceAsync()
     {

@@ -1,0 +1,216 @@
+@page "/groups/{Id:guid}"
+@inject ChatApi Api
+@inject IServiceProvider Services
+
+@* A group: its banner and stats, the timeline members post to, its info and rules, and its members. *@
+
+<PageTitle>@(_group?.Group.Name ?? "Group") · Ndeipi</PageTitle>
+
+<div class="sc-page">
+    @if (_group is null)
+    {
+        <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+    }
+    else
+    {
+        var g = _group.Group;
+        var canSee = !g.IsPrivate || g.IsMember;
+        <section class="sc-hero glass">
+            <div class="sc-cover tone-@g.Tone"></div>
+            <div class="sc-hero-body">
+                <div class="sc-stats">
+                    <button class="sc-stat" @onclick='() => _tab = "members"'><b>@g.MemberCount</b><span>Members</span></button>
+                    <button class="sc-stat" @onclick='() => _tab = "timeline"'><b>@g.PostCount</b><span>Posts</span></button>
+                    <div class="sc-stat"><b>@(g.IsPrivate ? "🔒" : "🌍")</b><span>@(g.IsPrivate ? "Private" : "Public")</span></div>
+                </div>
+                <div>
+                    <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="128" Class="icon-hex" />
+                    <div class="sc-identity">
+                        <div class="name">@g.Name</div>
+                        <div class="sub">Started by @_group.Owner.DisplayName</div>
+                    </div>
+                </div>
+                <div class="sc-actions">
+                    @if (g.MyRole == GroupRoles.Owner)
+                    {
+                        <button class="btn-a" @onclick='() => _tab = "info"'>Manage</button>
+                    }
+                    else if (g.IsMember)
+                    {
+                        <button class="secondary" disabled="@_busy" @onclick="LeaveAsync">Leave group</button>
+                    }
+                    else if (!g.IsPrivate)
+                    {
+                        <button class="btn-a" disabled="@_busy" @onclick="JoinAsync">Join group +</button>
+                    }
+                    else
+                    {
+                        <button class="secondary" disabled>Invite only</button>
+                    }
+                </div>
+            </div>
+        </section>
+
+        <nav class="sc-tabs glass">
+            <button class="sc-tab @On("timeline")" @onclick='() => _tab = "timeline"'><span class="ico">📰</span>Timeline</button>
+            <button class="sc-tab @On("info")" @onclick='() => _tab = "info"'><span class="ico">ℹ️</span>Info</button>
+            <button class="sc-tab @On("members")" @onclick="ShowMembersAsync"><span class="ico">👥</span>Members</button>
+        </nav>
+
+        @if (_error is not null)
+        {
+            <p class="error">@_error</p>
+        }
+
+        @switch (_tab)
+        {
+            case "timeline":
+                <div class="sc-grid two">
+                    <div class="sc-col side">
+                        <InfoWidget Group="_group" />
+                    </div>
+                    <div class="sc-col">
+                        @if (canSee)
+                        {
+                            <SocialFeed Feed="_feed" GroupId="g.Id" CanPost="g.IsMember" Placeholder="@($"Share something with {g.Name}")"
+                                        Empty="@(g.IsMember ? "No posts yet. Start the conversation!" : "No posts yet. Join to post.")" />
+                        }
+                        else
+                        {
+                            <div class="widget glass empty"><p>🔒 This group is private. Its owner adds members.</p></div>
+                        }
+                    </div>
+                </div>
+                break;
+
+            case "info":
+                <div class="sc-grid two">
+                    <div class="sc-col"><InfoWidget Group="_group" /></div>
+                    <div class="sc-col">
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Group rules</h3></div>
+                            @if (Rules.Count == 0)
+                            {
+                                <p class="muted" style="margin: 0">@(canSee ? "No rules set. Be kind." : "Members can see the rules.")</p>
+                            }
+                            @for (var i = 0; i < Rules.Count; i++)
+                            {
+                                <p style="margin: 0"><strong>@((i + 1).ToString("00"))-</strong> @Rules[i]</p>
+                            }
+                        </section>
+                        @if (g.MyRole == GroupRoles.Owner)
+                        {
+                            <form class="widget glass" @onsubmit="AddMemberAsync">
+                                <div class="widget-head"><h3>Add a member</h3></div>
+                                <p class="muted small" style="margin: 0">By the email on their Ndeipi account.@(g.IsPrivate ? " This is how people join a private group." : "")</p>
+                                <div class="inline-form">
+                                    <input type="email" @bind="_email" placeholder="name@example.com" />
+                                    <button type="submit" class="btn-a" disabled="@(_busy || string.IsNullOrWhiteSpace(_email))">Add</button>
+                                </div>
+                            </form>
+                            <form class="widget glass" @onsubmit="SaveAsync">
+                                <div class="widget-head"><h3>Edit group</h3></div>
+                                <div class="inline-form">
+                                    <input style="max-width: 80px; text-align: center; font-size: 22px" @bind="_icon" maxlength="4" />
+                                    <input @bind="_name" maxlength="@SocialGraphContract.MaxGroupName" />
+                                </div>
+                                <textarea @bind="_description" maxlength="@SocialGraphContract.MaxGroupDescription" placeholder="What's it about?"></textarea>
+                                <textarea @bind="_rules" maxlength="@SocialGraphContract.MaxGroupRules" placeholder="Rules, one per line"></textarea>
+                                <label class="drawer-row" style="padding: 0"><input type="checkbox" class="toggle" @bind="_private" /><span class="grow">Private</span></label>
+                                <button type="submit" class="btn-a wide" disabled="@_busy">Save</button>
+                            </form>
+                        }
+                    </div>
+                </div>
+                break;
+
+            case "members":
+                <div class="sc-section-head"><div><div class="kicker">Browse group</div><div class="big">Members<em>@g.MemberCount</em></div></div></div>
+                <div class="card-grid">
+                    @foreach (var person in _members)
+                    {
+                        <PersonCard @key="person.User.Id" Person="person" />
+                    }
+                </div>
+                @if (_members.Count == 0)
+                {
+                    <div class="empty"><p>@(canSee ? "No members to show." : "Members of private groups are only shown to members.")</p></div>
+                }
+                break;
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    GroupDetailDto? _group;
+    FeedViewModel _feed = null!;
+    List<PersonCardDto> _members = [];
+    string _tab = "timeline";
+    string? _error, _email;
+    string _name = "", _description = "", _rules = "", _icon = "";
+    bool _busy, _private;
+
+    string On(string tab) => _tab == tab ? "on" : "";
+
+    List<string> Rules => (_group?.Rules ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _feed = ActivatorUtilities.CreateInstance<FeedViewModel>(Services);
+        _feed.GroupId = Id;
+        _group = null;
+        await Run(async () => Show(await Api.GetJsonAsync<GroupDetailDto>($"{SocialActions.Base}/groups/{Id}")));
+        if (_group is { Group: { IsPrivate: false } or { IsMember: true } })
+            await _feed.RefreshCommand.ExecuteAsync(null);
+    }
+
+    void Show(GroupDetailDto group)
+    {
+        _group = group;
+        (_name, _description, _rules, _icon, _private) = (group.Group.Name, group.Group.Description, group.Rules, group.Group.Icon, group.Group.IsPrivate);
+    }
+
+    async Task ShowMembersAsync()
+    {
+        _tab = "members";
+        await Run(async () => _members = await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/groups/{Id}/members"));
+    }
+
+    async Task JoinAsync()
+    {
+        await Run(async () => Show(await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{Id}/join")));
+        await _feed.RefreshCommand.ExecuteAsync(null);
+    }
+
+    Task LeaveAsync() => Run(async () => Show(await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{Id}/leave")));
+
+    Task AddMemberAsync() => Run(async () =>
+    {
+        await Api.SendJsonAsync<PersonCardDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{Id}/members", new AddGroupMemberRequest(_email ?? ""));
+        _email = null;
+        Show(await Api.GetJsonAsync<GroupDetailDto>($"{SocialActions.Base}/groups/{Id}"));
+    });
+
+    Task SaveAsync() => Run(async () =>
+        Show(await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Put, $"{SocialActions.Base}/groups/{Id}",
+            new SaveGroupRequest(_name, _description, _rules, _icon, _group!.Group.Tone, _private))));
+
+    async Task Run(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

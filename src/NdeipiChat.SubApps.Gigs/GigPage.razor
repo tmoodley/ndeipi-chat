@@ -35,6 +35,11 @@ else
                     <button class="primary" disabled="@_busy" @onclick='() => ActAsync("accept")'>Take this gig</button>
                     <button class="secondary" disabled="@_busy" @onclick='() => ActAsync("decline")'>No thanks</button>
                 }
+                else if (_gig.Status == GigStatuses.Open && !_gig.IsClient && _gig.MyOffer is null)
+                {
+                    @* Found on the board: anyone with the skill in their work profile can take it. *@
+                    <button class="primary" disabled="@_busy" @onclick='() => ActAsync("accept")'>Take this gig</button>
+                }
                 @if (_gig.IsWorker && _gig.Status == GigStatuses.Assigned)
                 {
                     <button class="primary" disabled="@_busy" @onclick='() => ActAsync("submit")'>It's done</button>

@@ -1,0 +1,14 @@
+@* A group's info: what it's about, who started it and when. *@
+<section class="widget glass">
+    <div class="widget-head"><h3>Group info</h3></div>
+    <p style="margin: 0; line-height: 1.6">@(Group.Group.Description.Length > 0 ? Group.Group.Description : "No description yet.")</p>
+    <dl class="facts">
+        <dt>Created</dt><dd>@Group.CreatedAt.ToLocalTime().ToString("d MMMM yyyy")</dd>
+        <dt>Type</dt><dd>@(Group.Group.IsPrivate ? "Private" : "Public")</dd>
+        <dt>Owner</dt><dd><a href="u/@Group.Owner.Id">@Group.Owner.DisplayName</a></dd>
+    </dl>
+</section>
+
+@code {
+    [Parameter, EditorRequired] public GroupDetailDto Group { get; set; } = null!;
+}

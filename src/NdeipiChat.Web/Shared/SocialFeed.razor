@@ -1,0 +1,86 @@
+@* A timeline: a quick composer (text now, photos on the full composer) and its posts. The page owns
+   the FeedViewModel and sets its filter (following, one person, one group). *@
+@implements IDisposable
+@inject ChatApi Api
+@inject ChatSession Session
+@inject NavigationManager Navigation
+
+@if (CanPost)
+{
+    <div class="sc-composer glass">
+        <div class="top">
+            <Avatar Url="@Session.Me?.AvatarUrl" Initials="@Display.Initials(Session.Me?.DisplayName ?? "N")" Size="44" />
+            <textarea @bind="_draft" @bind:event="oninput" maxlength="@SocialContract.MaxCaptionLength" placeholder="@Placeholder"></textarea>
+        </div>
+        @if (_error is not null)
+        {
+            <p class="error" style="margin: 0">@_error</p>
+        }
+        <div class="bottom">
+            <button class="link" @onclick='() => Navigation.NavigateTo(GroupId is { } g ? $"feed/new?group={g}" : "feed/new")'>📷 Photos</button>
+            <button class="btn-a" disabled="@(_busy || string.IsNullOrWhiteSpace(_draft))" @onclick="PostAsync">@(_busy ? "Posting…" : "Post")</button>
+        </div>
+    </div>
+}
+
+@if (Feed.IsEmpty && !Feed.IsRefreshing)
+{
+    <div class="widget glass empty" style="padding: 40px 20px">
+        <p>@Empty</p>
+    </div>
+}
+@foreach (var post in Feed.Posts)
+{
+    <PostCard @key="post.Id" Post="post" Feed="Feed" />
+}
+@if (Feed.HasMore)
+{
+    <button class="secondary wide" disabled="@Feed.IsLoadingMore" @onclick="() => Feed.LoadMoreCommand.ExecuteAsync(null)">
+        @(Feed.IsLoadingMore ? "Loading…" : "Load more")
+    </button>
+}
+
+@code {
+    [Parameter, EditorRequired] public FeedViewModel Feed { get; set; } = null!;
+    [Parameter] public Guid? GroupId { get; set; }
+    [Parameter] public bool CanPost { get; set; } = true;
+    [Parameter] public string Placeholder { get; set; } = "What's on your mind?";
+    [Parameter] public string Empty { get; set; } = "Nothing here yet.";
+
+    string _draft = "";
+    string? _error;
+    bool _busy;
+
+    protected override void OnInitialized()
+    {
+        Feed.PropertyChanged += OnChanged;
+        Feed.Posts.CollectionChanged += OnListChanged;
+    }
+
+    void OnChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
+    void OnListChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    async Task PostAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            Feed.Prepend(await Api.CreatePostAsync(_draft.Trim(), [], false, GroupId));
+            _draft = "";
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose()
+    {
+        Feed.PropertyChanged -= OnChanged;
+        Feed.Posts.CollectionChanged -= OnListChanged;
+    }
+}

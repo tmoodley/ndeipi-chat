@@ -196,7 +196,7 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
 
         var compose = aliceApp.Compose(aliceFeed);
         await compose.PublishCommand.ExecuteAsync(null);
-        Assert.Equal("Add at least one photo.", compose.ErrorMessage);
+        Assert.Equal("Write something or add a photo.", compose.ErrorMessage);
         Assert.False(compose.AddPhoto("not a photo"u8.ToArray()));
         Assert.True(compose.AddPhoto(CowPhotos.Face(7, 1200, 900)));
         compose.Caption = "Market day in Mbare";
@@ -234,7 +234,7 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
         var launcher = client.Launcher(device);
         await launcher.LoadCommand.ExecuteAsync(null);
 
-        Assert.Equal(["Chats", "Feed", "Shamwaris", "Herd"], launcher.Pinned.Select(a => a.Title));
+        Assert.Equal(["Chats", "Social", "Shamwaris", "Herd"], launcher.Pinned.Select(a => a.Title));
         Assert.True(launcher.Allows(BuiltInApps.Wallet));
 
         // Launch two, close one: the shell stays up, the other keeps running.
@@ -252,14 +252,14 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
         await launcher.TogglePinCommand.ExecuteAsync(herd);
         var elsewhere = client.Launcher(new InMemorySettingsStore());
         await elsewhere.LoadCommand.ExecuteAsync(null);
-        Assert.Equal(["Chats", "Feed", "Shamwaris", "Wallet"], elsewhere.Pinned.Select(a => a.Title));
+        Assert.Equal(["Chats", "Social", "Shamwaris", "Wallet"], elsewhere.Pinned.Select(a => a.Title));
 
         // Offline, this device shows the apps it last saw.
         var offline = new ChatApi(new HttpClient(new NoConnection()) { BaseAddress = app.Server.BaseAddress });
         var cut = client.Launcher(device, offline);
         await cut.LoadCommand.ExecuteAsync(null);
         Assert.True(cut.IsOffline);
-        Assert.Equal(["Chats", "Feed", "Shamwaris", "Wallet"], cut.Pinned.Select(a => a.Title));
+        Assert.Equal(["Chats", "Social", "Shamwaris", "Wallet"], cut.Pinned.Select(a => a.Title));
         Assert.Empty(client.Dialogs.Alerts);
     }
 

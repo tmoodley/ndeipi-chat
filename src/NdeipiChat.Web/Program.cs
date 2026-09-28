@@ -28,6 +28,7 @@ builder.Services.AddSingleton<IBrowserAuthenticator, RedirectOnlyAuthenticator>(
 builder.Services.AddSingleton<WebSignIn>();
 builder.Services.AddSingleton<WebEmbedding>();
 builder.Services.AddSingleton<ShellUi>();
+builder.Services.AddSingleton<SocialActions>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.Components.WebAssembly.Services.LazyAssemblyLoader>();
 builder.Services.AddSingleton<SubAppLoader>();
 builder.Services.AddSingleton<ShellRealtime>();

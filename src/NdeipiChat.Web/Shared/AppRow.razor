@@ -1,5 +1,5 @@
 @* An app in the drawer: tap to open; while editing, the star pins or unpins it. *@
-<div class="drawer-row @(Available ? "" : "unavailable")">
+<div class="drawer-row @(Available ? "" : "unavailable") @(Editing ? "editing" : "")">
     <button class="link" style="padding: 0; display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; color: var(--text); text-align: left"
             disabled="@(!Available || Editing)" @onclick="() => Open.InvokeAsync(App)">
         <span class="tile-icon @AppLook.Tone(App.Id)">@App.Icon</span>

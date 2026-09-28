@@ -55,7 +55,7 @@ else
             </a>
         </nav>
 
-        <main class="content">
+        <main class="content @(IsInChat ? "in-chat" : "")">
             @if (Session.Connection.State is not Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected)
             {
                 <div class="offline">Connecting…</div>

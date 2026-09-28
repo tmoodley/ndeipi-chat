@@ -29,16 +29,22 @@
         {
             <p class="muted small" style="margin: 0 6px">Nothing pinned. Tap Edit, then ☆ on an app to keep it here and on your home screen.</p>
         }
-        @foreach (var app in Launcher.Pinned)
-        {
-            <AppRow @key="app.Id" App="app" Editing="Ui.IsEditingPins" Open="OpenAsync" TogglePin="TogglePinAsync" />
-        }
+        @* Each list in its own element: while editing, an app is in both, and keys only need to be
+           unique among siblings. *@
+        <div>
+            @foreach (var app in Launcher.Pinned)
+            {
+                <AppRow @key="app.Id" App="app" Editing="Ui.IsEditingPins" Open="OpenAsync" TogglePin="TogglePinAsync" />
+            }
+        </div>
 
-        <h2><span>All apps</span></h2>
-        @foreach (var app in Launcher.Apps.Where(a => Ui.IsEditingPins || !a.IsPinned))
-        {
-            <AppRow @key="app.Id" App="app" Editing="Ui.IsEditingPins" Open="OpenAsync" TogglePin="TogglePinAsync" />
-        }
+        <h2><span>All apps</span><button class="link" @onclick='() => Go("all-apps")'>See all ›</button></h2>
+        <div>
+            @foreach (var app in Launcher.Apps.Where(a => Ui.IsEditingPins || !a.IsPinned))
+            {
+                <AppRow @key="app.Id" App="app" Editing="Ui.IsEditingPins" Open="OpenAsync" TogglePin="TogglePinAsync" />
+            }
+        </div>
 
         <h2><span>Settings</span></h2>
         <label class="drawer-row" style="cursor: pointer">

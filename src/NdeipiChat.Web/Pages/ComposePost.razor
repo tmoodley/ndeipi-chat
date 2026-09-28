@@ -2,10 +2,10 @@
 @inherits ViewModelPage<ComposePostViewModel>
 @inject IJSRuntime JS
 
-<PageTitle>New post · Ndeipi Chat</PageTitle>
+<PageTitle>New post · Ndeipi</PageTitle>
 
 <header class="bar">
-    <a class="bar-back" href="feed" title="Back">‹</a>
+    <a class="bar-back" href="@(Group is { } g ? $"groups/{g}" : "feed")" title="Back">‹</a>
     <h1>New post</h1>
 </header>
 
@@ -60,6 +60,11 @@
 </form>
 
 @code {
+    /// <summary>?group={id}: post into that group (from its page).</summary>
+    [SupplyParameterFromQuery(Name = "group")] public Guid? Group { get; set; }
+
+    protected override void OnParametersSet() => Vm.GroupId = Group;
+
     const int MaxEdge = 2048;
     const long MaxPickedBytes = 40 * 1024 * 1024;
 

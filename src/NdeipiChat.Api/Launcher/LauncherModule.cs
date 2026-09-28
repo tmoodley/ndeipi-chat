@@ -88,7 +88,7 @@ public sealed class LauncherService(IOptionsMonitor<LauncherOptions> options, Ch
     static readonly SubApp[] Catalogue =
     [
         new(BuiltInApps.Chats, "Chats", "Messages, and money and tokens sent in chats.", "💬", "chats", "1.0.0", "1.0.0", 10, true, ["chat"], [], null, null),
-        new(BuiltInApps.Feed, "Feed", "Photo posts, which you can mint as NFTs.", "📷", "feed", "1.0.0", "1.0.0", 20, true, ["social", "nft"], [], null, null),
+        new(BuiltInApps.Feed, "Social", "Your feed, groups and the people you follow.", "🌐", "feed", "1.0.0", "1.0.0", 20, true, ["social", "nft"], [], null, null),
         new(BuiltInApps.Shamwaris, "Shamwaris", "Your friends, and adding people by email or phone.", "👥", "shamwaris", "1.0.0", "1.0.0", 30, true, ["contacts"], [], null, null),
         new(BuiltInApps.Wallet, "Wallet", "Identity verification, balances and receiving wallets.", "👛", "wallet", "1.0.0", "1.0.0", 40, false, ["banking"], [], null, null),
         new(BuiltInApps.Herd, "Herd", "Register cattle and track their health.", "🐄", "herd", "1.0.0", "1.0.0", 50, true, ["livestock"], [], null, null)

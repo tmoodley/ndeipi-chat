@@ -126,6 +126,29 @@ code (`+263 77 123 4567`); spaces, dashes and a `00` prefix are fine.
   left to remove them.
 - No email or SMS goes out yet. Tell the person to join Ndeipi yourself.
 
+### Social
+
+The Feed app is now **Social** (same id, `feed`, and the same `/api/posts`), with a social graph
+under `/api/social`:
+
+- **Profiles** (`/u/{id}`):
+  - A cover banner and hexagon avatar.
+  - Stats for posts, followers, following and groups.
+  - Timeline, About, Groups, Photos, Followers and Following tabs.
+  - A bio, city and website.
+  - Their Gigs work profile, if they have one.
+- **Follows:** one-way and public. The **Following** feed shows you, people you follow, and your
+  groups. Shamwaris stay the two-way, chat-with-me relationship.
+- **Groups** (`/groups/{id}`):
+  - **Public** groups are open to join and read.
+  - **Private** groups show their posts, rules and members to members only. Owners add members by
+    email.
+  - Posts can go into a group, and a group has Timeline, Info (rules) and Members tabs.
+- **Posts** can be text only now. Only posts with photos can be minted.
+- **Links to the other apps:** a profile can Follow, Message (Chats), Send money or tokens (the
+  chat's Exchange panel), Add Shamwari (`POST /api/shamwaris/users/{id}`), and Hire (Gigs). In a
+  one-to-one chat, the avatar opens the other person's profile.
+
 ### Feed and NFTs
 
 The **Feed** tab shows everyone's posts, newest first. A post is one to four photos and an optional
@@ -256,6 +279,15 @@ runtime-loaded sub-app, except for escrow and profile NFTs (see below).
   the gig's chat, with no fee. Retrying can't pay twice. Both sides then rate each other, and the
   worker's stars go on their profile.
 - **Map.** OpenStreetMap tiles through Leaflet, loaded from cdnjs when a map is first shown.
+- **Board.** Gigs opens on a board:
+  - **Categories:** album tiles, each with how many gigs are open in it.
+  - **Latest gigs:** cards you can filter by category.
+  - **Map:** a way into the map.
+
+  Open gigs are visible to everyone at their rough area. Anyone whose work profile has the skill
+  can take one from the board, as well as workers dispatch offered it to.
+- **Hire.** Social profiles have a Hire button that opens Gigs on a gig offered to that person
+  (`apps/gigs?hire={userId}`).
 
 Not built yet:
 - **Escrow.** The SRS wants the budget locked in a smart contract when a gig is taken. No such
@@ -360,6 +392,22 @@ dotnet test tests/NdeipiChat.Tests
 The tests need SQL Server LocalDB, and each test class gets its own throwaway database. Clerk's
 Backend API and Bridge are faked. Everything else is real: JWT validation, SignalR, EF Core, the
 queue procedures and trigger, and the app's view models.
+
+**Clicking through the web app locally.** `LocalPreview` does nothing in a normal test run. With
+`NDEIPI_PREVIEW_MINUTES` set, it:
+
+- serves the real API and web app on http://localhost:5250, against the fake Clerk and a throwaway
+  database;
+- seeds test people, a long chat, gigs, groups and posts;
+- writes a signed-in test session to a file.
+
+```bash
+NDEIPI_PREVIEW_MINUTES=30 NDEIPI_PREVIEW_TOKENS=/tmp/tokens.json dotnet test tests/NdeipiChat.Tests --filter LocalPreview
+```
+
+Then, in the browser's console on http://localhost:5250, run
+`localStorage.setItem("ndeipi.tokens", <the file's contents>)` and reload. This needs no real
+Clerk account.
 
 ## Before going live
 

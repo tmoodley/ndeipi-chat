@@ -55,6 +55,16 @@ public sealed class ShamwariService(ChatDbContext db, ChatNotifier notifier, Tim
         return new AddShamwariResponse(outcome, await ListAsync(me.Id, ct));
     }
 
+    /// <summary>A request to someone already on Ndeipi, e.g. from their Social profile, where we know them but not their email.</summary>
+    public async Task<AddShamwariResponse> AddUserAsync(User me, Guid userId, CancellationToken ct)
+    {
+        if (userId == me.Id)
+            throw new ChatRejectedException("That's you.");
+        var target = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
+            ?? throw new ChatRejectedException("That person doesn't exist.");
+        return new AddShamwariResponse(await RequestAsync(me, target, ct), await ListAsync(me.Id, ct));
+    }
+
     async Task<ShamwariAddOutcome> RequestAsync(User me, User target, CancellationToken ct)
     {
         var key = PairKey(me.Id, target.Id);

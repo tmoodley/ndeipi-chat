@@ -132,8 +132,37 @@ public sealed class GigsService(
         return (await ToDtosAsync([gig], me, ct))[0];
     }
 
+    /// <summary>Open gigs are on the board for everyone; after that, only the people involved see them.</summary>
     async Task<bool> CanSeeAsync(Gig gig, User me, CancellationToken ct) =>
-        gig.ClientId == me.Id || gig.WorkerId == me.Id || await db.GigOffers.AnyAsync(o => o.GigId == gig.Id && o.WorkerId == me.Id, ct);
+        gig.Status == GigStatuses.Open || gig.ClientId == me.Id || gig.WorkerId == me.Id
+        || await db.GigOffers.AnyAsync(o => o.GigId == gig.Id && o.WorkerId == me.Id, ct);
+
+    // ---- The board ----
+
+    public async Task<IReadOnlyList<GigCategoryDto>> CategoriesAsync(CancellationToken ct)
+    {
+        var open = await db.Gigs.AsNoTracking().Where(g => g.Status == GigStatuses.Open)
+            .GroupBy(g => g.Skill)
+            .Select(x => new { Skill = x.Key, Count = x.Count(), Latest = x.Max(g => g.CreatedAt) })
+            .ToListAsync(ct);
+        return GigSkills.All.Select(s => open.FirstOrDefault(o => o.Skill == s) is { } o
+                ? new GigCategoryDto(s, o.Count, o.Latest)
+                : new GigCategoryDto(s, 0, null))
+            .ToList();
+    }
+
+    public const int BoardPageSize = 60;
+
+    /// <summary>Open gigs, newest first, in one category or all; with how far each is from your work profile.</summary>
+    public async Task<IReadOnlyList<GigDto>> BoardAsync(User me, string? skill, CancellationToken ct)
+    {
+        var query = db.Gigs.AsNoTracking().Include(g => g.Client).Include(g => g.Worker).Where(g => g.Status == GigStatuses.Open);
+        if (skill?.Trim().ToLowerInvariant() is { Length: > 0 } s)
+            query = query.Where(g => g.Skill == s);
+        var gigs = await query.OrderByDescending(g => g.CreatedAt).Take(BoardPageSize).ToListAsync(ct);
+        var profile = await db.GigProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == me.Id, ct);
+        return await ToDtosAsync(gigs, me, ct, profile);
+    }
 
     public async Task<GigDto> CreateAsync(User me, CreateGigRequest request, CancellationToken ct)
     {
@@ -264,12 +293,28 @@ public sealed class GigsService(
 
     // ---- Lifecycle ----
 
-    /// <summary>First offered worker to accept gets the gig; the client and worker get a direct chat for it.</summary>
+    /// <summary>
+    /// First worker to accept gets the gig; the client and worker get a direct chat for it. Workers
+    /// it was offered to can accept, and so can anyone with the skill who finds it on the board.
+    /// </summary>
     public async Task<GigDto?> AcceptAsync(User me, Guid id, CancellationToken ct)
     {
         var gig = await LoadAsync(id, ct);
-        if (gig is null || !await db.GigOffers.AnyAsync(o => o.GigId == id && o.WorkerId == me.Id && o.Status == GigOfferStatuses.Offered, ct))
+        if (gig is null)
             return null;
+        if (!await db.GigOffers.AnyAsync(o => o.GigId == id && o.WorkerId == me.Id && o.Status == GigOfferStatuses.Offered, ct))
+        {
+            // From the board: they need a work profile with the skill, and mustn't have turned it down.
+            if (gig.Status != GigStatuses.Open || gig.ClientId == me.Id)
+                return null;
+            var profile = await db.GigProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == me.Id, ct)
+                ?? throw new ChatRejectedException("Set up your work profile (the Work tab) to take gigs.");
+            if (!profile.Skills.Split(',').Contains(gig.Skill))
+                throw new ChatRejectedException($"Add {GigSkills.Label(gig.Skill)} to your skills to take this gig.");
+            if (await db.GigOffers.AnyAsync(o => o.GigId == id && o.WorkerId == me.Id, ct))
+                throw new ChatRejectedException("You've already passed on this gig.");
+            await OfferAsync(gig, [(me.Id, Distance(gig, profile))], ct);
+        }
 
         var now = clock.GetUtcNow();
         var taken = await db.Gigs.Where(g => g.Id == id && g.Status == GigStatuses.Open)
@@ -450,7 +495,7 @@ public sealed class GigsService(
 
     // ---- Mapping ----
 
-    async Task<List<GigDto>> ToDtosAsync(IReadOnlyList<Gig> gigs, User viewer, CancellationToken ct)
+    async Task<List<GigDto>> ToDtosAsync(IReadOnlyList<Gig> gigs, User viewer, CancellationToken ct, GigProfile? viewerProfile = null)
     {
         var ids = gigs.Select(g => g.Id).ToList();
         var offers = await db.GigOffers.AsNoTracking().Where(o => o.WorkerId == viewer.Id && ids.Contains(o.GigId)).ToDictionaryAsync(o => o.GigId, ct);
@@ -473,7 +518,7 @@ public sealed class GigsService(
                 party ? g.ConversationId : null,
                 g.CreatedAt, g.CompletedAt,
                 g.PaymentMessageId is { } m ? payments.GetValueOrDefault(m, TransferStatuses.Pending) : null,
-                offer?.DistanceKm,
+                offer?.DistanceKm ?? (viewerProfile is null ? null : (double?)Math.Round(Distance(g, viewerProfile), 1)),
                 g.ClientId == viewer.Id, g.WorkerId == viewer.Id,
                 offer?.Status,
                 g.WorkerStars, g.ClientStars);
