@@ -71,7 +71,7 @@ public sealed class ShellNavigator : INavigator
     {
         if (route?.StartsWith("apps/", StringComparison.Ordinal) == true)
             return Shell.Current.GoToAsync($"//main/launcher/{Routes.WebSubApp}",
-                new Dictionary<string, object> { [Routes.SubAppIdParameter] = appId });
+                new Dictionary<string, object> { [Routes.SubAppIdParameter] = appId, [Routes.SubAppRouteParameter] = route! });
         if (Shell.Current is AppShell shell && shell.TabRouteFor(appId) is { } tab)
             return shell.GoToAsync($"//main/{tab}");
         if (appId == BuiltInApps.Wallet)

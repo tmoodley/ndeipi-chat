@@ -157,3 +157,22 @@ public sealed class SendMoneyAction(INavigator navigator) : IComposerAction
     public Task ExecuteAsync(ComposerContext context) =>
         navigator.GoToAsync(Routes.BankTransfer, new Dictionary<string, object> { [Routes.ConversationIdParameter] = context.Conversation.Id });
 }
+
+/// <summary>
+/// Opens Gigs to post a gig from this chat (Gigs SRS FR-02). In a direct chat it's offered to the
+/// other person; the gig's own chat is this one's.
+/// </summary>
+public sealed class StartGigAction(INavigator navigator, NdeipiChat.Client.ViewModels.LauncherViewModel launcher) : IComposerAction
+{
+    public string Title => "Start a gig";
+    public string Glyph => "🧰";
+    public int Order => 30;
+
+    public bool IsAvailable(ConversationDto conversation) => launcher.Allows(GigsContract.AppId);
+
+    public Task ExecuteAsync(ComposerContext context) =>
+        navigator.GoToAsync(Routes.SubApp(GigsContract.AppId), new Dictionary<string, object>
+        {
+            [Routes.SubAppRouteParameter] = $"apps/{GigsContract.AppId}?chat={context.Conversation.Id:N}"
+        });
+}

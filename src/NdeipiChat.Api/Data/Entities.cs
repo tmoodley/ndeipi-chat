@@ -380,3 +380,70 @@ public sealed class EventValidator
     public Guid EventId { get; set; }
     public Guid UserId { get; set; }
 }
+
+/// <summary>
+/// Someone offering their work in Gigs, pinned to a place. The exact position is used only to
+/// measure distances; others see it rounded (<see cref="NdeipiChat.Contracts.GigsContract.Approximate"/>).
+/// </summary>
+public sealed class GigProfile
+{
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public string Headline { get; set; } = "";
+
+    /// <summary>Comma-separated <see cref="NdeipiChat.Contracts.GigSkills"/>.</summary>
+    public string Skills { get; set; } = "";
+
+    public string? Region { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public bool IsAvailable { get; set; }
+    public int CompletedGigs { get; set; }
+    public int RatingSum { get; set; }
+    public int RatingCount { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class Gig
+{
+    public Guid Id { get; set; }
+    public Guid ClientId { get; set; }
+    public User Client { get; set; } = null!;
+    public Guid? WorkerId { get; set; }
+    public User? Worker { get; set; }
+    public required string Title { get; set; }
+    public string Description { get; set; } = "";
+    public required string Skill { get; set; }
+    public double Latitude { get; set; }
+    public double Longitude { get; set; }
+    public string? Region { get; set; }
+    public decimal Budget { get; set; }
+    public required string TokenSymbol { get; set; }
+    public required string Status { get; set; }
+
+    /// <summary>The chat the gig was started from, if any.</summary>
+    public Guid? SourceConversationId { get; set; }
+
+    /// <summary>The client and worker's direct chat, once assigned: the gig's negotiation thread.</summary>
+    public Guid? ConversationId { get; set; }
+
+    /// <summary>The chat message carrying the NdeipiCoin payment.</summary>
+    public Guid? PaymentMessageId { get; set; }
+
+    public int? WorkerStars { get; set; }
+    public int? ClientStars { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? AssignedAt { get; set; }
+    public DateTimeOffset? CompletedAt { get; set; }
+}
+
+/// <summary>A gig offered to one worker by dispatch (or by the client picking them).</summary>
+public sealed class GigOffer
+{
+    public Guid GigId { get; set; }
+    public Guid WorkerId { get; set; }
+    public double DistanceKm { get; set; }
+    public required string Status { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}

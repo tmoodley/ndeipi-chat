@@ -1,0 +1,228 @@
+@* One gig as a two-pane workspace (SRS FR-02): the gig and what can be done with it on one side,
+   the client and worker's chat on the other, so scope and milestones are agreed next to the work. *@
+@implements IAsyncDisposable
+
+@if (_gig is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    <div class="gg-work">
+        <section>
+            <h2>@_gig.Title</h2>
+            <p>
+                <span class="gg-badge @(_gig.MyOffer == GigOfferStatuses.Offered && _gig.Status == GigStatuses.Open ? "hot" : "")">@Format.Status(_gig)</span>
+                <strong>@Format.Money(_gig.Budget, _gig.TokenSymbol)</strong>
+            </p>
+            <p class="muted small">
+                @GigSkills.Label(_gig.Skill)@(_gig.Region is null ? "" : $" · {_gig.Region}")
+                @(_gig.DistanceKm is null ? "" : $" · {Format.Km(_gig.DistanceKm)}")
+                · posted by @_gig.Client.DisplayName@(_gig.Worker is null ? "" : $" · taken by {_gig.Worker.DisplayName}")
+            </p>
+            @if (_gig.Description.Length > 0)
+            {
+                <p style="white-space: pre-line">@_gig.Description</p>
+            }
+            <p class="muted small">
+                @(_gig.IsClient || _gig.IsWorker ? "Place" : "Rough area"): @Format.Place(_gig.Latitude, _gig.Longitude)
+                · <a href="https://www.openstreetmap.org/?mlat=@(_gig.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture))&mlon=@(_gig.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture))#map=15/@(_gig.Latitude.ToString(System.Globalization.CultureInfo.InvariantCulture))/@(_gig.Longitude.ToString(System.Globalization.CultureInfo.InvariantCulture))" target="_blank" rel="noopener">Open map</a>
+            </p>
+
+            <div class="gg-actions">
+                @if (_gig.MyOffer == GigOfferStatuses.Offered && _gig.Status == GigStatuses.Open)
+                {
+                    <button class="primary" disabled="@_busy" @onclick='() => ActAsync("accept")'>Take this gig</button>
+                    <button class="secondary" disabled="@_busy" @onclick='() => ActAsync("decline")'>No thanks</button>
+                }
+                @if (_gig.IsWorker && _gig.Status == GigStatuses.Assigned)
+                {
+                    <button class="primary" disabled="@_busy" @onclick='() => ActAsync("submit")'>It's done</button>
+                }
+                @if (_gig.IsClient && _gig.Status is GigStatuses.Assigned or GigStatuses.Submitted)
+                {
+                    <button class="primary" disabled="@_busy" @onclick='() => ActAsync("approve")'>Approve and pay @Format.Money(_gig.Budget, _gig.TokenSymbol)</button>
+                }
+                @if (_gig.IsClient && _gig.Status == GigStatuses.Completed && _gig.PaymentStatus is null or TransferStatuses.Failed)
+                {
+                    <button class="primary" disabled="@_busy" @onclick='() => ActAsync("approve")'>Retry payment</button>
+                }
+                @if (_gig.IsClient && _gig.Status is GigStatuses.Open or GigStatuses.Assigned)
+                {
+                    <button class="secondary" disabled="@_busy" @onclick='() => ActAsync("cancel")'>Cancel gig</button>
+                }
+            </div>
+
+            @if (_gig.Status == GigStatuses.Completed && (_gig.IsClient ? _gig.WorkerStars : _gig.ClientStars) is null)
+            {
+                <div class="card">
+                    <p>How was working with @(_gig.IsClient ? _gig.Worker?.DisplayName : _gig.Client.DisplayName)?</p>
+                    <div class="gg-stars">
+                        @for (var n = 1; n <= 5; n++)
+                        {
+                            var stars = n;
+                            <button title="@stars stars" disabled="@_busy" @onclick='() => ActAsync("rating", new RateGigRequest(stars))'>★</button>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_error is not null)
+            {
+                <p class="error">@_error</p>
+            }
+        </section>
+
+        <section class="gg-chat">
+            @if (_gig.ConversationId is null)
+            {
+                <p class="muted">The chat for this gig opens when someone takes it.</p>
+            }
+            else
+            {
+                <div class="gg-thread" @ref="_thread">
+                    @foreach (var m in _messages)
+                    {
+                        <div class="gg-msg @(m.SenderId == Context.UserId ? "mine" : "")" @key="m.Id">
+                            @Describe(m)
+                            <small>@m.SentAt.ToLocalTime().ToString("HH:mm")</small>
+                        </div>
+                    }
+                </div>
+                <form class="inline-form" @onsubmit="SendAsync">
+                    <input @bind="_draft" @bind:event="oninput" placeholder="Agree the details…" maxlength="4000" />
+                    <button type="submit" class="primary" disabled="@string.IsNullOrWhiteSpace(_draft)">Send</button>
+                </form>
+            }
+        </section>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public GigsApp App { get; set; } = null!;
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    GigDto? _gig;
+    List<MessageDto> _messages = [];
+    string? _error;
+    string _draft = "";
+    bool _busy;
+    ElementReference _thread;
+    PeriodicTimer? _timer;
+    readonly CancellationTokenSource _lifetime = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.News += OnNews;
+        try
+        {
+            _gig = await App.Api.GetAsync<GigDto>($"{GigsApi.Base}/{Id}");
+            await LoadMessagesAsync();
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        _ = PollAsync();
+    }
+
+    void OnNews(GigNewsDto news)
+    {
+        if (news.Gig.Id != Id)
+            return;
+        _ = InvokeAsync(async () =>
+        {
+            _gig = news.Gig;
+            await LoadMessagesAsync();
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>The chat pane refreshes every few seconds, and a pending payment's status with it.</summary>
+    async Task PollAsync()
+    {
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(4));
+        try
+        {
+            while (await _timer.WaitForNextTickAsync(_lifetime.Token))
+            {
+                try
+                {
+                    if (_gig is { Status: GigStatuses.Completed, PaymentStatus: not (TransferStatuses.Confirmed or TransferStatuses.Failed) })
+                        _gig = await App.Api.GetAsync<GigDto>($"{GigsApi.Base}/{Id}");
+                    await LoadMessagesAsync();
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (GigsException)
+                {
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    async Task LoadMessagesAsync()
+    {
+        if (_gig?.ConversationId is not { } chat)
+            return;
+        var latest = await App.Api.GetAsync<List<MessageDto>>($"api/conversations/{chat}/messages?take=50") ?? [];
+        _messages = latest.OrderBy(m => m.SentAt).ToList();
+    }
+
+    static string Describe(MessageDto m)
+    {
+        if (m.Kind == MessageKinds.Text && ContractJson.Read<TextPayload>(m.Payload) is { } text)
+            return text.Text;
+        if (m.Kind == MessageKinds.AssetTransfer && ContractJson.Read<AssetTransferPayload>(m.Payload) is { } transfer)
+            return $"💸 {transfer.Amount} {transfer.Token.Symbol}{(transfer.Memo is null ? "" : $" · {transfer.Memo}")}";
+        if (m.Kind == MessageKinds.BankTransfer && ContractJson.Read<BankTransferPayload>(m.Payload) is { } money)
+            return $"💵 {money.Amount} {money.Currency.ToUpperInvariant()}";
+        return "(Open the chat to see this message.)";
+    }
+
+    async Task SendAsync()
+    {
+        if (_gig?.ConversationId is not { } chat || string.IsNullOrWhiteSpace(_draft))
+            return;
+        var text = _draft.Trim();
+        _draft = "";
+        try
+        {
+            await App.Api.SendAsync<MessageDto>(HttpMethod.Post, $"api/conversations/{chat}/messages",
+                new SendMessageRequest(chat, MessageKinds.Text, ContractJson.ToElement(new TextPayload(text)), Guid.NewGuid()));
+            await LoadMessagesAsync();
+        }
+        catch (GigsException ex)
+        {
+            (_error, _draft) = (ex.Message, text);
+        }
+    }
+
+    async Task ActAsync(string action, object? body = null)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            _gig = await App.Api.ActAsync(Id, action, body);
+            await LoadMessagesAsync();
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        App.News -= OnNews;
+        await _lifetime.CancelAsync();
+        _timer?.Dispose();
+    }
+}

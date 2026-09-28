@@ -1,0 +1,96 @@
+@* The worker's profile (SRS FR-01): what they do, where they're based, and the available/offline
+   toggle that puts them on the map and makes them eligible for offers. *@
+
+@if (App.MyProfile is { } me)
+{
+    <div class="card">
+        <label class="gg-switch">
+            <input type="checkbox" checked="@me.IsAvailable" disabled="@_busy" @onchange="e => SetAvailableAsync((bool)e.Value!)" />
+            @(me.IsAvailable ? "Available: you're on the map and getting offers" : "Offline: hidden from the map")
+        </label>
+        <p class="muted small">@Format.Stars(me.Rating, me.RatingCount) · @me.CompletedGigs gigs done</p>
+    </div>
+}
+
+<form class="form" @onsubmit="SaveAsync">
+    <label class="field">What you do <input @bind="_headline" maxlength="160" placeholder="e.g. Wedding and event photographer" required /></label>
+    <p class="muted small">Skills (up to @GigsContract.MaxSkills)</p>
+    <div class="gg-skills">
+        @foreach (var skill in GigSkills.All)
+        {
+            <button type="button" class="gg-skill @(_skills.Contains(skill) ? "on" : "")" @onclick="() => Toggle(skill)">@GigSkills.Label(skill)</button>
+        }
+    </div>
+    <label class="field">Area <input @bind="_region" maxlength="80" placeholder="e.g. Avondale, Harare" /></label>
+    <p class="muted small">
+        Based at @(_place is { } p ? Format.Place(p.Latitude, p.Longitude) : "nowhere yet").
+        Others see only the rough area, about a kilometre.
+    </p>
+    <div class="gg-actions">
+        <button type="button" class="secondary" @onclick="HereAsync">Use my location</button>
+        <button type="submit" class="primary" disabled="@(_busy || _place is null || _skills.Count == 0)">Save profile</button>
+    </div>
+</form>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@code {
+    [CascadingParameter] public GigsApp App { get; set; } = null!;
+
+    string _headline = "";
+    string? _region, _error;
+    List<string> _skills = [];
+    (double Latitude, double Longitude)? _place;
+    bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (App.MyProfile is { } me)
+            (_headline, _region, _skills, _place) = (me.Headline, me.Region, me.Skills.ToList(), (me.Latitude, me.Longitude));
+    }
+
+    void Toggle(string skill)
+    {
+        if (!_skills.Remove(skill) && _skills.Count < GigsContract.MaxSkills)
+            _skills.Add(skill);
+    }
+
+    async Task HereAsync()
+    {
+        _place = await App.LocateAsync() ?? _place;
+        if (_place is null)
+            _error = "Couldn't get your location. Check the browser's location permission.";
+    }
+
+    Task SaveAsync() => RunAsync(async () =>
+        App.MyProfile = await App.Api.SendAsync<GigProfileDto>(HttpMethod.Put, $"{GigsApi.Base}/profile",
+            new SaveGigProfileRequest(_headline, _skills, _region, _place!.Value.Latitude, _place.Value.Longitude)));
+
+    /// <summary>Going available also updates the position, if the device knows it.</summary>
+    Task SetAvailableAsync(bool available) => RunAsync(async () =>
+    {
+        var here = available ? await App.LocateAsync() : null;
+        App.MyProfile = await App.Api.SendAsync<GigProfileDto>(HttpMethod.Put, $"{GigsApi.Base}/profile/availability",
+            new AvailabilityRequest(available, here?.Latitude, here?.Longitude));
+    });
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

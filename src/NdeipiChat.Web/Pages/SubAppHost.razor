@@ -8,6 +8,7 @@
 @inject BrowserStorage Storage
 @inject IP256Signer Signer
 @inject ClientOptions Options
+@inject NavigationManager Navigation
 
 @* Hosts a sub-app loaded at runtime (SRS SR-02-03): <DynamicComponent> renders its root component
    inside an error boundary, so a failing sub-app can't take the shell down with it. It gets the
@@ -83,7 +84,8 @@ else
                 HttpClients.CreateClient(ChatApi.HttpClientName),
                 () => { Embedding.Leave(); return Task.CompletedTask; },
                 Realtime,
-                new ShellDevice(_app.Id, Session.MyUserId, Storage, Signer, Options));
+                new ShellDevice(_app.Id, Session.MyUserId, Storage, Signer, Options),
+                new Uri(Navigation.Uri).Query.TrimStart('?'));
         }
         catch (SubAppLoadException ex)
         {

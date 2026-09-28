@@ -1,0 +1,211 @@
+@* The Gigs sub-app (SRS "Ndeipi Gigs Module"): a map of available workers, gigs dropped on the
+   map or started from a chat, offers to the nearest suitable workers, a gig-and-chat workspace,
+   and payment in NdeipiCoin from client to worker. *@
+@attribute [SubAppRoot(GigsContract.AppId)]
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<style>
+    .gg-tabs { display: flex; gap: 6px; padding: 8px 16px 0; }
+    .gg-tabs button { flex: 1; background: var(--surface); color: var(--text); border-radius: 18px; padding: 8px 10px; font-size: 14px; }
+    .gg-tabs button.active { background: var(--brand); color: #fff; font-weight: 600; }
+    .gg-map { height: 58vh; min-height: 280px; border-radius: 10px; margin-top: 12px; z-index: 0; }
+    .gg-toast { position: sticky; top: 0; z-index: 10; background: var(--brand); color: #fff; border-radius: 10px; padding: 10px 14px; margin: 8px 16px 0; display: flex; gap: 8px; align-items: center; cursor: pointer; }
+    .gg-toast span { flex: 1; }
+    .gg-row { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--divider); cursor: pointer; }
+    .gg-main { flex: 1; min-width: 0; }
+    .gg-main .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .gg-side { text-align: right; font-size: 13px; }
+    .gg-badge { display: inline-block; font-size: 12px; border-radius: 10px; padding: 2px 8px; background: var(--surface); }
+    .gg-badge.hot { background: var(--brand); color: #fff; }
+    .gg-skills { display: flex; flex-wrap: wrap; gap: 6px; }
+    .gg-skill { background: var(--surface); color: var(--text); border-radius: 16px; padding: 6px 12px; font-size: 13px; }
+    .gg-skill.on { background: var(--brand); color: #fff; }
+    .gg-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .gg-work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+    @@media (max-width: 760px) { .gg-work { grid-template-columns: 1fr; } }
+    .gg-chat { display: flex; flex-direction: column; background: var(--surface); border-radius: 10px; padding: 10px; min-height: 320px; max-height: 70vh; }
+    .gg-thread { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
+    .gg-msg { max-width: 85%; padding: 6px 10px; border-radius: 12px; background: var(--page); font-size: 14px; white-space: pre-line; }
+    .gg-msg.mine { align-self: flex-end; background: var(--brand); color: #fff; }
+    .gg-msg small { display: block; opacity: 0.7; font-size: 11px; }
+    .gg-stars button { background: none; font-size: 26px; padding: 0 2px; color: #d4a017; }
+    .gg-switch { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+</style>
+
+<header class="bar">
+    <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+    <h1>@Title</h1>
+</header>
+
+@if (_toast is { } toast)
+{
+    <div class="gg-toast" @onclick="() => { _toast = null; Go(new GigsView.Gig(toast.Id)); }">
+        <span>New gig for you: <strong>@toast.Title</strong> · @Format.Money(toast.Budget, toast.TokenSymbol) · @Format.Km(toast.DistanceKm)</span>
+        <button class="link" style="color: #fff" @onclick:stopPropagation="true" @onclick="() => _toast = null">✕</button>
+    </div>
+}
+
+@if (IsTopLevel)
+{
+    <nav class="gg-tabs">
+        <button class="@(_view is GigsView.Map ? "active" : "")" @onclick="() => Go(new GigsView.Map())">Map</button>
+        <button class="@(_view is GigsView.Mine ? "active" : "")" @onclick="() => Go(new GigsView.Mine())">My gigs@(Offers > 0 ? $" ({Offers})" : "")</button>
+        <button class="@(_view is GigsView.Profile ? "active" : "")" @onclick="() => Go(new GigsView.Profile())">Work</button>
+    </nav>
+}
+
+<div class="page">
+    <CascadingValue Value="this" IsFixed="true">
+        @switch (_view)
+        {
+            case GigsView.Map:
+                <MapPage />
+                break;
+            case GigsView.Mine:
+                <MyGigs />
+                break;
+            case GigsView.Profile:
+                <ProfilePage />
+                break;
+            case GigsView.Gig g:
+                <GigPage @key="g.Id" Id="g.Id" />
+                break;
+            case GigsView.NewGig n:
+                <NewGig @key="n" View="n" />
+                break;
+        }
+    </CascadingValue>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    GigsView _view = new GigsView.Map();
+    readonly Stack<GigsView> _history = new();
+    GigDto? _toast;
+    IAsyncDisposable? _news;
+    Task<IJSObjectReference>? _mapModule;
+
+    public GigsApi Api { get; private set; } = null!;
+
+    /// <summary>The signed-in person's worker profile, once loaded; null if they haven't made one.</summary>
+    public GigProfileDto? MyProfile { get; set; }
+
+    public int Offers { get; private set; }
+
+    /// <summary>Raised with each piece of gig news, for the page on screen to refresh.</summary>
+    public event Action<GigNewsDto>? News;
+
+    public Task<IJSObjectReference> MapModule => _mapModule ??= JS.InvokeAsync<IJSObjectReference>("import", "./_content/NdeipiChat.SubApps.Gigs/map.js").AsTask();
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new GigsApi(Context.Api);
+
+        // Opened from a chat's "+" panel: straight to posting a gig for that chat.
+        var chat = Context.Query.Split('&').Select(p => p.Split('=', 2)).FirstOrDefault(p => p is ["chat", _])?[1];
+        if (Guid.TryParse(chat, out var conversationId))
+            _view = new GigsView.NewGig(Format.DefaultLatitude, Format.DefaultLongitude, ConversationId: conversationId);
+
+        try
+        {
+            MyProfile = await Api.GetAsync<GigProfileDto>($"{GigsApi.Base}/profile");
+            Offers = (await Api.GetAsync<List<GigDto>>($"{GigsApi.Base}?active=true") ?? []).Count(g => g.MyOffer == GigOfferStatuses.Offered && g.Status == GigStatuses.Open);
+        }
+        catch (GigsException)
+        {
+        }
+
+        if (Context.Realtime is { } realtime)
+        {
+            try
+            {
+                _news = await realtime.SubscribeAsync(GigsContract.UserTopic(Context.UserId), OnNewsAsync);
+            }
+            catch (Exception)
+            {
+                // Offline: offers still show under My gigs.
+            }
+        }
+    }
+
+    Task OnNewsAsync(System.Text.Json.JsonElement payload)
+    {
+        if (ContractJson.Read<GigNewsDto>(payload) is not { } news)
+            return Task.CompletedTask;
+        if (news.Kind == "offer")
+        {
+            Offers++;
+            if (_view is not GigsView.Gig { } open || open.Id != news.Gig.Id)
+                _toast = news.Gig;
+        }
+        News?.Invoke(news);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    bool IsTopLevel => _view is GigsView.Map or GigsView.Mine or GigsView.Profile;
+
+    string Title => _view switch
+    {
+        GigsView.NewGig => "New gig",
+        GigsView.Gig => "Gig",
+        GigsView.Profile => "Your work profile",
+        _ => "Gigs"
+    };
+
+    public void Go(GigsView view)
+    {
+        if (view is GigsView.Map or GigsView.Mine or GigsView.Profile)
+            _history.Clear();
+        else
+            _history.Push(_view);
+        if (view is GigsView.Mine)
+            Offers = 0;
+        _view = view;
+        StateHasChanged();
+    }
+
+    /// <summary>Replaces the current page, e.g. the new-gig form with the gig it made.</summary>
+    public void Replace(GigsView view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
+
+    public Task BackAsync()
+    {
+        if (_history.TryPop(out var previous))
+        {
+            _view = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return Context.NavigateToLauncher();
+    }
+
+    /// <summary>The device's position, if it'll say.</summary>
+    public async Task<(double Latitude, double Longitude)?> LocateAsync()
+    {
+        try
+        {
+            var module = await MapModule;
+            var place = await module.InvokeAsync<Place?>("locate");
+            return place is null ? null : (place.Latitude, place.Longitude);
+        }
+        catch (JSException)
+        {
+            return null;
+        }
+    }
+
+    sealed record Place(double Latitude, double Longitude);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_news is not null)
+            await _news.DisposeAsync();
+        if (_mapModule is { IsCompletedSuccessfully: true })
+            await (await _mapModule).DisposeAsync();
+    }
+}

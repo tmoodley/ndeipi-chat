@@ -49,7 +49,8 @@ public static class ClientServiceCollectionExtensions
             .AddMessageRenderer<AssetTransferRenderer>()
             .AddMessageRenderer<BankTransferRenderer>()
             .AddComposerAction<SendTokenAction>()
-            .AddComposerAction<SendMoneyAction>();
+            .AddComposerAction<SendMoneyAction>()
+            .AddComposerAction<StartGigAction>();
 
         services.AddTransient<SignInViewModel>();
         services.AddSingleton<ChatsViewModel>();

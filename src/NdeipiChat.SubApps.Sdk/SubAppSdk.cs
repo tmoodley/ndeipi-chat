@@ -21,6 +21,7 @@ public sealed class SubAppRootAttribute(string appId) : Attribute
 /// <param name="NavigateToLauncher">Takes the user back to the launcher.</param>
 /// <param name="Realtime">Live updates over the shell's own connection; null in a shell that has none.</param>
 /// <param name="Device">Keys and storage on this device, kept apart per sub-app and user; null in a shell that has none.</param>
+/// <param name="Query">The query string the app was opened with, without "?", e.g. "chat={id}" from a chat's "+" panel; empty if none.</param>
 public sealed record SubAppContext(
     string AppId,
     Guid UserId,
@@ -28,7 +29,8 @@ public sealed record SubAppContext(
     HttpClient Api,
     Func<Task> NavigateToLauncher,
     ISubAppRealtime? Realtime = null,
-    ISubAppDevice? Device = null);
+    ISubAppDevice? Device = null,
+    string Query = "");
 
 /// <summary>
 /// Topics on the shell's realtime connection (e.g. "events:{id}"). The server decides who may
