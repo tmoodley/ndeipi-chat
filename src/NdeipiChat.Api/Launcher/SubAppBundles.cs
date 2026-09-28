@@ -26,7 +26,16 @@ public sealed partial class SubAppBundles(IWebHostEnvironment environment, IOpti
     {
         var folder = environment.WebRootFileProvider.GetDirectoryContents("_framework");
         var name = new Regex($"^{Regex.Escape(assembly)}(\\.[a-z0-9]+)?\\.wasm$", RegexOptions.IgnoreCase);
-        var file = folder.Exists ? folder.FirstOrDefault(f => !f.IsDirectory && name.IsMatch(f.Name)) : null;
+        var candidates = folder.Exists ? folder.Where(f => !f.IsDirectory && name.IsMatch(f.Name)).ToList() : [];
+        // A deployment that keeps files from earlier releases has several fingerprinted copies, and
+        // only this release's is served. Prefer the one the static assets manifest serves, then the
+        // newest; a stale copy would 404 in the shell ("Couldn't download ...").
+        var served = ServedRoutes();
+        var file = candidates
+            .OrderByDescending(f => served.Contains("_framework/" + f.Name))
+            .ThenByDescending(f => f.Name.Count(c => c == '.') > 1) // fingerprinted, as the shell's boot manifest names it
+            .ThenByDescending(f => f.LastModified)
+            .FirstOrDefault();
         if (file is null)
         {
             log.LogWarning("Sub-app bundle for {Assembly} isn't published; the app is left out of manifests", assembly);
@@ -52,6 +61,41 @@ public sealed partial class SubAppBundles(IWebHostEnvironment environment, IOpti
         var sha256 = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
         _hashes[key] = (file.LastModified, sha256);
         return sha256;
+    }
+
+    (string Path, DateTime Modified, HashSet<string> Routes)? _served;
+
+    /// <summary>
+    /// The routes MapStaticAssets serves, from {app}.staticwebassets.endpoints.json beside the app;
+    /// re-read when it changes; empty if there isn't one.
+    /// </summary>
+    HashSet<string> ServedRoutes()
+    {
+        var path = Path.Combine(environment.ContentRootPath, $"{environment.ApplicationName}.staticwebassets.endpoints.json");
+        if (!File.Exists(path))
+            return [];
+        var modified = File.GetLastWriteTimeUtc(path);
+        if (_served is { } cached && cached.Path == path && cached.Modified == modified)
+            return cached.Routes;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            using var json = JsonDocument.Parse(stream);
+            var routes = json.RootElement.TryGetProperty("Endpoints", out var endpoints)
+                ? endpoints.EnumerateArray()
+                    .Select(e => e.TryGetProperty("Route", out var r) ? r.GetString() : null)
+                    .OfType<string>()
+                    .Where(r => r.StartsWith("_framework/", StringComparison.Ordinal))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : [];
+            _served = (path, modified, routes);
+            return routes;
+        }
+        catch (Exception ex) when (ex is JsonException or IOException)
+        {
+            log.LogWarning(ex, "Couldn't read the static assets manifest at {Path}", path);
+            return [];
+        }
     }
 
     /// <summary>subapp-signatures.json, re-read when it changes; none if it's missing or unreadable.</summary>
