@@ -1,0 +1,32 @@
+@* An app in the drawer: tap to open; while editing, the star pins or unpins it. *@
+<div class="drawer-row @(Available ? "" : "unavailable") @(Editing ? "editing" : "")">
+    <button class="link" style="padding: 0; display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; color: var(--text); text-align: left"
+            disabled="@(!Available || Editing)" @onclick="() => Open.InvokeAsync(App)">
+        <span class="tile-icon @AppLook.Tone(App.Id)">@App.Icon</span>
+        <span class="grow">
+            <span>@App.Title</span>
+            <small>@(Available ? App.Description : "Not on the web yet")</small>
+        </span>
+    </button>
+    @if (Editing)
+    {
+        <button class="pin @(App.IsPinned ? "pinned" : "")" title="@App.PinText @App.Title" @onclick="() => TogglePin.InvokeAsync(App)">@(App.IsPinned ? "★" : "☆")</button>
+    }
+    else if (App.IsRunning)
+    {
+        <span class="drawer-dot" title="Open"></span>
+    }
+    else
+    {
+        <span class="end">›</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SubAppItemViewModel App { get; set; } = null!;
+    [Parameter] public bool Editing { get; set; }
+    [Parameter] public EventCallback<SubAppItemViewModel> Open { get; set; }
+    [Parameter] public EventCallback<SubAppItemViewModel> TogglePin { get; set; }
+
+    bool Available => WebSubApps.HasPages(App.Route);
+}

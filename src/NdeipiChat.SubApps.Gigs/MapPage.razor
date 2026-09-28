@@ -160,7 +160,7 @@ else if (_worker is { } w)
                 await _map.DisposeAsync();
             }
         }
-        catch (JSDisconnectedException)
+        catch (Exception ex) when (ex is JSException or JSDisconnectedException or ObjectDisposedException or TaskCanceledException)
         {
         }
         _self?.Dispose();

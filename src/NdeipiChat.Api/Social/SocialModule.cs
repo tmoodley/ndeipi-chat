@@ -23,10 +23,10 @@ public static class SocialModule
     {
         var api = app.MapGroup(SocialContract.PostsPath).RequireAuthorization().RequireSubApp(BuiltInApps.Feed);
 
-        api.MapGet("", async (Guid? before, Guid? author, HttpContext http, CurrentUserService users, PostService posts) =>
+        api.MapGet("", async (Guid? before, Guid? author, string? scope, Guid? group, HttpContext http, CurrentUserService users, PostService posts) =>
         {
             var me = await users.GetAsync(http.User, http.RequestAborted);
-            return Results.Ok(await posts.FeedAsync(me.Id, before, author, posts.SiteFor(http.Request), http.RequestAborted));
+            return Results.Ok(await posts.FeedAsync(me.Id, before, author, posts.SiteFor(http.Request), http.RequestAborted, scope, group));
         });
 
         // multipart/form-data: "caption", "mint" ("true" to mint straight away) and one "photos" part per photo.
@@ -47,7 +47,8 @@ public static class SocialModule
                 photos.Add(new UploadedPhoto(file.FileName, buffer.ToArray()));
             }
             var mint = bool.TryParse(form["mint"], out var m) && m;
-            return Results.Ok(await posts.CreateAsync(me, form["caption"], photos, mint, posts.SiteFor(http.Request), http.RequestAborted));
+            Guid? groupId = Guid.TryParse(form["groupId"], out var g) ? g : null;
+            return Results.Ok(await posts.CreateAsync(me, form["caption"], photos, mint, posts.SiteFor(http.Request), http.RequestAborted, groupId));
         }).WithMetadata(new RequestSizeLimitAttribute(MaxRequestBytes));
 
         api.MapGet("/{id:guid}", async (Guid id, HttpContext http, CurrentUserService users, PostService posts) =>

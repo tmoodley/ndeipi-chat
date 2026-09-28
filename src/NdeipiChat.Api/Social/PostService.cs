@@ -23,17 +23,22 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
 
     NftOptions Nft => options.Value.Nft;
 
-    public async Task<PostDto> CreateAsync(User author, string? caption, IReadOnlyList<UploadedPhoto> photos, bool mint, Uri site, CancellationToken ct)
+    /// <param name="groupId">Post in this group; the author must be a member.</param>
+    public async Task<PostDto> CreateAsync(User author, string? caption, IReadOnlyList<UploadedPhoto> photos, bool mint, Uri site, CancellationToken ct, Guid? groupId = null)
     {
         caption = string.IsNullOrWhiteSpace(caption) ? null : caption.Trim();
         if (caption?.Length > SocialContract.MaxCaptionLength)
             throw new ChatRejectedException($"Captions are limited to {SocialContract.MaxCaptionLength} characters.");
-        if (photos.Count == 0)
-            throw new ChatRejectedException("Add at least one photo.");
+        if (photos.Count == 0 && caption is null)
+            throw new ChatRejectedException("Write something or add a photo.");
         if (photos.Count > SocialContract.MaxPhotos)
             throw new ChatRejectedException($"A post can have up to {SocialContract.MaxPhotos} photos.");
         if (mint && !Nft.Enabled)
             throw new ChatRejectedException("Minting posts isn't available yet.");
+        if (mint && photos.Count == 0)
+            throw new ChatRejectedException("Only posts with a photo can be minted.");
+        if (groupId is { } g && !await db.GroupMembers.AnyAsync(m => m.GroupId == g && m.UserId == author.Id, ct))
+            throw new ChatRejectedException("Join the group to post in it.");
 
         // Check every photo before storing any, so a bad fourth photo doesn't leave three orphans.
         var decoded = new List<SKBitmap>();
@@ -50,7 +55,7 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
                     throw new ChatRejectedException($"{photo.FileName} is too small. Photos need at least {SocialContract.MinPhotoShortSide} pixels on each side.");
             }
 
-            var post = new Post { Id = Guid.NewGuid(), AuthorId = author.Id, Caption = caption, CreatedAt = clock.GetUtcNow() };
+            var post = new Post { Id = Guid.NewGuid(), AuthorId = author.Id, Caption = caption, GroupId = groupId, CreatedAt = clock.GetUtcNow() };
             for (var i = 0; i < decoded.Count; i++)
             {
                 var item = new PostMedia { Id = Guid.NewGuid(), PostId = post.Id, Position = i, Width = decoded[i].Width, Height = decoded[i].Height };
@@ -71,12 +76,24 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
         }
     }
 
-    /// <summary>Newest first; <paramref name="before"/> is the last post of the previous page.</summary>
-    public async Task<FeedPageDto> FeedAsync(Guid me, Guid? before, Guid? authorId, Uri site, CancellationToken ct)
+    /// <summary>
+    /// Newest first; <paramref name="before"/> is the last post of the previous page. Posts in
+    /// private groups only reach members. <paramref name="scope"/> "following" narrows it to you,
+    /// people you follow, and your groups.
+    /// </summary>
+    public async Task<FeedPageDto> FeedAsync(Guid me, Guid? before, Guid? authorId, Uri site, CancellationToken ct, string? scope = null, Guid? groupId = null)
     {
-        var query = db.Posts.AsNoTracking();
+        var myGroups = db.GroupMembers.Where(m => m.UserId == me).Select(m => m.GroupId);
+        var query = db.Posts.AsNoTracking().Where(p => p.GroupId == null || !p.Group!.IsPrivate || myGroups.Contains(p.GroupId.Value));
         if (authorId is { } author)
             query = query.Where(p => p.AuthorId == author);
+        if (groupId is { } group)
+            query = query.Where(p => p.GroupId == group);
+        if (scope == FeedScopes.Following)
+        {
+            var followed = db.Follows.Where(f => f.FollowerId == me).Select(f => f.FolloweeId);
+            query = query.Where(p => p.AuthorId == me || followed.Contains(p.AuthorId) || (p.GroupId != null && myGroups.Contains(p.GroupId.Value)));
+        }
         if (before is { } anchorId && await db.Posts.Where(p => p.Id == anchorId).Select(p => (DateTimeOffset?)p.CreatedAt).FirstOrDefaultAsync(ct) is { } anchor)
             query = query.Where(p => p.CreatedAt < anchor);
 
@@ -89,7 +106,9 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
     }
 
     public async Task<PostDto?> GetAsync(Guid me, Guid postId, Uri site, CancellationToken ct) =>
-        await Project(db.Posts.AsNoTracking().Where(p => p.Id == postId), me).FirstOrDefaultAsync(ct) is { } row ? ToDto(row, site) : null;
+        await Project(db.Posts.AsNoTracking().Where(p => p.Id == postId
+                && (p.GroupId == null || !p.Group!.IsPrivate || db.GroupMembers.Any(m => m.GroupId == p.GroupId && m.UserId == me))), me)
+            .FirstOrDefaultAsync(ct) is { } row ? ToDto(row, site) : null;
 
     public async Task<LikeResultDto> SetLikeAsync(Guid me, Guid postId, bool like, CancellationToken ct)
     {
@@ -232,7 +251,7 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
         return db.UserWallets.Where(w => w.UserId == userId && w.Chain == chain).Select(w => w.Address).FirstOrDefaultAsync(ct);
     }
 
-    sealed record Row(Post Post, User Author, List<PostMedia> Media, int Likes, bool Liked, TokenTransfer? Mint);
+    sealed record Row(Post Post, User Author, List<PostMedia> Media, int Likes, bool Liked, TokenTransfer? Mint, string? GroupName);
 
     IQueryable<Row> Project(IQueryable<Post> posts, Guid me) => posts.Select(p => new Row(
         p,
@@ -240,7 +259,8 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
         p.Media.OrderBy(m => m.Position).ToList(),
         db.PostLikes.Count(l => l.PostId == p.Id),
         db.PostLikes.Any(l => l.PostId == p.Id && l.UserId == me),
-        p.Mint));
+        p.Mint,
+        p.Group == null ? null : p.Group.Name));
 
     static PostDto ToDto(Row row, Uri site) => new(
         row.Post.Id,
@@ -250,7 +270,8 @@ public sealed class PostService(ChatDbContext db, PostMediaStore media, IOptions
         row.Post.CreatedAt,
         row.Likes,
         row.Liked,
-        row.Mint is null ? null : ToNftDto(row.Mint));
+        row.Mint is null ? null : ToNftDto(row.Mint),
+        row.Post.GroupId is { } groupId ? new GroupRefDto(groupId, row.GroupName!) : null);
 
     public static PostNftDto ToNftDto(TokenTransfer mint) => new(
         mint.PostId!.Value, mint.Status, mint.Chain, mint.TokenStandard, mint.ContractAddress, mint.TokenId!, mint.MetadataUri!, mint.TxHash, mint.Error);

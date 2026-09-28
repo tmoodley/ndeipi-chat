@@ -1,37 +1,98 @@
 @page "/me"
 @inherits ViewModelPage<MeViewModel>
+@inject ChatApi Api
+@inject ChatSession Session
+@inject ShellUi Ui
+@inject LauncherViewModel Launcher
 
-<PageTitle>Me · Ndeipi Chat</PageTitle>
+@* You: your profile's header (as others see it on Social), then your account. *@
 
-<header class="bar"><h1>Me</h1></header>
+<PageTitle>Me · Ndeipi</PageTitle>
 
-<div class="page">
-    <div class="profile">
-        <Avatar Url="@Vm.AvatarUrl" Initials="@Vm.Initials" Size="72" />
-        <div>
-            <div class="name large">@Vm.DisplayName</div>
-            @if (Vm.Username is not null)
-            {
-                <div class="muted">@Vm.Username</div>
-            }
-            @if (Vm.Email is not null)
-            {
-                <div class="muted">@Vm.Email</div>
-            }
+<div class="sc-page">
+    @if (_profile is { } p)
+    {
+        <ProfileHero Profile="p">
+            <Actions>
+                <a class="button btn-a" href="u/@p.User.Id">View profile</a>
+                <a class="button btn-b" href="u/@p.User.Id?tab=about">Edit profile</a>
+            </Actions>
+        </ProfileHero>
+    }
+    else
+    {
+        <div class="profile glass">
+            <Avatar Url="@Vm.AvatarUrl" Initials="@Vm.Initials" Size="72" />
+            <div>
+                <div class="name large">@Vm.DisplayName</div>
+                @if (Vm.Username is not null)
+                {
+                    <div class="muted">@Vm.Username</div>
+                }
+            </div>
         </div>
+    }
+
+    <div class="sc-grid two">
+        <section class="widget glass">
+            <div class="widget-head"><h3>Account</h3></div>
+            <dl class="facts">
+                <dt>Name</dt><dd>@Vm.DisplayName</dd>
+                @if (Vm.Username is not null)
+                {
+                    <dt>Username</dt><dd>@Vm.Username</dd>
+                }
+                @if (Vm.Email is not null)
+                {
+                    <dt>Email</dt><dd>@Vm.Email</dd>
+                }
+            </dl>
+            <p class="muted small" style="margin: 0">Your name, photo and email come from your sign-in account.</p>
+        </section>
+
+        <section class="widget glass">
+            @if (Launcher.Allows(BuiltInApps.Wallet))
+            {
+                <button class="drawer-row" @onclick="() => Vm.OpenWalletCommand.ExecuteAsync(null)">
+                    <span class="tile-icon tone-brown">👛</span><span class="grow">Wallet<small>Verification, balances and receiving wallets</small></span><span class="end">›</span>
+                </button>
+            }
+            @if (Launcher.Allows(BuiltInApps.Shamwaris))
+            {
+                <a class="drawer-row" href="shamwaris">
+                    <span class="tile-icon tone-green">👥</span><span class="grow">Shamwaris<small>Your friends, and requests</small></span><span class="end">›</span>
+                </a>
+            }
+            <a class="drawer-row" href="all-apps">
+                <span class="tile-icon tone-purple">▦</span><span class="grow">All apps<small>Open, pin and unpin apps</small></span><span class="end">›</span>
+            </a>
+            <label class="drawer-row" style="cursor: pointer">
+                <span class="tile-icon tone-yellow">💡</span>
+                <span class="grow">Dark mode</span>
+                <input type="checkbox" class="toggle" checked="@Ui.IsDark" @onchange="e => Ui.SetDarkAsync((bool)e.Value!)" />
+            </label>
+            <button class="drawer-row" @onclick="() => Vm.SignOutCommand.ExecuteAsync(null)">
+                <span class="tile-icon tone-red">⏻</span><span class="grow">Sign out</span><span class="end">›</span>
+            </button>
+        </section>
     </div>
-
-    <ul class="list">
-        <li class="row" @onclick="() => Vm.OpenWalletCommand.ExecuteAsync(null)">
-            <span class="icon">👛</span>
-            <div class="row-main"><span class="name">Wallet</span></div>
-            <span class="chevron">›</span>
-        </li>
-    </ul>
-
-    <button class="secondary wide danger" @onclick="() => Vm.SignOutCommand.ExecuteAsync(null)">Sign out</button>
 </div>
 
 @code {
-    protected override Task OnInitializedAsync() => Vm.LoadCommand.ExecuteAsync(null);
+    SocialProfileDto? _profile;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Vm.LoadCommand.ExecuteAsync(null);
+        if (!Launcher.Allows(BuiltInApps.Feed))
+            return;
+        try
+        {
+            _profile = await Api.GetJsonAsync<SocialProfileDto>($"{SocialActions.Base}/profiles/{Session.MyUserId}");
+        }
+        catch (ApiException)
+        {
+            // Social unavailable: the simple header stays.
+        }
+    }
 }

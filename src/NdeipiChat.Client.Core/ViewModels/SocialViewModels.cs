@@ -45,12 +45,17 @@ public sealed partial class FeedViewModel : ObservableObject
 
     public bool IsEmpty => Posts.Count == 0;
 
+    /// <summary>Which posts: "following" (see FeedScopes), and/or one person's or one group's. The shared feed leaves them null.</summary>
+    public string? Scope { get; set; }
+    public Guid? AuthorId { get; set; }
+    public Guid? GroupId { get; set; }
+
     [RelayCommand]
     async Task RefreshAsync()
     {
         try
         {
-            var page = await _api.GetFeedAsync();
+            var page = await _api.GetFeedAsync(author: AuthorId, scope: Scope, group: GroupId);
             Apply(page);
             Posts.Clear();
             foreach (var post in page.Posts)
@@ -75,7 +80,7 @@ public sealed partial class FeedViewModel : ObservableObject
         IsLoadingMore = true;
         try
         {
-            var page = await _api.GetFeedAsync(before: Posts[^1].Id);
+            var page = await _api.GetFeedAsync(before: Posts[^1].Id, author: AuthorId, scope: Scope, group: GroupId);
             Apply(page);
             foreach (var post in page.Posts.Where(p => Find(p.Id) is null))
                 Posts.Add(Item(post));
@@ -225,7 +230,7 @@ public sealed partial class PostItemViewModel : ObservableObject
     };
 
     /// <summary>Your own post, not minted or being minted -- or whose mint failed -- on a server that mints.</summary>
-    public bool CanMint => IsMine && _mintingEnabled && (Nft is null || Nft.Status == TransferStatuses.Failed);
+    public bool CanMint => IsMine && _mintingEnabled && Post.Media.Count > 0 && (Nft is null || Nft.Status == TransferStatuses.Failed);
 
     public string MintText => Nft?.Status == TransferStatuses.Failed ? "Retry mint" : "Mint as NFT";
 
@@ -303,13 +308,16 @@ public sealed partial class ComposePostViewModel : ObservableObject
         OnPropertyChanged(nameof(CanAddPhoto));
     }
 
+    /// <summary>Post in this group (the web's group page sets it); null for your own timeline.</summary>
+    public Guid? GroupId { get; set; }
+
     [RelayCommand(CanExecute = nameof(CanPublish))]
     async Task PublishAsync()
     {
         ErrorMessage = null;
-        if (Photos.Count == 0)
+        if (Photos.Count == 0 && string.IsNullOrWhiteSpace(Caption))
         {
-            ErrorMessage = "Add at least one photo.";
+            ErrorMessage = "Write something or add a photo.";
             return;
         }
         if (CaptionRemaining < 0)
@@ -321,7 +329,7 @@ public sealed partial class ComposePostViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var post = await _api.CreatePostAsync(Caption.Trim(), Photos.Select(p => p.Data).ToList(), MintAsNft && MintingEnabled);
+            var post = await _api.CreatePostAsync(Caption.Trim(), Photos.Select(p => p.Data).ToList(), MintAsNft && MintingEnabled && Photos.Count > 0, GroupId);
             _feed.Prepend(post);
             Photos.Clear();
             (Caption, MintAsNft) = ("", false);

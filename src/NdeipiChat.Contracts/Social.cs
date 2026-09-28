@@ -63,9 +63,90 @@ public sealed record PostDto(
     DateTimeOffset CreatedAt,
     int LikeCount,
     bool LikedByMe,
-    PostNftDto? Nft);
+    PostNftDto? Nft,
+    GroupRefDto? Group = null);
 
 /// <param name="MintingEnabled">Whether the server has an NFT contract set up; if not, the mint option is hidden.</param>
 public sealed record FeedPageDto(IReadOnlyList<PostDto> Posts, bool HasMore, bool MintingEnabled, string? NftChain);
 
 public sealed record LikeResultDto(Guid PostId, int LikeCount, bool LikedByMe);
+
+/// <summary>
+/// The social graph around posts: profiles, follows and groups (the Social app). Follows are
+/// one-way and public; Shamwaris stay the two-way, chat-with-me relationship.
+/// </summary>
+public static class SocialGraphContract
+{
+    public const string BasePath = "api/social";
+    public const int MaxBio = 500;
+    public const int MaxGroupName = 80;
+    public const int MaxGroupDescription = 1000;
+    public const int MaxGroupRules = 2000;
+
+    /// <summary>Icon colours a group can pick, matching the shell's tile colours.</summary>
+    public static readonly IReadOnlyList<string> GroupTones = ["blue", "green", "red", "yellow", "purple", "brown", "teal", "orange", "pink"];
+}
+
+public static class GroupRoles
+{
+    public const string Owner = "owner";
+    public const string Member = "member";
+}
+
+public sealed record GroupRefDto(Guid Id, string Name);
+
+/// <param name="Gig">Their Gigs work profile, if they have one: what they do, and how they're rated.</param>
+public sealed record SocialProfileDto(
+    UserDto User,
+    string? Bio,
+    string? City,
+    string? Website,
+    DateTimeOffset JoinedAt,
+    int PostCount,
+    int FollowerCount,
+    int FollowingCount,
+    int GroupCount,
+    bool IsMe,
+    bool IFollow,
+    bool FollowsMe,
+    bool IsShamwari,
+    IReadOnlyList<GroupSummaryDto> Groups,
+    IReadOnlyList<PostMediaDto> Photos,
+    GigProfileBriefDto? Gig);
+
+public sealed record GigProfileBriefDto(string Headline, IReadOnlyList<string> Skills, double? Rating, int RatingCount, int CompletedGigs, bool IsAvailable);
+
+public sealed record SaveSocialProfileRequest(string? Bio, string? City, string? Website);
+
+/// <summary>A person as a card: in People, Followers, Following and a group's Members.</summary>
+public sealed record PersonCardDto(UserDto User, string? Bio, string? City, int PostCount, int FollowerCount, bool IFollow, bool IsShamwari);
+
+public sealed record GroupSummaryDto(
+    Guid Id,
+    string Name,
+    string Description,
+    string Icon,
+    string Tone,
+    bool IsPrivate,
+    int MemberCount,
+    int PostCount,
+    bool IsMember,
+    string? MyRole);
+
+public sealed record GroupDetailDto(
+    GroupSummaryDto Group,
+    string Rules,
+    UserDto Owner,
+    DateTimeOffset CreatedAt,
+    IReadOnlyList<PersonCardDto> RecentMembers);
+
+public sealed record SaveGroupRequest(string Name, string? Description, string? Rules, string? Icon, string? Tone, bool IsPrivate);
+
+public sealed record AddGroupMemberRequest(string Email);
+
+/// <summary>Which posts a feed shows: everything you may see, or you, people you follow and your groups.</summary>
+public static class FeedScopes
+{
+    public const string All = "all";
+    public const string Following = "following";
+}

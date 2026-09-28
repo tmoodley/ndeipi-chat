@@ -12,6 +12,8 @@ public static class WebSubApps
         ["chat"] = BuiltInApps.Chats,
         ["feed"] = BuiltInApps.Feed,
         ["posts"] = BuiltInApps.Feed,
+        ["u"] = BuiltInApps.Feed,
+        ["groups"] = BuiltInApps.Feed,
         ["shamwaris"] = BuiltInApps.Shamwaris,
         ["wallet"] = BuiltInApps.Wallet,
         ["herd"] = BuiltInApps.Herd

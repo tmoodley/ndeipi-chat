@@ -67,6 +67,7 @@ public sealed class GigsApi(HttpClient http)
 /// <summary>Where the app is. The root keeps one and renders the matching page.</summary>
 public abstract record GigsView
 {
+    public sealed record Board : GigsView;
     public sealed record Map : GigsView;
     public sealed record Mine : GigsView;
     public sealed record Profile : GigsView;
@@ -103,4 +104,47 @@ public static class Format
         },
         _ => "Cancelled"
     };
+}
+
+public static class SkillLook
+{
+    public static string Emoji(string skill) => skill switch
+    {
+        "delivery" => "🛵",
+        "photography" => "📸",
+        "video" => "🎬",
+        "design" => "🎨",
+        "development" => "💻",
+        "construction" => "🔨",
+        "cleaning" => "🧽",
+        "agriculture" => "🌾",
+        "tutoring" => "📚",
+        "events" => "🎪",
+        _ => "🧰"
+    };
+
+    /// <summary>The shell's colour classes (tone-*), one per category.</summary>
+    public static string Tone(string skill) => skill switch
+    {
+        "delivery" => "tone-orange",
+        "photography" => "tone-pink",
+        "video" => "tone-red",
+        "design" => "tone-purple",
+        "development" => "tone-blue",
+        "construction" => "tone-brown",
+        "cleaning" => "tone-teal",
+        "agriculture" => "tone-green",
+        "tutoring" => "tone-yellow",
+        "events" => "tone-purple",
+        _ => "tone-blue"
+    };
+
+    public static string Ago(DateTimeOffset at)
+    {
+        var age = DateTimeOffset.UtcNow - at;
+        return age.TotalMinutes < 1 ? "just now"
+            : age.TotalHours < 1 ? $"{(int)age.TotalMinutes} min ago"
+            : age.TotalDays < 1 ? $"{(int)age.TotalHours} h ago"
+            : $"{(int)age.TotalDays} d ago";
+    }
 }

@@ -1,0 +1,195 @@
+@* The messenger's right pane: send money or tokens to someone in this chat without leaving it, and
+   see what's moved between you. Each send is an ordinary transfer message in the chat. *@
+@implements IDisposable
+@inject BankTransferViewModel Money
+@inject AssetTransferViewModel Tokens
+@inject LauncherViewModel Launcher
+
+<aside class="exchange @CssClass">
+    <div class="exchange-head">
+        <div>
+            <div class="title">Exchange</div>
+            <div class="muted small">Funds &amp; assets with @(Money.Recipient?.DisplayName ?? "this chat")</div>
+        </div>
+        <button class="icon-button" title="Close" @onclick="OnClose">✕</button>
+    </div>
+
+    <div class="segmented" style="grid-template-columns: repeat(3, 1fr)">
+        @if (Launcher.Allows(BuiltInApps.Wallet))
+        {
+            <button class="@(Tab == "send-money" ? "on" : "")" @onclick='() => SetTab("send-money")'>Money</button>
+        }
+        <button class="@(Tab == "transfer" ? "on" : "")" @onclick='() => SetTab("transfer")'>Tokens</button>
+        <button class="@(Tab == "history" ? "on" : "")" @onclick='() => SetTab("history")'>History</button>
+    </div>
+
+    @if (_sent is not null)
+    {
+        <div class="notice" style="background: rgba(31, 169, 113, .14); color: var(--success)">@_sent</div>
+    }
+
+    @if (Tab == "send-money" && Launcher.Allows(BuiltInApps.Wallet))
+    {
+        <form class="form" @onsubmit="() => Money.SendCommand.ExecuteAsync(null)">
+            @if (Money.ShowRecipientPicker)
+            {
+                <RecipientField Form="Money" />
+            }
+            <label class="field">
+                <span class="label">Amount@(Money.Currency.Length > 0 ? $" ({Money.Currency})" : "")</span>
+                <input class="amount" @bind="Money.Amount" @bind:event="oninput" inputmode="decimal" placeholder="0.00" autocomplete="off" />
+            </label>
+            <label class="field">
+                <span class="label">Note</span>
+                <input @bind="Money.Memo" @bind:event="oninput" maxlength="280" placeholder="What's it for?" />
+            </label>
+            @if (Money.NeedsVerification)
+            {
+                <div class="notice">
+                    Verify your identity before sending money.
+                    <button type="button" class="link" @onclick="() => Money.OpenWalletCommand.ExecuteAsync(null)">Go to Wallet</button>
+                </div>
+            }
+            @if (Money.ErrorMessage is not null)
+            {
+                <p class="error">@Money.ErrorMessage</p>
+            }
+            <button type="submit" class="primary wide" disabled="@Money.IsBusy">@(Money.IsBusy ? "Sending…" : "Send money")</button>
+            <p class="muted small">From your Ndeipi wallet to theirs, with no fee. It can't be reversed once confirmed.</p>
+        </form>
+    }
+    else if (Tab == "transfer")
+    {
+        <form class="form" @onsubmit="() => Tokens.SendCommand.ExecuteAsync(null)">
+            @if (Tokens.ShowRecipientPicker)
+            {
+                <RecipientField Form="Tokens" />
+            }
+            <label class="field">
+                <span class="label">Token</span>
+                <select value="@Tokens.Tokens.IndexOf(Tokens.SelectedToken!)" @onchange="ChooseToken">
+                    @for (var i = 0; i < Tokens.Tokens.Count; i++)
+                    {
+                        <option value="@i">@Tokens.Tokens[i].Label</option>
+                    }
+                </select>
+            </label>
+            @if (Tokens.IsCustom)
+            {
+                <div class="inline-form">
+                    <input @bind="Tokens.Chain" @bind:event="oninput" placeholder="Chain" />
+                    <input @bind="Tokens.Symbol" @bind:event="oninput" placeholder="Symbol" />
+                </div>
+                <select @bind="Tokens.Standard">
+                    @foreach (var standard in Tokens.Standards)
+                    {
+                        <option value="@standard">@standard</option>
+                    }
+                </select>
+                @if (Tokens.NeedsContract)
+                {
+                    <input class="mono" @bind="Tokens.ContractAddress" @bind:event="oninput" placeholder="Contract address" />
+                }
+            }
+            @if (Tokens.IsNonFungible)
+            {
+                <input @bind="Tokens.TokenId" @bind:event="oninput" inputmode="numeric" placeholder="Token id" />
+            }
+            <label class="field">
+                <span class="label">Amount</span>
+                <input class="amount" @bind="Tokens.Amount" @bind:event="oninput" inputmode="decimal" placeholder="@Tokens.AmountPlaceholder" autocomplete="off" />
+            </label>
+            <label class="field">
+                <span class="label">Note</span>
+                <input @bind="Tokens.Memo" @bind:event="oninput" maxlength="280" placeholder="What's it for?" />
+            </label>
+            @if (Tokens.ErrorMessage is not null)
+            {
+                <p class="error">@Tokens.ErrorMessage</p>
+            }
+            <button type="submit" class="primary wide" disabled="@Tokens.IsBusy">@(Tokens.IsBusy ? "Sending…" : "Send tokens")</button>
+            <p class="muted small">Recorded on-chain by Ndeipi. It can't be reversed once confirmed.</p>
+        </form>
+    }
+    else
+    {
+        var transfers = Messages.OfType<TransferMessageViewModel>().Reverse().ToList();
+        @if (transfers.Count == 0)
+        {
+            <p class="muted">Nothing sent in this chat yet.</p>
+        }
+        @foreach (var t in transfers)
+        {
+            <div class="transfer-row" @key="t.ClientMessageId">
+                <span class="tile-icon @(t.IsToMe ? "tone-green" : "tone-blue")" style="width: 38px; height: 38px; font-size: 18px">@(t.IsToMe ? "↙" : "↗")</span>
+                <div class="grow">
+                    <strong>@t.AmountText</strong>
+                    <small>@t.Headline · @t.SentAt.ToLocalTime().ToString("d MMM, HH:mm")</small>
+                </div>
+                <span class="state @(t.IsConfirmed ? "ok" : t.IsFailedTransfer ? "bad" : "wait")">@t.StatusText</span>
+            </div>
+        }
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public Guid ConversationId { get; set; }
+    [Parameter] public IEnumerable<MessageViewModel> Messages { get; set; } = [];
+
+    /// <summary>"send-money", "transfer" or "history".</summary>
+    [Parameter] public string Tab { get; set; } = "transfer";
+    [Parameter] public EventCallback<string> TabChanged { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    Guid _loadedFor;
+    string? _sent;
+
+    protected override void OnInitialized()
+    {
+        Money.StaysOpen = Tokens.StaysOpen = true;
+        Money.PropertyChanged += OnChanged;
+        Tokens.PropertyChanged += OnChanged;
+        Money.Sent += OnSent;
+        Tokens.Sent += OnSent;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == ConversationId)
+            return;
+        _loadedFor = ConversationId;
+        _sent = null;
+        var parameters = new Dictionary<string, object> { [Routes.ConversationIdParameter] = ConversationId };
+        await Task.WhenAll(Money.OnNavigatedToAsync(parameters), Tokens.OnNavigatedToAsync(parameters));
+    }
+
+    void OnChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    void OnSent() => _ = InvokeAsync(() =>
+    {
+        _sent = "Sent. You'll see it in the chat, and its progress under History.";
+        StateHasChanged();
+    });
+
+    async Task SetTab(string tab)
+    {
+        _sent = null;
+        Tab = tab;
+        await TabChanged.InvokeAsync(tab);
+    }
+
+    void ChooseToken(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var i) && i >= 0 && i < Tokens.Tokens.Count)
+            Tokens.SelectedToken = Tokens.Tokens[i];
+    }
+
+    public void Dispose()
+    {
+        Money.PropertyChanged -= OnChanged;
+        Tokens.PropertyChanged -= OnChanged;
+        Money.Sent -= OnSent;
+        Tokens.Sent -= OnSent;
+    }
+}

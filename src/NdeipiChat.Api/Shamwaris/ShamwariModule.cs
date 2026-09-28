@@ -25,6 +25,12 @@ public static class ShamwariModule
             return Results.Ok(await shamwaris.AddAsync(me, request.Contact, http.RequestAborted));
         });
 
+        api.MapPost("/users/{userId:guid}", async (Guid userId, HttpContext http, CurrentUserService users, ShamwariService shamwaris) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await shamwaris.AddUserAsync(me, userId, http.RequestAborted));
+        });
+
         api.MapPost("/requests/{id:guid}/accept", async (Guid id, HttpContext http, CurrentUserService users, ShamwariService shamwaris) =>
         {
             var me = await users.GetAsync(http.User, http.RequestAborted);

@@ -225,7 +225,7 @@ public sealed class SocialTests(TestApp app) : IClassFixture<TestApp>
             return await RefusalAsync(response);
         }
 
-        Assert.Equal("Add at least one photo.", await TryAsync("words only"));
+        Assert.Equal("Write something or add a photo.", await TryAsync(null));
         Assert.Equal("A post can have up to 4 photos.", await TryAsync(null, Photo(1), Photo(2), Photo(3), Photo(4), Photo(5)));
         Assert.Contains("isn't a photo we can read", await TryAsync(null, "not an image"u8.ToArray()));
         Assert.Contains("too small", await TryAsync(null, Photo(1, 150, 150)));

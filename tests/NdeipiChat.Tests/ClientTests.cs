@@ -88,6 +88,35 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
+    public async Task A_transfer_form_beside_the_chat_stays_open_and_sends_a_new_transfer_each_time()
+    {
+        var alice = await app.CreateUserAsync("Alice Panel");
+        var bob = await app.CreateUserAsync("Bob Panel");
+        await using var aliceApp = await ClientHarness.SignInAsync(app, alice);
+        var chat = await aliceApp.Api.CreateConversationAsync(new CreateConversationRequest(ConversationType.Direct, [bob.Id], null));
+
+        var form = aliceApp.AssetTransfer();
+        form.StaysOpen = true;
+        var sent = 0;
+        form.Sent += () => sent++;
+        await form.OnNavigatedToAsync(Open(chat.Id));
+
+        foreach (var amount in new[] { "1", "2" })
+        {
+            form.Amount = amount;
+            form.Memo = "round " + amount;
+            await form.SendCommand.ExecuteAsync(null);
+            Assert.Null(form.ErrorMessage);
+            Assert.Equal(("", ""), (form.Amount, form.Memo));
+        }
+
+        Assert.Equal(2, sent);
+        Assert.False(aliceApp.Navigator.WentBack);
+        var messages = await aliceApp.Api.GetMessagesAsync(chat.Id, null, 10);
+        Assert.Equal(["1", "2"], messages.Select(m => ContractJson.Read<AssetTransferPayload>(m.Payload)!.Amount).Order());
+    }
+
+    [Fact]
     public async Task A_refused_send_is_marked_failed_with_the_servers_reason()
     {
         var alice = await app.CreateUserAsync("Alice Refused");
@@ -167,7 +196,7 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
 
         var compose = aliceApp.Compose(aliceFeed);
         await compose.PublishCommand.ExecuteAsync(null);
-        Assert.Equal("Add at least one photo.", compose.ErrorMessage);
+        Assert.Equal("Write something or add a photo.", compose.ErrorMessage);
         Assert.False(compose.AddPhoto("not a photo"u8.ToArray()));
         Assert.True(compose.AddPhoto(CowPhotos.Face(7, 1200, 900)));
         compose.Caption = "Market day in Mbare";
@@ -205,7 +234,7 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
         var launcher = client.Launcher(device);
         await launcher.LoadCommand.ExecuteAsync(null);
 
-        Assert.Equal(["Chats", "Feed", "Shamwaris", "Herd"], launcher.Pinned.Select(a => a.Title));
+        Assert.Equal(["Chats", "Social", "Shamwaris", "Herd"], launcher.Pinned.Select(a => a.Title));
         Assert.True(launcher.Allows(BuiltInApps.Wallet));
 
         // Launch two, close one: the shell stays up, the other keeps running.
@@ -223,14 +252,14 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
         await launcher.TogglePinCommand.ExecuteAsync(herd);
         var elsewhere = client.Launcher(new InMemorySettingsStore());
         await elsewhere.LoadCommand.ExecuteAsync(null);
-        Assert.Equal(["Chats", "Feed", "Shamwaris", "Wallet"], elsewhere.Pinned.Select(a => a.Title));
+        Assert.Equal(["Chats", "Social", "Shamwaris", "Wallet"], elsewhere.Pinned.Select(a => a.Title));
 
         // Offline, this device shows the apps it last saw.
         var offline = new ChatApi(new HttpClient(new NoConnection()) { BaseAddress = app.Server.BaseAddress });
         var cut = client.Launcher(device, offline);
         await cut.LoadCommand.ExecuteAsync(null);
         Assert.True(cut.IsOffline);
-        Assert.Equal(["Chats", "Feed", "Shamwaris", "Wallet"], cut.Pinned.Select(a => a.Title));
+        Assert.Equal(["Chats", "Social", "Shamwaris", "Wallet"], cut.Pinned.Select(a => a.Title));
         Assert.Empty(client.Dialogs.Alerts);
     }
 

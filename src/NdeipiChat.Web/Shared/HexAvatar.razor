@@ -1,0 +1,35 @@
+@* A hexagon avatar with a gradient ring; the badge is an optional small number or mark. *@
+<span class="hex @Class" style="--size:@(Size)px">
+    <span class="hex-ring"></span>
+    <span class="hex-inner">
+        @if (Url is not null)
+        {
+            <img src="@Url" alt="" />
+        }
+        else if (Icon is not null)
+        {
+            <span class="initials @Tone">@Icon</span>
+        }
+        else
+        {
+            <span class="initials @Tone">@Initials</span>
+        }
+    </span>
+    @if (Badge is not null)
+    {
+        <span class="hex-badge">@Badge</span>
+    }
+</span>
+
+@code {
+    [Parameter] public string? Url { get; set; }
+    [Parameter] public string Initials { get; set; } = "";
+
+    /// <summary>An emoji instead of initials, for groups.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    [Parameter] public string Tone { get; set; } = "tone-purple";
+    [Parameter] public int Size { get; set; } = 96;
+    [Parameter] public string? Badge { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

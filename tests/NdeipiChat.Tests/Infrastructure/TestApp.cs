@@ -47,9 +47,15 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     public string ConnectionString =>
         $"Server=(localdb)\\MSSQLLocalDB;Database={_database};Trusted_Connection=True;TrustServerCertificate=True";
 
+    /// <summary>
+    /// Set for LocalPreview: the app runs as Development on a real port, so a browser can use it
+    /// (unsigned local sub-app bundles, the web callback on this port). Null for tests.
+    /// </summary>
+    public int? PreviewPort { get; init; }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment("Testing");
+        builder.UseEnvironment(PreviewPort is null ? "Testing" : "Development");
         // Serves the web app's files from its project, as Development does, so its routes can be tested.
         builder.UseStaticWebAssets();
         builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -63,6 +69,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["MobileAuth:RedirectUris:1"] = WebRedirectUri,
             // The web shell on the test server itself, for the phone app's sign-in handoff.
             ["MobileAuth:RedirectUris:2"] = "http://localhost/" + MobileAuthContract.WebCallbackPath,
+            ["MobileAuth:RedirectUris:3"] = $"http://localhost:{PreviewPort ?? 0}/" + MobileAuthContract.WebCallbackPath,
             ["Tokens:QueuePollInterval"] = "00:00:00.200",
             ["Tokens:Known:0:Chain"] = "polygon",
             ["Tokens:Known:0:Symbol"] = "NMX",

@@ -34,6 +34,9 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<GigProfile> GigProfiles => Set<GigProfile>();
     public DbSet<Gig> Gigs => Set<Gig>();
     public DbSet<GigOffer> GigOffers => Set<GigOffer>();
+    public DbSet<Follow> Follows => Set<Follow>();
+    public DbSet<SocialGroup> SocialGroups => Set<SocialGroup>();
+    public DbSet<GroupMember> GroupMembers => Set<GroupMember>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -50,6 +53,9 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(u => u.AvatarUrl).HasMaxLength(1000);
             e.Property(u => u.Roles).HasMaxLength(400);
             e.Property(u => u.PinnedApps).HasMaxLength(400);
+            e.Property(u => u.Bio).HasMaxLength(500);
+            e.Property(u => u.City).HasMaxLength(80);
+            e.Property(u => u.Website).HasMaxLength(200);
             e.HasMany(u => u.Wallets).WithOne().HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -61,6 +67,38 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.HasOne(p => p.Author).WithMany().HasForeignKey(p => p.AuthorId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.Mint).WithMany().HasForeignKey(p => p.MintTransferId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(p => p.Media).WithOne().HasForeignKey(m => m.PostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(p => new { p.GroupId, p.CreatedAt });
+            e.HasOne(p => p.Group).WithMany().HasForeignKey(p => p.GroupId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        model.Entity<Follow>(e =>
+        {
+            e.HasKey(f => new { f.FollowerId, f.FolloweeId });
+            e.HasIndex(f => f.FolloweeId);
+            e.HasOne<User>().WithMany().HasForeignKey(f => f.FollowerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<User>().WithMany().HasForeignKey(f => f.FolloweeId).OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t => t.HasCheckConstraint("CK_Follows_NotSelf", "[FollowerId] <> [FolloweeId]"));
+        });
+
+        model.Entity<SocialGroup>(e =>
+        {
+            e.ToTable("Groups");
+            e.Property(g => g.Name).HasMaxLength(80);
+            e.Property(g => g.Description).HasMaxLength(1000);
+            e.Property(g => g.Rules).HasMaxLength(2000);
+            e.Property(g => g.Icon).HasMaxLength(16);
+            e.Property(g => g.Tone).HasMaxLength(16);
+            e.HasIndex(g => g.Name);
+            e.HasOne(g => g.Owner).WithMany().HasForeignKey(g => g.OwnerId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(g => g.Members).WithOne().HasForeignKey(m => m.GroupId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        model.Entity<GroupMember>(e =>
+        {
+            e.HasKey(m => new { m.GroupId, m.UserId });
+            e.HasIndex(m => m.UserId);
+            e.Property(m => m.Role).HasMaxLength(16);
+            e.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Restrict);
         });
 
         model.Entity<InventoryItem>(e =>

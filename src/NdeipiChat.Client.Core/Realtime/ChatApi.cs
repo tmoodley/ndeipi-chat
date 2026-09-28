@@ -67,15 +67,17 @@ public sealed class ChatApi(HttpClient http)
     public Task<LauncherManifestDto> SetPinsAsync(IReadOnlyList<string> appIds, CancellationToken ct = default) =>
         SendAsync<LauncherManifestDto>(HttpMethod.Put, LauncherContract.PinsPath, new SetPinsRequest(appIds), ct);
 
-    public Task<FeedPageDto> GetFeedAsync(Guid? before = null, Guid? author = null, CancellationToken ct = default) =>
-        GetAsync<FeedPageDto>("api/posts" + Query(("before", before), ("author", author)), ct);
+    public Task<FeedPageDto> GetFeedAsync(Guid? before = null, Guid? author = null, CancellationToken ct = default, string? scope = null, Guid? group = null) =>
+        GetAsync<FeedPageDto>("api/posts" + Query(("before", before), ("author", author), ("group", group)) + (scope is null ? "" : (before is null && author is null && group is null ? "?" : "&") + "scope=" + Uri.EscapeDataString(scope)), ct);
 
     public Task<PostDto> GetPostAsync(Guid id, CancellationToken ct = default) => GetAsync<PostDto>($"api/posts/{id}", ct);
 
     /// <summary>Photos as JPEG or PNG bytes; the server re-encodes them.</summary>
-    public Task<PostDto> CreatePostAsync(string? caption, IReadOnlyList<byte[]> photos, bool mint, CancellationToken ct = default)
+    public Task<PostDto> CreatePostAsync(string? caption, IReadOnlyList<byte[]> photos, bool mint, Guid? groupId = null, CancellationToken ct = default)
     {
         var form = new MultipartFormDataContent();
+        if (groupId is { } group)
+            form.Add(new StringContent(group.ToString()), "groupId");
         if (!string.IsNullOrWhiteSpace(caption))
             form.Add(new StringContent(caption), "caption");
         form.Add(new StringContent(mint ? "true" : "false"), "mint");
@@ -102,6 +104,11 @@ public sealed class ChatApi(HttpClient http)
         var set = parameters.Where(p => p.Value is not null).Select(p => $"{p.Name}={p.Value}").ToList();
         return set.Count == 0 ? "" : "?" + string.Join('&', set);
     }
+
+    /// <summary>For pages without a dedicated method here (Social's profiles and groups).</summary>
+    public Task<T> GetJsonAsync<T>(string path, CancellationToken ct = default) => GetAsync<T>(path, ct);
+
+    public Task<T> SendJsonAsync<T>(HttpMethod method, string path, object? body = null, CancellationToken ct = default) => SendAsync<T>(method, path, body, ct);
 
     Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
 

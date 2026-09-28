@@ -1,61 +1,148 @@
 @page "/chat/{Id:guid}"
 @inherits ViewModelPage<ChatViewModel>
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject ChatSession Session
+@inject LauncherViewModel Launcher
 
-<PageTitle>@(string.IsNullOrEmpty(Vm.Title) ? "Chat" : Vm.Title) · Ndeipi Chat</PageTitle>
+@* The messenger: your chats, this conversation, and the exchange panel for sending money and
+   tokens here. On a phone, one pane at a time; the exchange panel slides over the conversation. *@
 
-<div class="chat">
-    <header class="bar">
-        <a class="bar-back" href="chats" title="Back">‹</a>
-        <h1>@Vm.Title</h1>
-    </header>
+<PageTitle>@(string.IsNullOrEmpty(Vm.Title) ? "Chat" : Vm.Title) · Ndeipi</PageTitle>
 
-    <div class="messages" @ref="_scroller">
-        @if (Vm.HasMore)
-        {
-            <button class="link center" disabled="@Vm.IsLoading" @onclick="() => Vm.LoadOlderCommand.ExecuteAsync(null)">Earlier messages</button>
-        }
-        @foreach (var message in Vm.Messages)
-        {
-            <MessageBubble @key="message.ClientMessageId" Message="message" Retry="m => Vm.RetryCommand.ExecuteAsync(m)" />
-        }
-    </div>
+<div class="messenger in-chat">
+    <ChatList ActiveId="Id" />
 
-    @if (Vm.TypingText is not null)
-    {
-        <div class="typing">@Vm.TypingText</div>
-    }
-
-    <form class="composer" @onsubmit="() => Vm.SendTextCommand.ExecuteAsync(null)">
-        <button type="button" class="round" title="Send money or tokens" @onclick="() => Vm.ToggleExtensionPanelCommand.Execute(null)">＋</button>
-        <input @bind="Vm.Draft" @bind:event="oninput" placeholder="Message" maxlength="4000" autocomplete="off" />
-        <button type="submit" class="primary" disabled="@string.IsNullOrWhiteSpace(Vm.Draft)">Send</button>
-    </form>
-
-    @if (Vm.IsExtensionPanelOpen)
-    {
-        <div class="actions">
-            @foreach (var action in Vm.Actions)
+    <section class="conversation">
+        <header class="conversation-head glass">
+            <a class="icon-button button back" href="chats" title="Back">‹</a>
+            @if (Other is { } other && Launcher.Allows(BuiltInApps.Feed))
             {
-                <button class="action" @onclick="() => Vm.RunActionCommand.ExecuteAsync(action)">
-                    <span class="glyph">@action.Glyph</span>
-                    <span>@action.Title</span>
-                </button>
+                <a href="u/@other.Id" title="@other.DisplayName's profile">
+                    <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
+                </a>
+            }
+            else
+            {
+                <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
+            }
+            <div class="who">
+                <strong>@Vm.Title</strong>
+                @if (Vm.TypingText is not null)
+                {
+                    <span class="typing" style="padding: 0">@Vm.TypingText</span>
+                }
+                else
+                {
+                    <span class="pill">@(Vm.Conversation?.Type == ConversationType.Group ? $"Group · {Vm.Conversation.Members.Count}" : "Direct")</span>
+                }
+            </div>
+            <button class="icon-button brand" title="Send money or tokens" @onclick='() => OpenPanel(_tab == "history" ? DefaultTab : _tab)'>💸</button>
+            <button class="icon-button" title="Transfers in this chat" @onclick='() => OpenPanel("history")'>🧾</button>
+        </header>
+
+        <div class="messages" @ref="_scroller">
+            @if (Vm.HasMore)
+            {
+                <button class="link center" disabled="@Vm.IsLoading" @onclick="() => Vm.LoadOlderCommand.ExecuteAsync(null)">Earlier messages</button>
+            }
+            @foreach (var message in Vm.Messages)
+            {
+                <MessageBubble @key="message.ClientMessageId" Message="message" Retry="m => Vm.RetryCommand.ExecuteAsync(m)" />
             }
         </div>
-    }
+
+        @if (Vm.IsExtensionPanelOpen)
+        {
+            <div class="actions">
+                @foreach (var action in Vm.Actions)
+                {
+                    <button class="action" @onclick="() => RunAsync(action)">
+                        <span class="glyph">@action.Glyph</span>
+                        <span>@action.Title</span>
+                    </button>
+                }
+            </div>
+        }
+
+        <form class="composer" @onsubmit="() => Vm.SendTextCommand.ExecuteAsync(null)">
+            <button type="button" class="round" title="Send money, tokens and more" @onclick="() => Vm.ToggleExtensionPanelCommand.Execute(null)">＋</button>
+            <input @bind="Vm.Draft" @bind:event="oninput" placeholder="Write your message…" maxlength="4000" autocomplete="off" />
+            <button type="submit" class="primary send" title="Send" disabled="@string.IsNullOrWhiteSpace(Vm.Draft)">➤</button>
+        </form>
+    </section>
+
+    <ExchangePanel ConversationId="Id" Messages="Vm.Messages" @bind-Tab="_tab"
+                   CssClass="@((_open ? "open" : "") + (_hidden ? " hidden" : ""))" OnClose="ClosePanel" />
+
+    <nav class="app-rail" aria-label="Chat apps">
+        @if (Launcher.Allows(BuiltInApps.Wallet))
+        {
+            <button class="@(Showing("send-money") ? "on" : "")" @onclick='() => OpenPanel("send-money")'><span class="tile-icon tone-green">$</span>Money</button>
+        }
+        <button class="@(Showing("transfer") ? "on" : "")" @onclick='() => OpenPanel("transfer")'><span class="tile-icon tone-blue">🪙</span>Tokens</button>
+        <button class="@(Showing("history") ? "on" : "")" @onclick='() => OpenPanel("history")'><span class="tile-icon tone-red">🧾</span>History</button>
+        @if (Vm.Actions.FirstOrDefault(a => a is StartGigAction) is { } gig)
+        {
+            <button @onclick="() => Vm.RunActionCommand.ExecuteAsync(gig)"><span class="tile-icon tone-orange">🧰</span>Gig</button>
+        }
+    </nav>
 </div>
 
 @code {
     [Parameter] public Guid Id { get; set; }
 
+    /// <summary>?panel=send-money or ?panel=transfer opens the exchange panel on that form (from Home's quick actions).</summary>
+    [SupplyParameterFromQuery(Name = "panel")] public string? Panel { get; set; }
+
     ElementReference _scroller;
     Guid? _lastMessage;
+    string _tab = "transfer";
+    bool _open, _hidden;
+
+    /// <summary>In a one-to-one chat, the other person.</summary>
+    UserDto? Other => Vm.Conversation is { Type: ConversationType.Direct } c ? c.Members.FirstOrDefault(m => m.Id != Session.MyUserId) : null;
+
+    string DefaultTab =>Launcher.Allows(BuiltInApps.Wallet) ? "send-money" : "transfer";
+
+    bool Showing(string tab) => _tab == tab && (_open || !_hidden);
 
     protected override async Task OnParametersSetAsync()
     {
+        _tab = Panel is "send-money" or "transfer" or "history" ? Panel : DefaultTab;
+        _open = Panel is not null;
         await Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id });
         Vm.Activate();
+    }
+
+    /// <summary>On wide screens the panel is a column that can be hidden; on narrow ones it slides over the chat.</summary>
+    async Task OpenPanel(string tab)
+    {
+        _tab = tab;
+        if (await JS.InvokeAsync<bool>("ndeipi.matches", "(max-width: 1100px)"))
+            _open = true;
+        else
+            _hidden = false;
+    }
+
+    void ClosePanel() => (_open, _hidden) = (false, true);
+
+    /// <summary>Money and tokens open the side panel here instead of a separate page.</summary>
+    async Task RunAsync(IComposerAction action)
+    {
+        Vm.ToggleExtensionPanelCommand.Execute(null);
+        switch (action)
+        {
+            case SendMoneyAction:
+                await OpenPanel("send-money");
+                break;
+            case SendTokenAction:
+                await OpenPanel("transfer");
+                break;
+            default:
+                await Vm.RunActionCommand.ExecuteAsync(action);
+                break;
+        }
     }
 
     /// <summary>A new message at the bottom scrolls into view; older ones loading at the top don't.</summary>

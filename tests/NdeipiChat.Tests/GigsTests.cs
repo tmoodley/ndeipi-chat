@@ -83,10 +83,11 @@ public sealed class GigsTests(TestApp app) : IClassFixture<TestApp>
         var offered = await app.DbAsync(db => db.GigOffers.Where(o => o.GigId == gig.Id).Select(o => o.WorkerId).ToListAsync());
         Assert.Equal(near.Take(GigsContract.DispatchFanOut).Select(w => w.Id).Order(), offered.Order());
 
+        // Everyone else can find it on the board, at its rough area only.
         foreach (var outsider in new[] { near[5], offline, wrongSkill, far })
         {
-            using var hidden = await outsider.Http.GetAsync($"{Base}/{gig.Id}");
-            Assert.Equal(HttpStatusCode.NotFound, hidden.StatusCode);
+            var seen = await outsider.GetAsync<GigDto>($"{Base}/{gig.Id}");
+            Assert.Equal((GigsContract.Approximate(at.Lat), (string?)null), (seen.Latitude, seen.MyOffer));
         }
 
         // Someone else's news isn't followable.

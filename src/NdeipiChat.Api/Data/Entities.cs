@@ -26,6 +26,11 @@ public sealed class User
     /// <summary>Sub-app ids the user pinned in the launcher, comma-separated, in order; null for the defaults.</summary>
     public string? PinnedApps { get; set; }
 
+    /// <summary>The Social profile: a few lines about them, where they are, and a link.</summary>
+    public string? Bio { get; set; }
+    public string? City { get; set; }
+    public string? Website { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ProfileSyncedAt { get; set; }
 
@@ -254,6 +259,10 @@ public sealed class Post
     public Guid? MintTransferId { get; set; }
     public TokenTransfer? Mint { get; set; }
 
+    /// <summary>The group it was posted in, if any. A private group's posts are for its members only.</summary>
+    public Guid? GroupId { get; set; }
+    public SocialGroup? Group { get; set; }
+
     public List<PostMedia> Media { get; set; } = [];
 }
 
@@ -446,4 +455,37 @@ public sealed class GigOffer
     public double DistanceKm { get; set; }
     public required string Status { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>One person following another's posts. One-way, and public.</summary>
+public sealed class Follow
+{
+    public Guid FollowerId { get; set; }
+    public Guid FolloweeId { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A Social group: people who post together. Public ones anyone can join and read.</summary>
+public sealed class SocialGroup
+{
+    public Guid Id { get; set; }
+    public required string Name { get; set; }
+    public string Description { get; set; } = "";
+    public string Rules { get; set; } = "";
+    public string Icon { get; set; } = "👥";
+    public string Tone { get; set; } = "blue";
+    public bool IsPrivate { get; set; }
+    public Guid OwnerId { get; set; }
+    public User Owner { get; set; } = null!;
+    public DateTimeOffset CreatedAt { get; set; }
+    public List<GroupMember> Members { get; set; } = [];
+}
+
+public sealed class GroupMember
+{
+    public Guid GroupId { get; set; }
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public required string Role { get; set; }
+    public DateTimeOffset JoinedAt { get; set; }
 }

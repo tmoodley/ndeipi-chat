@@ -1,0 +1,110 @@
+@* The apps drawer (the dock's More): pinned apps, every app, editing which are pinned, dark mode and
+   account links, on a pane of frosted glass over the page. *@
+@implements IDisposable
+@inject ShellUi Ui
+@inject LauncherViewModel Launcher
+@inject ChatSession Session
+@inject MeViewModel Me
+@inject NavigationManager Navigation
+
+@if (Ui.IsDrawerOpen)
+{
+    <div class="scrim" @onclick="Ui.CloseDrawer"></div>
+    <aside class="drawer" role="dialog" aria-label="Apps">
+        <div class="drawer-head">
+            <div style="flex: 1; min-width: 0">
+                <div class="hello">Welcome back</div>
+                <div class="who">@(Session.Me?.DisplayName ?? "Ndeipi")</div>
+            </div>
+            <button class="link" style="padding: 0" title="Your account" @onclick='() => Go("me")'>
+                <Avatar Url="@Session.Me?.AvatarUrl" Initials="@Initials" Size="48" />
+            </button>
+        </div>
+
+        <h2>
+            <span>Pinned</span>
+            <button class="link" @onclick="() => Ui.IsEditingPins = !Ui.IsEditingPins">@(Ui.IsEditingPins ? "Done" : "Edit")</button>
+        </h2>
+        @if (Launcher.Pinned.Count == 0)
+        {
+            <p class="muted small" style="margin: 0 6px">Nothing pinned. Tap Edit, then ☆ on an app to keep it here and on your home screen.</p>
+        }
+        @* Each list in its own element: while editing, an app is in both, and keys only need to be
+           unique among siblings. *@
+        <div>
+            @foreach (var app in Launcher.Pinned)
+            {
+                <AppRow @key="app.Id" App="app" Editing="Ui.IsEditingPins" Open="OpenAsync" TogglePin="TogglePinAsync" />
+            }
+        </div>
+
+        <h2><span>All apps</span><button class="link" @onclick='() => Go("all-apps")'>See all ›</button></h2>
+        <div>
+            @foreach (var app in Launcher.Apps.Where(a => Ui.IsEditingPins || !a.IsPinned))
+            {
+                <AppRow @key="app.Id" App="app" Editing="Ui.IsEditingPins" Open="OpenAsync" TogglePin="TogglePinAsync" />
+            }
+        </div>
+
+        <h2><span>Settings</span></h2>
+        <label class="drawer-row" style="cursor: pointer">
+            <span class="tile-icon tone-yellow">💡</span>
+            <span class="grow">Dark mode</span>
+            <input type="checkbox" class="toggle" checked="@Ui.IsDark" @onchange="e => Ui.SetDarkAsync((bool)e.Value!)" />
+        </label>
+
+        <h2><span>Useful links</span></h2>
+        <button class="drawer-row" @onclick='() => Go("me")'>
+            <span class="tile-icon tone-blue">👤</span><span class="grow">Account</span><span class="end">›</span>
+        </button>
+        @if (Launcher.Allows(BuiltInApps.Wallet))
+        {
+            <button class="drawer-row" @onclick='() => Go("wallet")'>
+                <span class="tile-icon tone-brown">👛</span><span class="grow">Wallet</span><span class="end">›</span>
+            </button>
+        }
+        <button class="drawer-row" @onclick="SignOutAsync">
+            <span class="tile-icon tone-red">⏻</span><span class="grow">Sign out</span><span class="end">›</span>
+        </button>
+
+        <div class="drawer-foot">Ndeipi · chat.ndeipi.com</div>
+    </aside>
+}
+
+@code {
+    string Initials => Display.Initials(Session.Me?.DisplayName ?? "N");
+
+    protected override void OnInitialized()
+    {
+        Ui.Changed += Refresh;
+        Launcher.ManifestChanged += Refresh;
+    }
+
+    void Refresh() => _ = InvokeAsync(StateHasChanged);
+
+    async Task OpenAsync(SubAppItemViewModel app)
+    {
+        Ui.CloseDrawer();
+        await Launcher.LaunchCommand.ExecuteAsync(app);
+    }
+
+    Task TogglePinAsync(SubAppItemViewModel app) => Launcher.TogglePinCommand.ExecuteAsync(app);
+
+    void Go(string path)
+    {
+        Ui.CloseDrawer();
+        Navigation.NavigateTo(path);
+    }
+
+    async Task SignOutAsync()
+    {
+        Ui.CloseDrawer();
+        await Me.SignOutCommand.ExecuteAsync(null);
+    }
+
+    public void Dispose()
+    {
+        Ui.Changed -= Refresh;
+        Launcher.ManifestChanged -= Refresh;
+    }
+}

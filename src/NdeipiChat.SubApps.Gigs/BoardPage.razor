@@ -1,0 +1,124 @@
+@* The gig board: categories as album tiles with how many gigs are open in each, the latest open
+   gigs (filtered by category), and the way into the map. *@
+
+<div class="sc-section-head">
+    <div><div class="kicker">Browse gigs</div><div class="big">Categories</div></div>
+    <div class="links">
+        <button @onclick="() => App.Go(new GigsView.NewGig(_center.Latitude, _center.Longitude))">Post a gig +</button>
+        <button @onclick="() => App.Go(new GigsView.Map())">Open map</button>
+    </div>
+</div>
+
+<div class="album-grid" style="margin-top: 12px">
+    @foreach (var c in _categories.OrderByDescending(c => c.OpenCount).ThenBy(c => GigSkills.All.ToList().IndexOf(c.Skill)))
+    {
+        <button class="album @(_skill == c.Skill ? "on" : "")" @key="c.Skill" @onclick="() => PickAsync(c.Skill)">
+            <span class="art @SkillLook.Tone(c.Skill)">@SkillLook.Emoji(c.Skill)</span>
+            <span class="count">@c.OpenCount</span>
+            <span class="caption-block">
+                <strong>@GigSkills.Label(c.Skill)</strong>
+                <small>@(c.LatestAt is { } at ? $"Newest {SkillLook.Ago(at)}" : "Nothing open yet")</small>
+            </span>
+        </button>
+    }
+</div>
+
+<div class="sc-section-head" style="margin-top: 26px">
+    <div><div class="kicker">Check the latest</div><div class="big">@(_skill is null ? "Open gigs" : GigSkills.Label(_skill))<em>@_gigs.Count</em></div></div>
+    @if (_skill is not null)
+    {
+        <div class="links"><button @onclick="() => PickAsync(null)">All categories ✕</button></div>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+<div class="card-grid" style="margin-top: 12px">
+    @foreach (var gig in _gigs)
+    {
+        <article class="person-card glass" @key="gig.Id" style="cursor: pointer" @onclick="() => App.Go(new GigsView.Gig(gig.Id))">
+            <div class="strip @SkillLook.Tone(gig.Skill)" style="height: 70px; display: flex; align-items: center; justify-content: center; font-size: 38px">@SkillLook.Emoji(gig.Skill)</div>
+            <div class="who" style="margin-top: 14px">@gig.Title</div>
+            <div class="bio">@GigSkills.Label(gig.Skill)@(gig.Region is null ? "" : $" · {gig.Region}")@(gig.DistanceKm is null ? "" : $" · {Format.Km(gig.DistanceKm)}")</div>
+            <div class="sc-stats">
+                <div class="sc-stat"><b>@gig.Budget</b><span>@gig.TokenSymbol</span></div>
+                <div class="sc-stat"><b>@SkillLook.Ago(gig.CreatedAt)</b><span>Posted</span></div>
+            </div>
+            <div class="pair">
+                @if (gig.IsClient)
+                {
+                    <button class="secondary">Your gig</button>
+                }
+                else
+                {
+                    <button class="btn-a">View gig</button>
+                }
+            </div>
+        </article>
+    }
+</div>
+@if (_loaded && _gigs.Count == 0)
+{
+    <div class="empty"><p>No open gigs @(_skill is null ? "right now" : "in this category"). Post one, and nearby workers hear about it.</p></div>
+}
+
+<div class="sc-section-head" style="margin-top: 26px">
+    <div><div class="kicker">Explore</div><div class="big">Map</div></div>
+</div>
+<div class="album-grid" style="margin-top: 12px; grid-template-columns: 1fr">
+    <button class="album" style="aspect-ratio: 21 / 6" @onclick="() => App.Go(new GigsView.Map())">
+        <span class="art tone-teal">🗺️</span>
+        <span class="caption-block">
+            <strong>Open the map</strong>
+            <small>See who's available nearby, tap a spot to post a gig there, or tap someone to offer them one.</small>
+        </span>
+    </button>
+</div>
+
+@code {
+    [CascadingParameter] public GigsApp App { get; set; } = null!;
+
+    List<GigCategoryDto> _categories = [];
+    List<GigDto> _gigs = [];
+    string? _skill, _error;
+    bool _loaded;
+    (double Latitude, double Longitude) _center = (Format.DefaultLatitude, Format.DefaultLongitude);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (App.MyProfile is { } me)
+            _center = (me.Latitude, me.Longitude);
+        try
+        {
+            _categories = await App.Api.GetAsync<List<GigCategoryDto>>($"{GigsApi.Base}/board/categories") ?? [];
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        await LoadAsync();
+    }
+
+    async Task PickAsync(string? skill)
+    {
+        _skill = _skill == skill ? null : skill;
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _gigs = await App.Api.GetAsync<List<GigDto>>($"{GigsApi.Base}/board" + (_skill is null ? "" : $"?skill={_skill}")) ?? [];
+            _error = null;
+        }
+        catch (GigsException ex)
+        {
+            _error = ex.Message;
+        }
+        _loaded = true;
+    }
+}

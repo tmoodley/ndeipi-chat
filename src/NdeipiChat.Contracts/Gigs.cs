@@ -163,3 +163,6 @@ public sealed record RateGigRequest(int Stars);
 
 /// <summary>Sent on <see cref="GigsContract.UserTopic"/>: an offer ("offer"), or a change to one of your gigs ("gig").</summary>
 public sealed record GigNewsDto(string Kind, GigDto Gig);
+
+/// <summary>A category on the gig board: how many gigs are open in it, and when the newest was posted.</summary>
+public sealed record GigCategoryDto(string Skill, int OpenCount, DateTimeOffset? LatestAt);
