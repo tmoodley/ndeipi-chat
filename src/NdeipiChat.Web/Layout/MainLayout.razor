@@ -9,6 +9,7 @@
 @inject WebEmbedding Embedding
 @inject WebDispatcher Dispatcher
 @inject NavigationManager Navigation
+@inject ShellUi Ui
 
 @if (!_started)
 {
@@ -31,26 +32,29 @@ else if (Embedding.IsEmbedded)
 else
 {
     <div class="shell">
-        @* The launcher, then the apps the user pinned there (on a phone, the first four), then Me. *@
-        <nav class="tabs">
-            <div class="brand"><span class="logo small">N</span> Ndeipi</div>
-            <NavLink href="" Match="NavLinkMatch.All" class="tab">
-                <span class="icon">▦</span><span>Apps</span>
-            </NavLink>
-            @foreach (var app in Launcher.Pinned.Where(a => WebSubApps.HasPages(a.Route)).Take(MaxPinnedTabs))
+        @* Wide screens: a glass rail of icons. Phones: a floating dock with a raised Home in the
+           middle. Either way, More opens the apps drawer with everything else. *@
+        <nav class="rail" aria-label="Apps">
+            <a class="logo small" href="" title="Home">N</a>
+            <NavLink href="" Match="NavLinkMatch.All" class="rail-item" title="Home">🏠</NavLink>
+            @foreach (var app in RailApps)
             {
-                <NavLink href="@app.Route" class="tab" @key="app.Id">
-                    <span class="icon">@app.Icon</span><span>@app.Title</span>
+                <NavLink href="@app.Route" class="rail-item" title="@app.Title" @key="app.Id">
+                    @app.Icon
                     @if (BadgeFor(app.Id) is { } badge)
                     {
                         <span class="badge">@badge</span>
                     }
                 </NavLink>
             }
-            <NavLink href="me" class="tab">
-                <span class="icon">👤</span><span>Me</span>
-            </NavLink>
+            <button class="rail-item" title="All apps" @onclick="() => Ui.OpenDrawer()">▦</button>
+            <div class="rail-spacer"></div>
+            <button class="rail-item" title="@(Ui.IsDark ? "Light mode" : "Dark mode")" @onclick="() => Ui.SetDarkAsync(!Ui.IsDark)">@(Ui.IsDark ? "☀️" : "🌙")</button>
+            <a href="me" title="You">
+                <Avatar Url="@Session.Me?.AvatarUrl" Initials="@Display.Initials(Session.Me?.DisplayName ?? "N")" Size="46" />
+            </a>
         </nav>
+
         <main class="content">
             @if (Session.Connection.State is not Microsoft.AspNetCore.SignalR.Client.HubConnectionState.Connected)
             {
@@ -69,12 +73,54 @@ else
                 @Body
             }
         </main>
+
+        @if (!IsInChat)
+        {
+            <nav class="dock" aria-label="Apps">
+                @foreach (var app in DockApps.Take(2))
+                {
+                    <DockLink App="app" Badge="@BadgeFor(app.Id)" @key="app.Id" />
+                }
+                <NavLink href="" Match="NavLinkMatch.All" class="dock-home-wrap" ActiveClass="active">
+                    <span class="dock-home">🏠</span>
+                    <span>Home</span>
+                </NavLink>
+                @foreach (var app in DockApps.Skip(2).Take(1))
+                {
+                    <DockLink App="app" Badge="@BadgeFor(app.Id)" @key="app.Id" />
+                }
+                <button class="dock-item" @onclick="() => Ui.OpenDrawer()">
+                    <span class="icon">⋯</span>
+                    <span>More</span>
+                </button>
+            </nav>
+        }
+
+        <AppsDrawer />
     </div>
 }
 
 @code {
-    /// <summary>Pinned apps in the bottom bar on a phone: with Apps and Me, that's six.</summary>
-    const int MaxPinnedTabs = 4;
+    /// <summary>Apps on the rail after Home: the core ones this user has, then their pins.</summary>
+    const int MaxRailApps = 7;
+
+    static readonly string[] CoreApps = [BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Shamwaris, BuiltInApps.Wallet];
+
+    IEnumerable<SubAppItemViewModel> WebApps => Launcher.Apps.Where(a => WebSubApps.HasPages(a.Route));
+
+    IEnumerable<SubAppItemViewModel> RailApps => CoreApps.Select(id => WebApps.FirstOrDefault(a => a.Id == id)).OfType<SubAppItemViewModel>()
+        .Concat(Launcher.Pinned.Where(a => WebSubApps.HasPages(a.Route) && !CoreApps.Contains(a.Id)))
+        .Take(MaxRailApps);
+
+    /// <summary>The dock's three app slots around Home: Chats, Feed and Wallet when allowed, then pins.</summary>
+    IEnumerable<SubAppItemViewModel> DockApps => new[] { BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Wallet }
+        .Select(id => WebApps.FirstOrDefault(a => a.Id == id)).OfType<SubAppItemViewModel>()
+        .Concat(Launcher.Pinned.Where(a => WebSubApps.HasPages(a.Route)))
+        .DistinctBy(a => a.Id)
+        .Take(3);
+
+    /// <summary>A conversation fills a phone's screen with its composer at the bottom, so the dock steps aside.</summary>
+    bool IsInChat => RelativePath.StartsWith("chat/", StringComparison.OrdinalIgnoreCase);
 
     bool _started, _signedIn;
 
@@ -103,6 +149,8 @@ else
         Dispatcher.Changed += Refresh;
         Session.Connection.StateChanged += Refresh;
         Launcher.ManifestChanged += Refresh;
+        Ui.Changed += Refresh;
+        _ = Ui.LoadThemeAsync();
 
         // Signed in: connect and stay on the page asked for. Otherwise: the sign-in page.
         try
@@ -149,5 +197,6 @@ else
         Dispatcher.Changed -= Refresh;
         Session.Connection.StateChanged -= Refresh;
         Launcher.ManifestChanged -= Refresh;
+        Ui.Changed -= Refresh;
     }
 }

@@ -1,0 +1,86 @@
+@* The messenger's left pane: recent people as cards, then every chat, filterable by name and by
+   direct or group. *@
+@inherits ViewModelPage<ChatsViewModel>
+@inject ShellUi Ui
+
+<aside class="chat-list @(Full ? "full" : "")">
+    <div class="chat-list-head">
+        <div class="top">
+            <div>
+                <div class="title">Recent</div>
+                <div class="subtitle">Chat from your friends 😊</div>
+            </div>
+            <button class="icon-button" title="All apps" @onclick="() => Ui.OpenDrawer()">▦</button>
+        </div>
+    </div>
+    <div class="recent-strip">
+        @foreach (var chat in Vm.Conversations.Where(c => !c.IsGroup).Take(8))
+        {
+            <button class="recent-card" @key="chat.Id" @onclick="() => Vm.OpenCommand.ExecuteAsync(chat)">
+                <Avatar Url="@chat.AvatarUrl" Initials="@chat.Initials" Size="92" />
+                <span>@chat.Title</span>
+            </button>
+        }
+    </div>
+
+    <div class="chat-list-head">
+        <div class="top">
+            <div>
+                <div class="title">Chat</div>
+                <div class="subtitle">Start new conversation</div>
+            </div>
+            <a class="icon-button button" href="shamwaris" title="New chat">＋</a>
+        </div>
+        <input type="search" @bind="_query" @bind:event="oninput" placeholder="Search chats" />
+        <div class="segmented">
+            <button class="@(_groups ? "" : "on")" @onclick="() => _groups = false">Direct</button>
+            <button class="@(_groups ? "on" : "")" @onclick="() => _groups = true">Group</button>
+        </div>
+    </div>
+
+    <ul class="list">
+        @foreach (var chat in Visible)
+        {
+            <li class="row @(chat.Id == ActiveId ? "active" : "")" @key="chat.Id" @onclick="() => Vm.OpenCommand.ExecuteAsync(chat)">
+                <Avatar Url="@chat.AvatarUrl" Initials="@chat.Initials" Size="48" />
+                <div class="row-main">
+                    <div class="row-top">
+                        <span class="name">@chat.Title</span>
+                        <span class="time">@chat.TimeText</span>
+                    </div>
+                    <div class="row-bottom">
+                        <span class="preview">@chat.Preview</span>
+                        @if (chat.HasUnread)
+                        {
+                            <span class="badge" style="background: var(--brand)">@chat.UnreadText</span>
+                        }
+                    </div>
+                </div>
+            </li>
+        }
+        @if (!Visible.Any())
+        {
+            <li class="empty" style="padding: 32px 12px">
+                <p>@(Vm.IsEmpty ? "No chats yet." : _groups ? "No group chats." : "Nothing matches.")</p>
+                @if (Vm.IsEmpty)
+                {
+                    <a class="button primary" href="shamwaris">Find your Shamwaris</a>
+                }
+            </li>
+        }
+    </ul>
+</aside>
+
+@code {
+    [Parameter] public Guid? ActiveId { get; set; }
+
+    /// <summary>The whole page (/chats on a phone); otherwise a pane beside the conversation.</summary>
+    [Parameter] public bool Full { get; set; }
+
+    string _query = "";
+    bool _groups;
+
+    IEnumerable<ConversationItemViewModel> Visible => Vm.Conversations
+        .Where(c => c.IsGroup == _groups)
+        .Where(c => _query.Length == 0 || c.Title.Contains(_query.Trim(), StringComparison.CurrentCultureIgnoreCase));
+}

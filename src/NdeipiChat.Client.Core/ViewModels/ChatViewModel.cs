@@ -47,6 +47,9 @@ public sealed partial class ChatViewModel : ObservableObject, INavigationAware, 
 
     public Guid? ConversationId => _conversation?.Id;
 
+    /// <summary>The open conversation: its members, for headers and side panels.</summary>
+    public ConversationDto? Conversation => _conversation;
+
     [ObservableProperty]
     public partial string Title { get; set; }
 
@@ -81,6 +84,7 @@ public sealed partial class ChatViewModel : ObservableObject, INavigationAware, 
             Actions = _extensions.Actions.Where(a => a.IsAvailable(_conversation)).ToList();
             OnPropertyChanged(nameof(Actions));
             OnPropertyChanged(nameof(ConversationId));
+            OnPropertyChanged(nameof(Conversation));
             if (_active)
                 _session.ActiveConversationId = id;
             await LoadLatestAsync();

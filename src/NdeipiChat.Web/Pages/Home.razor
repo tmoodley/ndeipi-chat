@@ -1,22 +1,120 @@
 @page "/"
 @inherits ViewModelPage<LauncherViewModel>
 @inject ChatSession Session
+@inject ChatsViewModel Chats
+@inject ContactsViewModel Contacts
+@inject ChatApi Api
+@inject ShellUi Ui
+@inject NavigationManager Navigation
+
+@* Home: who you are, your wallet, quick ways to move money, the people you talk to most, your
+   pinned apps and what's been happening. Everything else is one tap away in the apps drawer. *@
 
 <PageTitle>Ndeipi</PageTitle>
 
-<header class="bar"><h1>Ndeipi</h1></header>
-
-<div class="page launcher">
-    <p class="greeting">@Greeting</p>
+<div class="home">
+    <header class="home-head">
+        <div class="greet">
+            <div class="date">@DateTime.Now.ToString("dddd d MMMM")</div>
+            <div class="title">@Greeting</div>
+        </div>
+        @if (Vm.Allows(BuiltInApps.Shamwaris))
+        {
+            <a class="icon-button brand button" href="shamwaris" title="Shamwari requests">
+                🔔
+                @if (Contacts.Incoming.Count > 0)
+                {
+                    <span class="badge">@Contacts.Incoming.Count</span>
+                }
+            </a>
+        }
+        <a href="me" title="You">
+            <Avatar Url="@Session.Me?.AvatarUrl" Initials="@Display.Initials(Session.Me?.DisplayName ?? "N")" Size="46" />
+        </a>
+    </header>
 
     @if (Vm.IsOffline)
     {
         <div class="notice">You're offline. These are your apps from last time.</div>
     }
 
+    @if (Vm.Allows(BuiltInApps.Wallet))
+    {
+        <section class="wallet-card">
+            <button class="more" title="Wallet" @onclick='() => Navigation.NavigateTo("wallet")'>⋯</button>
+            <div class="label">NDEIPI WALLET</div>
+            @if (_balances is null)
+            {
+                <button class="reveal" disabled="@_loadingBalance" @onclick="ShowBalanceAsync">@(_loadingBalance ? "Loading…" : "Tap for balance")</button>
+            }
+            else if (_status is { CanTransfer: false })
+            {
+                <div>Verify your identity to send and receive money.</div>
+                <button class="reveal" @onclick='() => Navigation.NavigateTo("wallet")'>Verify now</button>
+            }
+            else
+            {
+                <div class="amount">@(_balances.FirstOrDefault() is { } b ? $"{b.Amount} {b.Currency.ToUpperInvariant()}" : $"0 {_status?.Currency.ToUpperInvariant()}")</div>
+                @foreach (var extra in _balances.Skip(1))
+                {
+                    <div class="small">@extra.Amount @extra.Currency.ToUpperInvariant() · @extra.Chain</div>
+                }
+            }
+            <div class="foot">
+                <span class="mono">@(_status?.WalletAddress is { } address ? Display.ShortAddress(address) : "Ndeipi · chat.ndeipi.com")</span>
+                <button @onclick='() => Navigation.NavigateTo("wallet")'>My wallet ›</button>
+            </div>
+        </section>
+    }
+
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+
+    <div class="quick-row">
+        @if (Vm.Allows(BuiltInApps.Wallet))
+        {
+            <button class="quick green" @onclick='() => Pick("send-money")'><span class="ring">↑</span>Transfer</button>
+        }
+        <button class="quick blue" @onclick='() => Pick("transfer")'><span class="ring">⇄</span>Tokens</button>
+        @if (Vm.Allows(BuiltInApps.Feed))
+        {
+            <button class="quick red" @onclick='() => Navigation.NavigateTo("feed/new")'><span class="ring">＋</span>Post</button>
+        }
+        <button class="quick purple" @onclick="() => Ui.OpenDrawer()"><span class="ring">▦</span>Apps</button>
+    </div>
+
+    @if (Vm.Allows(BuiltInApps.Chats))
+    {
+        <div class="section-head">
+            <h3>Frequent contacts</h3>
+            @if (Vm.Allows(BuiltInApps.Shamwaris))
+            {
+                <a href="shamwaris">View all</a>
+            }
+        </div>
+        <div class="contacts">
+            @if (Vm.Allows(BuiltInApps.Shamwaris))
+            {
+                <a class="contact" href="shamwaris"><span class="add">＋</span><span>Add</span></a>
+            }
+            @foreach (var person in Frequent)
+            {
+                <button class="contact" @key="person.Id" @onclick="() => OpenChatAsync(person, null)">
+                    <Avatar Url="@person.AvatarUrl" Initials="@Display.Initials(person.DisplayName)" Size="56" />
+                    <span>@FirstName(person.DisplayName)</span>
+                </button>
+            }
+            @if (!Frequent.Any())
+            {
+                <span class="muted small" style="align-self: center">People you chat with show up here.</span>
+            }
+        </div>
+    }
+
     @if (Vm.HasRunning)
     {
-        <h2>Open</h2>
         <div class="running">
             @foreach (var app in Vm.Running)
             {
@@ -28,31 +126,133 @@
         </div>
     }
 
-    @if (Vm.Pinned.Count > 0)
-    {
-        <h2>Pinned</h2>
-        <div class="app-grid">
-            @foreach (var app in Vm.Pinned)
-            {
-                <AppTile @key="app.Id" App="app" Launcher="Vm" />
-            }
+    <div class="section-head">
+        <h3>Your apps</h3>
+        <button @onclick="() => Ui.OpenDrawer(edit: true)">Edit</button>
+    </div>
+    <div class="app-grid">
+        @foreach (var app in Vm.Pinned)
+        {
+            <AppTile @key="app.Id" App="app" Launcher="Vm" />
+        }
+        <div class="app-tile">
+            <button class="app-open" @onclick="() => Ui.OpenDrawer()">
+                <span class="app-icon tile-icon tone-purple">▦</span>
+                <span class="app-title">All apps</span>
+            </button>
         </div>
-    }
+    </div>
 
-    @if (Vm.IsLoaded)
+    @if (Vm.Allows(BuiltInApps.Chats) && Chats.Conversations.Count > 0)
     {
-        <h2>All apps</h2>
-        <div class="app-grid">
-            @foreach (var app in Vm.Apps)
-            {
-                <AppTile @key="app.Id" App="app" Launcher="Vm" />
-            }
+        <div class="section-head">
+            <h3>Recent activity</h3>
+            <a href="chats">View all</a>
         </div>
+        <ul class="list activity glass">
+            @foreach (var chat in Chats.Conversations.Take(5))
+            {
+                <li class="row" @key="chat.Id" @onclick="() => Chats.OpenCommand.ExecuteAsync(chat)">
+                    <Avatar Url="@chat.AvatarUrl" Initials="@chat.Initials" Size="46" />
+                    <div class="row-main">
+                        <span class="name">@chat.Title</span>
+                        <span class="preview">@chat.Preview</span>
+                    </div>
+                    <div class="amount-text">
+                        @if (chat.HasUnread)
+                        {
+                            <span class="badge">@chat.UnreadText</span>
+                        }
+                        <small>@chat.TimeText</small>
+                    </div>
+                </li>
+            }
+        </ul>
     }
 </div>
 
+@if (_picking is not null)
+{
+    <div class="scrim" @onclick="() => _picking = null"></div>
+    <aside class="drawer" role="dialog" aria-label="Choose who">
+        <div class="drawer-head">
+            <div style="flex: 1">
+                <div class="hello">@(_picking == "send-money" ? "Transfer money" : "Send tokens")</div>
+                <div class="who">Who to?</div>
+            </div>
+            <button class="icon-button" @onclick="() => _picking = null">✕</button>
+        </div>
+        @foreach (var person in Everyone)
+        {
+            <button class="drawer-row" @key="person.Id" @onclick="() => OpenChatAsync(person, _picking)">
+                <Avatar Url="@person.AvatarUrl" Initials="@Display.Initials(person.DisplayName)" Size="40" />
+                <span class="grow">@person.DisplayName</span>
+                <span class="end">›</span>
+            </button>
+        }
+        @if (!Everyone.Any())
+        {
+            <p class="muted">Add a Shamwari first, then send them money or tokens from here.</p>
+            <a class="button primary" href="shamwaris">Find Shamwaris</a>
+        }
+    </aside>
+}
+
 @code {
-    string Greeting => Session.Me?.DisplayName is { Length: > 0 } name ? $"Mhoro, {name.Split(' ')[0]}" : "Mhoro";
+    const int MaxFrequent = 12;
+
+    List<BalanceDto>? _balances;
+    BankingStatusDto? _status;
+    bool _loadingBalance;
+    string? _error, _picking;
+
+    string Greeting => Session.Me?.DisplayName is { Length: > 0 } name ? $"Mhoro, {FirstName(name)}" : "Mhoro";
+
+    static string FirstName(string name) => name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+
+    /// <summary>The people in your most recent one-to-one chats, then your other Shamwaris.</summary>
+    IEnumerable<UserDto> Frequent => Everyone.Take(MaxFrequent);
+
+    IEnumerable<UserDto> Everyone => Chats.Conversations
+        .Where(c => !c.IsGroup)
+        .SelectMany(c => c.Conversation.Members.Where(m => m.Id != Session.MyUserId))
+        .Concat(Contacts.Shamwaris.Select(s => s.User))
+        .DistinctBy(u => u.Id);
 
     protected override Task OnInitializedAsync() => Vm.IsLoaded ? Task.CompletedTask : Vm.LoadCommand.ExecuteAsync(null);
+
+    async Task ShowBalanceAsync()
+    {
+        (_loadingBalance, _error) = (true, null);
+        try
+        {
+            _status = await Api.GetBankingStatusAsync();
+            _balances = _status.CanTransfer ? await Api.GetBalancesAsync() : [];
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingBalance = false;
+        }
+    }
+
+    void Pick(string action) => _picking = action;
+
+    /// <summary>Opens (or starts) the one-to-one chat, straight onto a transfer form if one was asked for.</summary>
+    async Task OpenChatAsync(UserDto person, string? then)
+    {
+        _error = null;
+        try
+        {
+            var chat = await Api.CreateConversationAsync(new CreateConversationRequest(ConversationType.Direct, [person.Id], null));
+            Navigation.NavigateTo(then is null ? $"chat/{chat.Id}" : $"chat/{chat.Id}?panel={then}");
+        }
+        catch (ApiException ex)
+        {
+            (_error, _picking) = (ex.Message, null);
+        }
+    }
 }

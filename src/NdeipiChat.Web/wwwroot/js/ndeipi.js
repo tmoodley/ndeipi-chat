@@ -37,11 +37,22 @@
   };
 
   window.ndeipi = {
+    // "light", "dark", or null to follow the device; applied before Blazor starts (index.html).
+    theme: {
+        get: () => { try { return localStorage.getItem('ndeipi.theme'); } catch { return null; } },
+        set: (value) => {
+            try { value ? localStorage.setItem('ndeipi.theme', value) : localStorage.removeItem('ndeipi.theme'); } catch { }
+            if (value) document.documentElement.dataset.theme = value; else delete document.documentElement.dataset.theme;
+        },
+        isDark: () => document.documentElement.dataset.theme === 'dark'
+            || (!document.documentElement.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    },
     storage: {
       get: (area, key) => { try { return window[area].getItem(key); } catch { return null; } },
       set: (area, key, value) => { try { window[area].setItem(key, value); } catch { } },
       remove: (area, key) => { try { window[area].removeItem(key); } catch { } }
     },
+    matches: (query) => window.matchMedia(query).matches,
     alert: (title, message) => window.alert(title ? title + '\n\n' + message : message),
     // True only inside the Ndeipi app's WebView, which adds this token to its user agent.
     isInApp: (token) => navigator.userAgent.includes(token),

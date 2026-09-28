@@ -1,0 +1,14 @@
+@* An app in the phone dock. *@
+<NavLink href="@App.Route" class="dock-item" ActiveClass="active">
+    <span class="icon">@App.Icon</span>
+    <span>@App.Title</span>
+    @if (Badge is not null)
+    {
+        <span class="badge">@Badge</span>
+    }
+</NavLink>
+
+@code {
+    [Parameter, EditorRequired] public SubAppItemViewModel App { get; set; } = null!;
+    [Parameter] public string? Badge { get; set; }
+}

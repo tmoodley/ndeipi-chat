@@ -262,6 +262,27 @@ Not built yet:
   contract exists, so for now the client pays when they approve the work.
 - **Profile NFTs.** These need their own contract.
 
+### Look and feel
+
+The web app (and the sub-apps it hosts, including on the phone) uses a frosted-glass theme,
+defined in `src/NdeipiChat.Web/wwwroot/css/app.css`. Surfaces are translucent and blurred over a
+soft colour backdrop, with blue as the brand colour.
+
+- **Shell:** an icon rail on wide screens. On phones, a floating dock (Chats, Feed, Home, Wallet,
+  More) with a raised Home button. **More** opens the apps drawer, with pinned and all apps, Edit to
+  pin or unpin, dark mode, and account links.
+- **Home:** the wallet card, quick actions, frequent contacts, your apps, and recent activity.
+- **Chats:** a three-pane messenger. On the right, the **Exchange** panel sends money or tokens
+  without leaving the chat, and lists what's moved between you. On a phone, it slides over the
+  conversation.
+- **Dark mode:** follows the device until someone picks light or dark in the drawer; that choice
+  is remembered in the browser.
+- **New pages and sub-apps:** use the existing tokens and classes (`bar`, `page`, `card`, `list`,
+  `row`, `form`, `field`, `primary`, `glass`, `tile-icon tone-*`) rather than their own colours, so
+  they match in both themes.
+
+The phone app's own native screens (XAML) aren't part of this theme yet.
+
 ## Running the app
 
 1. `dotnet workload install maui`.

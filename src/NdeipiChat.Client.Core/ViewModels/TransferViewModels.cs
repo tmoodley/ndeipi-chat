@@ -21,10 +21,18 @@ public abstract partial class TransferFormViewModel : ObservableObject, INavigat
     protected readonly INavigator Navigator;
 
     /// <summary>
-    /// Fixed for the life of the form: a resend after a timeout reaches the server as the same
+    /// Fixed until the send succeeds: a resend after a timeout reaches the server as the same
     /// message, so the transfer can't happen twice.
     /// </summary>
-    protected readonly Guid ClientMessageId = Guid.NewGuid();
+    protected Guid ClientMessageId = Guid.NewGuid();
+
+    /// <summary>
+    /// For a form that lives beside the chat (the web's exchange panel): after a send it clears for
+    /// the next one and raises <see cref="Sent"/>, instead of going back.
+    /// </summary>
+    public bool StaysOpen { get; set; }
+
+    public event Action? Sent;
 
     protected Guid ConversationId;
 
@@ -94,7 +102,15 @@ public abstract partial class TransferFormViewModel : ObservableObject, INavigat
         try
         {
             await Session.SendAsync(ConversationId, message.Kind, message.Payload, ClientMessageId);
-            await Navigator.GoBackAsync();
+            if (StaysOpen)
+            {
+                (Amount, Memo, ClientMessageId) = ("", "", Guid.NewGuid());
+                Sent?.Invoke();
+            }
+            else
+            {
+                await Navigator.GoBackAsync();
+            }
         }
         catch (ChatSendException ex)
         {

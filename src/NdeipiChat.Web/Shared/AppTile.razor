@@ -1,7 +1,7 @@
 @* A sub-app in the launcher grid: tap to open; the star pins it to the navigation. *@
 <div class="app-tile @(Available ? "" : "unavailable")" title="@App.Description">
     <button class="app-open" disabled="@(!Available)" @onclick="() => Launcher.LaunchCommand.ExecuteAsync(App)">
-        <span class="app-icon">@App.Icon</span>
+        <span class="app-icon tile-icon @AppLook.Tone(App.Id)">@App.Icon</span>
         <span class="app-title">@App.Title</span>
         @if (!Available)
         {
