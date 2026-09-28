@@ -49,5 +49,11 @@
              Text="Sub-apps are published unsigned; shells that require signatures will refuse them." />
     <Exec Condition="Exists('$(SubAppPublisherKey)')"
           Command="dotnet run --project &quot;$(_SubAppSigner)&quot; -c Release -- sign --site &quot;$(PublishDir)wwwroot&quot; --key &quot;$(SubAppPublisherKey)&quot; --out &quot;$(PublishDir)subapp-signatures.json&quot;" />
+    <!-- The file is written after the publish file list was worked out; list it too, so every way of
+         deploying (Web Deploy, FTP, folder) ships this release's signatures rather than leaving the
+         server with an older file, which makes the shell refuse new bundles as unsigned. -->
+    <ItemGroup Condition="Exists('$(PublishDir)subapp-signatures.json')">
+      <ResolvedFileToPublish Include="$(PublishDir)subapp-signatures.json" RelativePath="subapp-signatures.json" CopyToPublishDirectory="Always" />
+    </ItemGroup>
   </Target>
 </Project>
