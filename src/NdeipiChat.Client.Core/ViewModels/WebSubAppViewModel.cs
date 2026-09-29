@@ -33,8 +33,27 @@ public sealed partial class WebSubAppViewModel(
     /// <summary>The site the sub-app lives on; the WebView keeps to it.</summary>
     public Uri? Site { get; private set; }
 
+    IReadOnlyDictionary<string, object> _parameters = new Dictionary<string, object>();
+    bool _signedInAgain;
+
+    /// <summary>
+    /// The web shell lost its sign-in (it asks with <see cref="MobileAuthContract.EmbedSignInPath"/>):
+    /// hand it a fresh one, once. A second request means handoffs aren't working, so it says so.
+    /// </summary>
+    public async Task SignInAgainAsync()
+    {
+        if (_signedInAgain)
+        {
+            ErrorMessage = $"Couldn't sign {Title} in. Go back and open it again.";
+            return;
+        }
+        _signedInAgain = true;
+        await OnNavigatedToAsync(_parameters);
+    }
+
     public async Task OnNavigatedToAsync(IReadOnlyDictionary<string, object> parameters)
     {
+        _parameters = parameters;
         (Url, ErrorMessage, IsLoading) = (null, null, true);
         try
         {

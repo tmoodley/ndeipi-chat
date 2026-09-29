@@ -9,9 +9,9 @@
                      Title="Send money"
                      Shell.TabBarIsVisible="False">
     <ScrollView>
-        <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+        <VerticalStackLayout Spacing="4" Padding="0,4,0,32">
 
-            <Border IsVisible="{Binding NeedsVerification}" Margin="12,4" Padding="16" StrokeThickness="0" StrokeShape="RoundRectangle 8" BackgroundColor="#FFF4E5">
+            <Border IsVisible="{Binding NeedsVerification}" Style="{StaticResource Notice}" Margin="16,4">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Verify your identity to send money." FontSize="15" />
                     <Button Text="Go to Wallet" Command="{Binding OpenWalletCommand}" Style="{StaticResource Secondary}" HeightRequest="40" />

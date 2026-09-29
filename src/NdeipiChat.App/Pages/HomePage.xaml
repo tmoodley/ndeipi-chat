@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Home, as on the web: who you are, your wallet, quick ways to move money, the people you talk to
+     most, your apps and your recent chats. -->
+<pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                     xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
+                     xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
+                     xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
+                     x:Class="NdeipiChat.App.Pages.HomePage"
+                     ControlTemplate="{StaticResource WithDock}"
+                     x:DataType="vm:HomeViewModel"
+                     Title="Home"
+                     Shell.NavBarIsVisible="False">
+    <RefreshView Command="{Binding RefreshCommand}" IsRefreshing="{Binding IsRefreshing}">
+        <ScrollView>
+            <VerticalStackLayout Padding="16,20,16,28" Spacing="18">
+
+                <!-- Greeting, requests, you. -->
+                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+                    <VerticalStackLayout VerticalOptions="Center">
+                        <Label Text="{Binding DateText}" Style="{StaticResource Kicker}" />
+                        <Label Text="{Binding Greeting}" Style="{StaticResource PageTitle}" LineBreakMode="TailTruncation" />
+                    </VerticalStackLayout>
+                    <Grid Grid.Column="1" IsVisible="{Binding ShowShamwaris}" VerticalOptions="Center">
+                        <Button Text="🔔" Style="{StaticResource IconButton}" BackgroundColor="{StaticResource Brand}" TextColor="White"
+                                Command="{Binding OpenShamwarisCommand}" />
+                        <Border Style="{StaticResource BadgeBorder}" IsVisible="{Binding HasRequests}" InputTransparent="True"
+                                HorizontalOptions="End" VerticalOptions="Start" Margin="0,-5,-5,0">
+                            <Label Text="{Binding RequestCount}" TextColor="White" FontSize="11" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                    <controls:AvatarView Grid.Column="2" Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="46" VerticalOptions="Center">
+                        <controls:AvatarView.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnMe" />
+                        </controls:AvatarView.GestureRecognizers>
+                    </controls:AvatarView>
+                </Grid>
+
+                <Border Style="{StaticResource Notice}" IsVisible="{Binding Launcher.IsOffline}">
+                    <Label Text="You're offline. These are your apps from last time." TextColor="#8A6100" FontSize="14" />
+                </Border>
+
+                <!-- The wallet card: the balance stays hidden until tapped. -->
+                <Border IsVisible="{Binding ShowWallet}" Background="{StaticResource WalletGradient}" StrokeThickness="0"
+                        StrokeShape="RoundRectangle 26" Padding="22,20" MinimumHeightRequest="190">
+                    <Border.Shadow>
+                        <Shadow Brush="#5850F0" Opacity="0.35" Radius="24" Offset="0,10" />
+                    </Border.Shadow>
+                    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+                        <!-- The web's faint ring in the corner. -->
+                        <Ellipse Grid.RowSpan="3" WidthRequest="220" HeightRequest="220" Stroke="#14FFFFFF" StrokeThickness="28"
+                                 HorizontalOptions="End" VerticalOptions="End" Margin="0,0,-62,-80" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="NDEIPI WALLET" TextColor="#D9FFFFFF" FontSize="13" FontFamily="monospace" FontAttributes="Bold" CharacterSpacing="0.6" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="⋯" WidthRequest="36" HeightRequest="36" CornerRadius="12" Padding="0" FontSize="18"
+                                    BackgroundColor="#EBFFFFFF" TextColor="#16181D" Command="{Binding OpenWalletCommand}" />
+                        </Grid>
+                        <VerticalStackLayout Grid.Row="1" Spacing="8" VerticalOptions="Center">
+                            <Button Text="Tap for balance" IsVisible="{Binding BalanceHidden}" Command="{Binding ShowBalanceCommand}"
+                                    BackgroundColor="White" TextColor="#16181D" CornerRadius="12" HeightRequest="40" Padding="14,0" FontSize="14"
+                                    HorizontalOptions="Start">
+                                <Button.Triggers>
+                                    <DataTrigger TargetType="Button" Binding="{Binding IsLoadingBalance}" Value="True">
+                                        <Setter Property="Text" Value="Loading…" />
+                                        <Setter Property="IsEnabled" Value="False" />
+                                    </DataTrigger>
+                                </Button.Triggers>
+                            </Button>
+                            <VerticalStackLayout IsVisible="{Binding NeedsVerification}" Spacing="10">
+                                <Label Text="Verify your identity to send and receive money." TextColor="White" FontSize="15" />
+                                <Button Text="Verify now" Command="{Binding OpenWalletCommand}" BackgroundColor="White" TextColor="#16181D"
+                                        CornerRadius="12" HeightRequest="40" Padding="14,0" FontSize="14" HorizontalOptions="Start" />
+                            </VerticalStackLayout>
+                            <VerticalStackLayout IsVisible="{Binding BalanceShown}" Spacing="2">
+                                <Label Text="{Binding BalanceText}" TextColor="White" FontSize="34" FontAttributes="Bold" CharacterSpacing="-0.6" />
+                                <Label Text="{Binding OtherBalancesText}" TextColor="#E6FFFFFF" FontSize="13" IsVisible="{Binding OtherBalancesText, Converter={StaticResource HasText}}" />
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Label Text="{Binding WalletFoot}" TextColor="#E6FFFFFF" FontSize="13" FontFamily="monospace" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                            <Button Grid.Column="1" Text="My wallet ›" Command="{Binding OpenWalletCommand}" BackgroundColor="#38FFFFFF" TextColor="White"
+                                    CornerRadius="12" HeightRequest="34" Padding="12,0" FontSize="13" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+
+                <!-- Quick ways to move money, post and find apps. -->
+                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="12">
+                    <Border Style="{StaticResource Glass}" Padding="4,14,4,12" IsVisible="{Binding ShowWallet}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSendMoney" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="8">
+                            <Border WidthRequest="44" HeightRequest="44" StrokeShape="RoundRectangle 22" Stroke="#4CB944" StrokeThickness="2" BackgroundColor="Transparent" HorizontalOptions="Center">
+                                <Label Text="↑" TextColor="#4CB944" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="Transfer" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="1" Style="{StaticResource Glass}" Padding="4,14,4,12">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSendTokens" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="8">
+                            <Border WidthRequest="44" HeightRequest="44" StrokeShape="RoundRectangle 22" Stroke="{StaticResource Brand}" StrokeThickness="2" BackgroundColor="Transparent" HorizontalOptions="Center">
+                                <Label Text="⇄" TextColor="{StaticResource Brand}" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="Tokens" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource Glass}" Padding="4,14,4,12" IsVisible="{Binding ShowFeed}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding ComposePostCommand}" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="8">
+                            <Border WidthRequest="44" HeightRequest="44" StrokeShape="RoundRectangle 22" Stroke="#E5484D" StrokeThickness="2" BackgroundColor="Transparent" HorizontalOptions="Center">
+                                <Label Text="＋" TextColor="#E5484D" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="Post" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                    <Border Grid.Column="3" Style="{StaticResource Glass}" Padding="4,14,4,12">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenAppsCommand}" />
+                        </Border.GestureRecognizers>
+                        <VerticalStackLayout Spacing="8">
+                            <Border WidthRequest="44" HeightRequest="44" StrokeShape="RoundRectangle 22" Stroke="#8B5CF6" StrokeThickness="2" BackgroundColor="Transparent" HorizontalOptions="Center">
+                                <Label Text="▦" TextColor="#8B5CF6" FontSize="20" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Text="Apps" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                        </VerticalStackLayout>
+                    </Border>
+                </Grid>
+
+                <!-- The people you talk to most. -->
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Frequent contacts" Style="{StaticResource SectionTitle}" />
+                        <Label Grid.Column="1" Text="View all" Style="{StaticResource SectionLink}" IsVisible="{Binding ShowShamwaris}">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenShamwarisCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                    <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                        <HorizontalStackLayout Spacing="14" Padding="2,4,2,8">
+                            <VerticalStackLayout Spacing="6" WidthRequest="66" IsVisible="{Binding ShowShamwaris}">
+                                <VerticalStackLayout.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding OpenShamwarisCommand}" />
+                                </VerticalStackLayout.GestureRecognizers>
+                                <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 28" StrokeThickness="0"
+                                        BackgroundColor="{AppThemeBinding Light=#16181D, Dark=#EEF1F8}" HorizontalOptions="Center" Shadow="{StaticResource SoftShadow}">
+                                    <Label Text="＋" FontSize="24" TextColor="{AppThemeBinding Light=White, Dark=#16181D}" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="Add" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" />
+                            </VerticalStackLayout>
+                            <HorizontalStackLayout Spacing="14" BindableLayout.ItemsSource="{Binding Frequent}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:HomePersonViewModel">
+                                        <VerticalStackLayout Spacing="6" WidthRequest="66">
+                                            <VerticalStackLayout.GestureRecognizers>
+                                                <TapGestureRecognizer Command="{Binding OpenPersonCommand, Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, x:DataType=vm:HomeViewModel}"
+                                                                      CommandParameter="{Binding .}" />
+                                            </VerticalStackLayout.GestureRecognizers>
+                                            <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="56" IsRound="True" HorizontalOptions="Center" />
+                                            <Label Text="{Binding FirstName}" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" LineBreakMode="TailTruncation" />
+                                        </VerticalStackLayout>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+                            <Label Text="People you chat with show up here." Style="{StaticResource Muted}" VerticalOptions="Center"
+                                   IsVisible="{Binding HasFrequent, Converter={StaticResource Not}}" />
+                        </HorizontalStackLayout>
+                    </ScrollView>
+                </VerticalStackLayout>
+
+                <!-- Apps open in this session: tap to go back, ✕ to close. -->
+                <HorizontalStackLayout Spacing="8" IsVisible="{Binding Launcher.HasRunning}" BindableLayout.ItemsSource="{Binding Launcher.Running}">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SubAppItemViewModel">
+                            <Border Style="{StaticResource Glass}" Padding="12,0,2,0" StrokeShape="RoundRectangle 18" HeightRequest="38">
+                                <HorizontalStackLayout Spacing="2">
+                                    <Label Text="{Binding Icon}" VerticalOptions="Center" />
+                                    <Label Text="{Binding Title}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" Margin="4,0">
+                                        <Label.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                                                  CommandParameter="{Binding .}" />
+                                        </Label.GestureRecognizers>
+                                    </Label>
+                                    <Button Text="✕" FontSize="12" Padding="8,0" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}"
+                                            Command="{Binding CloseCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                            CommandParameter="{Binding .}" />
+                                </HorizontalStackLayout>
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </HorizontalStackLayout>
+
+                <!-- Pinned apps, and the way to every app. -->
+                <VerticalStackLayout Spacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Your apps" Style="{StaticResource SectionTitle}" />
+                        <Label Grid.Column="1" Text="Edit" Style="{StaticResource SectionLink}">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenAppsCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                    <FlexLayout Wrap="Wrap" JustifyContent="Start" BindableLayout.ItemsSource="{Binding Launcher.Pinned}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="vm:SubAppItemViewModel">
+                                <VerticalStackLayout Spacing="6" FlexLayout.Basis="25%" Padding="0,0,0,14">
+                                    <VerticalStackLayout.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                                              CommandParameter="{Binding .}" />
+                                    </VerticalStackLayout.GestureRecognizers>
+                                    <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 18" StrokeThickness="0"
+                                            Background="{Binding Tone, Converter={StaticResource ToneBrush}}" HorizontalOptions="Center" Shadow="{StaticResource SoftShadow}">
+                                        <Label Text="{Binding Icon}" FontSize="26" HorizontalOptions="Center" VerticalOptions="Center" />
+                                    </Border>
+                                    <Label Text="{Binding Title}" FontSize="12" FontAttributes="Bold" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                                </VerticalStackLayout>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </FlexLayout>
+                    <Button Text="▦  All apps" Style="{StaticResource Secondary}" Command="{Binding OpenAppsCommand}" HeightRequest="46" />
+                </VerticalStackLayout>
+
+                <!-- The latest chats. -->
+                <VerticalStackLayout Spacing="12" IsVisible="{Binding HasRecent}">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Recent activity" Style="{StaticResource SectionTitle}" />
+                        <Label Grid.Column="1" Text="View all" Style="{StaticResource SectionLink}">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenChatsCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+                    <Border Style="{StaticResource Glass}" Padding="0">
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Recent}">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ConversationItemViewModel">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Style="{StaticResource Row}" RowSpacing="2">
+                                        <Grid.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding OpenCommand, Source={RelativeSource AncestorType={x:Type vm:ChatsViewModel}}, x:DataType=vm:ChatsViewModel}"
+                                                                  CommandParameter="{Binding .}" />
+                                        </Grid.GestureRecognizers>
+                                        <controls:AvatarView Grid.RowSpan="2" Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="46" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding Title}" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                                        <Label Grid.Column="1" Grid.Row="1" Text="{Binding Preview}" Style="{StaticResource Muted}" FontSize="14" LineBreakMode="TailTruncation" MaxLines="1" />
+                                        <Label Grid.Column="2" Text="{Binding TimeText}" Style="{StaticResource Muted}" FontSize="12" HorizontalOptions="End" />
+                                        <Border Grid.Column="2" Grid.Row="1" Style="{StaticResource BadgeBorder}" IsVisible="{Binding HasUnread}" HorizontalOptions="End">
+                                            <Label Text="{Binding UnreadText}" TextColor="White" FontSize="11" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
+</pages:ViewModelPage>

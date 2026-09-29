@@ -18,10 +18,9 @@
                 <Button Text="Earlier messages"
                         Command="{Binding LoadOlderCommand}"
                         IsVisible="{Binding HasMore}"
-                        BackgroundColor="Transparent"
-                        TextColor="{StaticResource TextMuted}"
-                        FontSize="13"
-                        HorizontalOptions="Center" />
+                        Style="{StaticResource LinkButton}"
+                        HorizontalOptions="Center"
+                        Margin="0,8" />
             </CollectionView.Header>
             <CollectionView.Footer>
                 <BoxView HeightRequest="8" Color="Transparent" />
@@ -31,50 +30,51 @@
         <Label Grid.Row="1"
                Text="{Binding TypingText}"
                IsVisible="{Binding TypingText, Converter={StaticResource IsNotNull}}"
-               Style="{StaticResource Muted}"
-               Margin="16,0,16,4" />
+               TextColor="{StaticResource Brand}"
+               FontSize="12"
+               FontAttributes="Bold"
+               Margin="22,0,22,4" />
 
-        <!-- Input bar: "+" opens the extension panel; it turns into Send once there's text. -->
-        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Padding="8" ColumnSpacing="8" BackgroundColor="#F7F7F7">
-            <Border BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 4" Padding="8,0" MinimumHeightRequest="40">
-                <Editor Text="{Binding Draft}" AutoSize="TextChanges" MaximumHeightRequest="120" FontSize="16" BackgroundColor="Transparent" />
-            </Border>
-            <Grid Grid.Column="1" VerticalOptions="End">
+        <!-- The composer: a frosted pill. "+" opens the actions; it turns into Send once there's text. -->
+        <Border Grid.Row="2" Style="{StaticResource Glass}" StrokeShape="RoundRectangle 24" Padding="10,6,6,6" Margin="12,6,12,12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
                 <Button Text="+"
                         Command="{Binding ToggleExtensionPanelCommand}"
-                        IsVisible="{Binding Draft, Converter={StaticResource IsBlank}}"
-                        WidthRequest="40" HeightRequest="40" CornerRadius="20" Padding="0"
-                        BackgroundColor="Transparent" BorderColor="{StaticResource Text}" BorderWidth="1.5"
-                        TextColor="{StaticResource Text}" FontSize="24" />
-                <Button Text="Send"
+                        WidthRequest="42" HeightRequest="42" CornerRadius="21" Padding="0"
+                        BackgroundColor="{AppThemeBinding Light={StaticResource BrandSoftLight}, Dark={StaticResource BrandSoftDark}}"
+                        TextColor="{StaticResource Brand}" FontSize="22" VerticalOptions="End" />
+                <Editor Grid.Column="1" Text="{Binding Draft}" Placeholder="Message" AutoSize="TextChanges" MaximumHeightRequest="120" VerticalOptions="Center" />
+                <Button Grid.Column="2"
+                        Text="➤"
                         Command="{Binding SendTextCommand}"
                         IsVisible="{Binding Draft, Converter={StaticResource HasText}}"
-                        Style="{StaticResource Primary}"
-                        HeightRequest="40" FontSize="15" Padding="14,0" />
+                        WidthRequest="42" HeightRequest="42" CornerRadius="21" Padding="0"
+                        BackgroundColor="{StaticResource Brand}" TextColor="White" FontSize="17"
+                        Shadow="{StaticResource BrandShadow}" VerticalOptions="End" />
             </Grid>
-        </Grid>
+        </Border>
 
-        <!-- Extension panel: one tile per registered IComposerAction. -->
+        <!-- The actions: one tile per registered IComposerAction (send money, send tokens...). -->
         <CollectionView Grid.Row="3"
                         ItemsSource="{Binding Actions}"
                         IsVisible="{Binding IsExtensionPanelOpen}"
                         SelectionMode="None"
-                        HeightRequest="200"
-                        BackgroundColor="#F7F7F7">
+                        HeightRequest="120"
+                        Margin="10,0,10,8">
             <CollectionView.ItemsLayout>
                 <GridItemsLayout Orientation="Vertical" Span="4" />
             </CollectionView.ItemsLayout>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="ext:IComposerAction">
-                    <VerticalStackLayout Padding="8,16" Spacing="6">
+                    <VerticalStackLayout Padding="6,8" Spacing="6">
                         <VerticalStackLayout.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding RunActionCommand, Source={RelativeSource AncestorType={x:Type vm:ChatViewModel}}, x:DataType=vm:ChatViewModel}"
                                                   CommandParameter="{Binding .}" />
                         </VerticalStackLayout.GestureRecognizers>
-                        <Border WidthRequest="60" HeightRequest="60" BackgroundColor="White" StrokeThickness="0" StrokeShape="RoundRectangle 12" HorizontalOptions="Center">
-                            <Label Text="{Binding Glyph}" FontSize="26" HorizontalOptions="Center" VerticalOptions="Center" />
+                        <Border Style="{StaticResource Glass}" WidthRequest="56" HeightRequest="56" Padding="0" StrokeShape="RoundRectangle 18" HorizontalOptions="Center">
+                            <Label Text="{Binding Glyph}" FontSize="24" HorizontalOptions="Center" VerticalOptions="Center" />
                         </Border>
-                        <Label Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="12" HorizontalOptions="Center" />
+                        <Label Text="{Binding Title}" Style="{StaticResource Muted}" FontSize="12" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
                     </VerticalStackLayout>
                 </DataTemplate>
             </CollectionView.ItemTemplate>

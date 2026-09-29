@@ -277,6 +277,20 @@ public sealed class Post
     public SocialGroup? Group { get; set; }
 
     public List<PostMedia> Media { get; set; } = [];
+
+    /// <summary>Set on a repost: the post it shares. Its own <see cref="Caption"/> is the reposter's thoughts.</summary>
+    public Guid? RepostOfId { get; set; }
+    public Post? RepostOf { get; set; }
+}
+
+public sealed class PostComment
+{
+    public Guid Id { get; set; }
+    public Guid PostId { get; set; }
+    public Guid AuthorId { get; set; }
+    public User Author { get; set; } = null!;
+    public required string Text { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 /// <summary>A photo in a post, stored as JPEGs in three sizes (see PostMediaStore).</summary>

@@ -137,7 +137,12 @@ public sealed class WebNavigator(NavigationManager navigation, IJSRuntime js) : 
     /// <summary>Not while a sign-in is coming back through the callback page.</summary>
     public Task ShowSignInAsync()
     {
-        if (CurrentPath is not (SignInPath or CallbackPath))
+        if (CurrentPath is SignInPath or CallbackPath)
+            return Task.CompletedTask;
+        // In the phone app's WebView: the app signs it in again, not Clerk's page (which would open the browser).
+        if (((IJSInProcessRuntime)js).Invoke<bool>("ndeipi.isInApp", MobileAuthContract.InAppAgentToken))
+            WebEmbedding.RequestSignIn(navigation);
+        else
             navigation.NavigateTo(SignInPath, replace: true);
         return Task.CompletedTask;
     }

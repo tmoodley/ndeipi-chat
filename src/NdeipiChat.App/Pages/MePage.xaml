@@ -1,38 +1,121 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- You: your header as others see it, your account, and the ways to your wallet, Shamwaris,
+     apps, the theme and signing out (as on the web's Me). -->
 <pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                      xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                      xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
                      xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
                      xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
                      x:Class="NdeipiChat.App.Pages.MePage"
+                     ControlTemplate="{StaticResource WithDock}"
                      x:DataType="vm:MeViewModel"
                      Title="Me"
                      Shell.NavBarIsVisible="False">
+    <ContentPage.Resources>
+        <Style x:Key="MenuRow" TargetType="Grid">
+            <Setter Property="ColumnDefinitions" Value="Auto,*,Auto" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="ColumnSpacing" Value="14" />
+        </Style>
+        <Style x:Key="MenuIcon" TargetType="Border">
+            <Setter Property="WidthRequest" Value="44" />
+            <Setter Property="HeightRequest" Value="44" />
+            <Setter Property="StrokeThickness" Value="0" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+        </Style>
+    </ContentPage.Resources>
+
     <ScrollView>
-        <VerticalStackLayout Spacing="8">
-            <Grid ColumnDefinitions="Auto,*" Padding="24,64,24,32" ColumnSpacing="16" BackgroundColor="{StaticResource Surface}">
-                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="64" />
-                <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="4">
-                    <Label Text="{Binding DisplayName}" FontSize="22" FontAttributes="Bold" />
-                    <Label Text="{Binding Username}" Style="{StaticResource Muted}" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
-                    <Label Text="{Binding Email}" Style="{StaticResource Muted}" />
+        <VerticalStackLayout Spacing="16" Padding="16,20,16,32">
+
+            <!-- The header: a cover band, your avatar over it, name and handle. -->
+            <Border Style="{StaticResource Glass}" Padding="0">
+                <VerticalStackLayout>
+                    <Border HeightRequest="96" StrokeThickness="0" StrokeShape="RoundRectangle 22,22,0,0" Background="{StaticResource WalletGradient}" />
+                    <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="92" HorizontalOptions="Center" Margin="0,-48,0,0" />
+                    <VerticalStackLayout Padding="16,10,16,18" Spacing="2">
+                        <Label Text="{Binding DisplayName}" FontSize="22" FontAttributes="Bold" HorizontalOptions="Center" />
+                        <Label Text="{Binding Username}" Style="{StaticResource Muted}" FontSize="14" HorizontalOptions="Center"
+                               IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
-            </Grid>
+            </Border>
 
-            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,14" ColumnSpacing="12" BackgroundColor="{StaticResource Surface}">
-                <Grid.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding OpenWalletCommand}" />
-                </Grid.GestureRecognizers>
-                <Label Text="💳" FontSize="20" VerticalOptions="Center" />
-                <Label Grid.Column="1" Text="Wallet" VerticalOptions="Center" />
-                <Label Grid.Column="2" Text="›" FontSize="22" TextColor="#B2B2B2" VerticalOptions="Center" />
-            </Grid>
+            <Border Style="{StaticResource Glass}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Account" Style="{StaticResource SectionTitle}" FontSize="16" />
+                    <Grid ColumnDefinitions="90,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+                        <Label Text="Name" Style="{StaticResource Muted}" FontSize="14" />
+                        <Label Grid.Column="1" Text="{Binding DisplayName}" FontSize="14" FontAttributes="Bold" />
+                        <Label Grid.Row="1" Text="Username" Style="{StaticResource Muted}" FontSize="14" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
+                        <Label Grid.Row="1" Grid.Column="1" Text="{Binding Username}" FontSize="14" FontAttributes="Bold" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
+                        <Label Grid.Row="2" Text="Email" Style="{StaticResource Muted}" FontSize="14" />
+                        <Label Grid.Row="2" Grid.Column="1" Text="{Binding Email}" FontSize="14" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                    </Grid>
+                    <Label Text="Your name, photo and email come from your sign-in account." Style="{StaticResource Muted}" />
+                </VerticalStackLayout>
+            </Border>
 
-            <Button Text="Sign out"
-                    Command="{Binding SignOutCommand}"
-                    Style="{StaticResource Secondary}"
-                    TextColor="{StaticResource Danger}"
-                    Margin="16,32" />
+            <Border Style="{StaticResource Glass}" Padding="0,6">
+                <VerticalStackLayout>
+                    <Grid Style="{StaticResource MenuRow}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenWalletCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='brown', Converter={StaticResource ToneBrush}, x:DataType=x:String}">
+                            <Label Text="👛" FontSize="20" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                            <Label Text="Wallet" FontAttributes="Bold" />
+                            <Label Text="Verification, balances and receiving wallets" Style="{StaticResource Muted}" FontSize="12" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="›" FontSize="24" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                    </Grid>
+                    <Grid Style="{StaticResource MenuRow}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnShamwaris" />
+                        </Grid.GestureRecognizers>
+                        <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='green', Converter={StaticResource ToneBrush}, x:DataType=x:String}">
+                            <Label Text="👥" FontSize="20" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                            <Label Text="Shamwaris" FontAttributes="Bold" />
+                            <Label Text="Your friends, and requests" Style="{StaticResource Muted}" FontSize="12" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="›" FontSize="24" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                    </Grid>
+                    <Grid Style="{StaticResource MenuRow}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAllApps" />
+                        </Grid.GestureRecognizers>
+                        <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='purple', Converter={StaticResource ToneBrush}, x:DataType=x:String}">
+                            <Label Text="▦" FontSize="20" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                            <Label Text="All apps" FontAttributes="Bold" />
+                            <Label Text="Open, pin and unpin apps" Style="{StaticResource Muted}" FontSize="12" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="›" FontSize="24" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                    </Grid>
+                    <Grid Style="{StaticResource MenuRow}">
+                        <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='yellow', Converter={StaticResource ToneBrush}, x:DataType=x:String}">
+                            <Label Text="💡" FontSize="20" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Grid.Column="1" Text="Dark mode" FontAttributes="Bold" VerticalOptions="Center" />
+                        <Switch Grid.Column="2" x:Name="DarkMode" Toggled="OnDarkModeToggled" VerticalOptions="Center" />
+                    </Grid>
+                    <Grid Style="{StaticResource MenuRow}">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding SignOutCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='red', Converter={StaticResource ToneBrush}, x:DataType=x:String}">
+                            <Label Text="⏻" FontSize="20" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <Label Grid.Column="1" Text="Sign out" FontAttributes="Bold" TextColor="{StaticResource Danger}" VerticalOptions="Center" />
+                        <Label Grid.Column="2" Text="›" FontSize="24" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
         </VerticalStackLayout>
     </ScrollView>
 </pages:ViewModelPage>

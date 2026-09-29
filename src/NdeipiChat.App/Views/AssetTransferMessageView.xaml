@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<!-- WeChat's transfer card: orange while in flight, pale once confirmed, grey if it failed. -->
+<!-- A transfer card, as on the web: orange while in flight, green once confirmed, grey if it failed. -->
 <views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                   xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                   xmlns:views="clr-namespace:NdeipiChat.App.Views"
@@ -8,16 +8,19 @@
                   x:DataType="ext:AssetTransferMessageViewModel">
     <views:MessageRow.Bubble>
         <Border StrokeThickness="0"
-                StrokeShape="RoundRectangle 8"
+                StrokeShape="RoundRectangle 20"
                 Padding="0"
-                WidthRequest="240"
-                BackgroundColor="{StaticResource Transfer}">
+                WidthRequest="250"
+                Background="{StaticResource TransferGradient}">
+            <Border.Shadow>
+                <Shadow Brush="#FF7A59" Opacity="0.3" Radius="16" Offset="0,8" />
+            </Border.Shadow>
             <Border.Triggers>
                 <DataTrigger TargetType="Border" Binding="{Binding IsConfirmed}" Value="True">
-                    <Setter Property="BackgroundColor" Value="{StaticResource TransferDone}" />
+                    <Setter Property="Background" Value="{StaticResource TransferDoneGradient}" />
                 </DataTrigger>
                 <DataTrigger TargetType="Border" Binding="{Binding IsFailedTransfer}" Value="True">
-                    <Setter Property="BackgroundColor" Value="#C8C8C8" />
+                    <Setter Property="Background" Value="{StaticResource TransferFailedGradient}" />
                 </DataTrigger>
             </Border.Triggers>
             <VerticalStackLayout>
@@ -26,12 +29,12 @@
                         <Label Text="⇄" TextColor="White" FontSize="20" HorizontalOptions="Center" VerticalOptions="Center" />
                     </Border>
                     <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                        <Label Text="{Binding AmountText}" TextColor="White" FontSize="17" FontAttributes="Bold" LineBreakMode="TailTruncation" />
+                        <Label Text="{Binding AmountText}" TextColor="White" FontSize="22" FontAttributes="Bold" LineBreakMode="TailTruncation" />
                         <Label Text="{Binding Headline}" TextColor="White" FontSize="13" />
                         <Label Text="{Binding Memo}" IsVisible="{Binding HasMemo}" TextColor="White" FontSize="13" LineBreakMode="TailTruncation" />
                     </VerticalStackLayout>
                 </Grid>
-                <BoxView HeightRequest="0.5" Color="#55FFFFFF" Margin="14,0" />
+                <BoxView HeightRequest="1" Color="#66FFFFFF" Margin="14,0" />
                 <Grid ColumnDefinitions="*,Auto" Padding="14,6">
                     <Label Text="{Binding ChainText, StringFormat='Token transfer · {0}'}" TextColor="White" FontSize="11" />
                     <Label Grid.Column="1" Text="{Binding StatusText}" TextColor="White" FontSize="11" />

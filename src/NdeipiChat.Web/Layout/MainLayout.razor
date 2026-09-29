@@ -128,6 +128,8 @@ else
 
     bool IsSignInPage => RelativePath.Split('?', '#')[0].TrimEnd('/') is WebNavigator.SignInPath or WebNavigator.CallbackPath;
 
+    bool IsCallbackPage => RelativePath.Split('?', '#')[0].TrimEnd('/') is WebNavigator.CallbackPath;
+
     /// <summary>
     /// The sub-app on screen, if the manifest leaves it out: the user's roles don't allow it, or it's
     /// switched off. The API refuses it too; this just says so instead of showing errors.
@@ -152,15 +154,24 @@ else
         Ui.Changed += Refresh;
         _ = Ui.LoadThemeAsync();
 
-        // Signed in: connect and stay on the page asked for. Otherwise: the sign-in page.
-        try
+        // Signed in: connect and stay on the page asked for. Otherwise: the sign-in page. Not on the
+        // sign-in callback, though: that page signs in with what it was handed (from the phone app,
+        // a fresh handoff) and starts things itself. Starting here too would go ahead with whatever
+        // sign-in was saved before, and leave for Home before the callback ever ran.
+        if (!IsCallbackPage)
         {
-            await Coordinator.StartAsync();
-        }
-        catch (ApiException)
-        {
-            // A saved sign-in the server no longer accepts; AuthService has already cleared it.
-            Navigation.NavigateTo(WebNavigator.SignInPath, replace: true);
+            try
+            {
+                await Coordinator.StartAsync();
+            }
+            catch (ApiException)
+            {
+                // A saved sign-in the server no longer accepts; AuthService has already cleared it.
+                if (Embedding.IsInApp)
+                    WebEmbedding.RequestSignIn(Navigation);
+                else
+                    Navigation.NavigateTo(WebNavigator.SignInPath, replace: true);
+            }
         }
         // The manifest before any page: it decides which pages this user may see.
         _signedIn = await Auth.IsSignedInAsync();

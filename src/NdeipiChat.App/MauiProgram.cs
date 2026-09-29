@@ -12,11 +12,29 @@ namespace NdeipiChat.App;
 
 public static class MauiProgram
 {
+    /// <summary>Text fields sit in rounded boxes (the Field style), as on the web: no platform underline.</summary>
+    static void RemoveFieldUnderlines()
+    {
+#if ANDROID
+        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("NoUnderline", (handler, _) =>
+            handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent));
+        Microsoft.Maui.Handlers.EditorHandler.Mapper.AppendToMapping("NoUnderline", (handler, _) =>
+            handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent));
+        Microsoft.Maui.Handlers.PickerHandler.Mapper.AppendToMapping("NoUnderline", (handler, _) =>
+            handler.PlatformView.BackgroundTintList = Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent));
+#endif
+    }
+
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
         builder.UseMauiCommunityToolkitCamera();
+        RemoveFieldUnderlines();
+#if DEBUG && ANDROID
+        // chrome://inspect can then show a sub-app's WebView: its console and where it navigates.
+        Android.Webkit.WebView.SetWebContentsDebuggingEnabled(true);
+#endif
 
 #if DEBUG
         // A debug build may run against a local API, whose sub-apps nobody has signed. Release builds
@@ -61,6 +79,7 @@ public static class MauiProgram
         builder.Services.AddTransient<RegisterCowPage>();
         builder.Services.AddTransient<CowDetailPage>();
         builder.Services.AddTransient<LauncherPage>();
+        builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<WebSubAppPage>();
         builder.Services.AddTransient<FeedPage>();
         builder.Services.AddTransient<ComposePostPage>();

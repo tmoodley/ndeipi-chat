@@ -53,18 +53,18 @@
         </Grid>
 
         <!-- Step 3: check the photos, add what the farmer knows. -->
-        <ScrollView IsVisible="{Binding IsDetailsStep}" BackgroundColor="{StaticResource Page}">
+        <ScrollView IsVisible="{Binding IsDetailsStep}" BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}">
             <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
                 <Label Text="{Binding StepText}" Style="{StaticResource SectionHeader}" />
                 <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Padding="12,0">
                     <VerticalStackLayout Spacing="4">
-                        <Border HeightRequest="140" StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                        <Border HeightRequest="140" StrokeThickness="0" StrokeShape="RoundRectangle 14">
                             <Image Source="{Binding FacePhoto, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" />
                         </Border>
                         <Button Text="Retake face" Command="{Binding RetakeFaceCommand}" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource Brand}" />
                     </VerticalStackLayout>
                     <VerticalStackLayout Grid.Column="1" Spacing="4">
-                        <Border HeightRequest="140" StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                        <Border HeightRequest="140" StrokeThickness="0" StrokeShape="RoundRectangle 14">
                             <Image Source="{Binding FlankPhoto, Converter={StaticResource BytesToImage}}" Aspect="AspectFill" />
                         </Border>
                         <Button Text="Retake side" Command="{Binding RetakeFlankCommand}" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource Brand}" />
@@ -100,9 +100,9 @@
         </VerticalStackLayout>
 
         <!-- Outcome. -->
-        <ScrollView IsVisible="{Binding IsDone}" BackgroundColor="{StaticResource Page}">
+        <ScrollView IsVisible="{Binding IsDone}" BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}">
             <VerticalStackLayout Spacing="8" Padding="0,24,0,32">
-                <Border Margin="12,4" Padding="20" StrokeThickness="0" StrokeShape="RoundRectangle 12" BackgroundColor="{StaticResource Surface}">
+                <Border Margin="12,4" Padding="20" StrokeThickness="0" StrokeShape="RoundRectangle 22" BackgroundColor="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}">
                     <VerticalStackLayout Spacing="8">
                         <Label Text="{Binding Result.Headline}" FontSize="24" FontAttributes="Bold" />
                         <Label Text="{Binding Result.Detail}" Style="{StaticResource Muted}" FontSize="15" />
@@ -116,7 +116,7 @@
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
-                        <Border IsVisible="{Binding Result.RequiresVet}" BackgroundColor="#FFF0F0" StrokeThickness="0" StrokeShape="RoundRectangle 8" Padding="12">
+                        <Border IsVisible="{Binding Result.RequiresVet}" BackgroundColor="#FFF0F0" StrokeThickness="0" StrokeShape="RoundRectangle 14" Padding="12">
                             <Label Text="Have a vet look at this animal." TextColor="{StaticResource Danger}" FontAttributes="Bold" />
                         </Border>
                         <Label Text="{Binding Result.AttestationText}" Style="{StaticResource Muted}" FontSize="11" IsVisible="{Binding Result.Succeeded}" />

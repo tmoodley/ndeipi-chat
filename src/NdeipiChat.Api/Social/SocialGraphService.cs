@@ -299,6 +299,8 @@ public sealed class SocialGraphService(ChatDbContext db, TimeProvider clock)
             return null;
         var media = await db.PostMedia.Where(m => db.Posts.Any(p => p.Id == m.PostId && p.GroupId == id)).Select(m => m.Id).ToListAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        // Reposts of its posts first: they point at them, and the database won't cascade that.
+        await db.Posts.Where(p => p.RepostOfId != null && db.Posts.Any(o => o.Id == p.RepostOfId && o.GroupId == id)).ExecuteDeleteAsync(ct);
         await db.Posts.Where(p => p.GroupId == id).ExecuteDeleteAsync(ct);
         await db.GroupMembers.Where(m => m.GroupId == id).ExecuteDeleteAsync(ct);
         await db.SocialGroups.Where(g => g.Id == id).ExecuteDeleteAsync(ct);

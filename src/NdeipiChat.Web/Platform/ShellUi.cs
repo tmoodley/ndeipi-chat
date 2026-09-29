@@ -1,4 +1,5 @@
 using Microsoft.JSInterop;
+using NdeipiChat.Client.ViewModels;
 using NdeipiChat.Contracts;
 
 namespace NdeipiChat.Web.Platform;
@@ -47,18 +48,6 @@ public sealed class ShellUi(IJSRuntime js)
 /// <summary>How apps look in the shell: a colour for each app's icon square.</summary>
 public static class AppLook
 {
-    static readonly string[] Tones = ["tone-blue", "tone-green", "tone-red", "tone-yellow", "tone-purple", "tone-brown", "tone-teal", "tone-orange", "tone-pink"];
-
-    public static string Tone(string appId) => appId switch
-    {
-        BuiltInApps.Chats => "tone-blue",
-        BuiltInApps.Feed => "tone-pink",
-        BuiltInApps.Shamwaris => "tone-green",
-        BuiltInApps.Wallet => "tone-brown",
-        BuiltInApps.Herd => "tone-yellow",
-        "events" => "tone-purple",
-        "gigs" => "tone-orange",
-        "inventory" => "tone-teal",
-        _ => Tones[(int)((uint)string.GetHashCode(appId, StringComparison.Ordinal) % Tones.Length)]
-    };
+    /// <summary>The same colour the phone app gives it (<see cref="AppTones"/>), as a CSS class.</summary>
+    public static string Tone(string appId) => "tone-" + AppTones.For(appId);
 }

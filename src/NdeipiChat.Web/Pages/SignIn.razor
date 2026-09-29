@@ -1,5 +1,7 @@
 @page "/signin"
 @inject WebSignIn Flow
+@inject WebEmbedding Embedding
+@inject NavigationManager Navigation
 
 <PageTitle>Sign in · Ndeipi Chat</PageTitle>
 
@@ -12,6 +14,13 @@
 
 @code {
     bool _busy;
+
+    /// <summary>In the phone app's WebView the app signs it in; Clerk's page would only open the browser.</summary>
+    protected override void OnInitialized()
+    {
+        if (Embedding.IsInApp)
+            WebEmbedding.RequestSignIn(Navigation);
+    }
 
     async Task StartAsync()
     {

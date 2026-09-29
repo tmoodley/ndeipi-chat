@@ -8,8 +8,9 @@ using NdeipiChat.Contracts;
 namespace NdeipiChat.Client.ViewModels;
 
 /// <summary>
-/// The Feed tab: everyone's posts, newest first, with likes. Your own posts can be minted as NFTs
-/// (or deleted, until they are); a mint's progress arrives live.
+/// A feed of posts: everyone's, or one person's, one group's, or the people you follow. Sorted by
+/// Recent or Top. Posts can be liked, commented on and reposted; your own can be minted as NFTs (or
+/// deleted, until they are), and a mint's progress arrives live.
 /// </summary>
 public sealed partial class FeedViewModel : ObservableObject
 {
@@ -22,7 +23,11 @@ public sealed partial class FeedViewModel : ObservableObject
     public FeedViewModel(ChatApi api, ChatSession session, INavigator navigator, IDialogs dialogs, IUiDispatcher ui, TimeProvider clock)
     {
         (_api, _session, _navigator, _dialogs, _clock) = (api, session, navigator, dialogs, clock);
-        _session.Connection.PostNftChanged += nft => ui.Post(() => Find(nft.PostId)?.Update(nft));
+        _session.Connection.PostNftChanged += nft => ui.Post(() =>
+        {
+            foreach (var post in Showing(nft.PostId))
+                post.Update(nft);
+        });
     }
 
     public ObservableCollection<PostItemViewModel> Posts { get; } = [];
@@ -43,6 +48,14 @@ public sealed partial class FeedViewModel : ObservableObject
     [ObservableProperty]
     public partial string? NftChain { get; set; }
 
+    /// <summary><see cref="FeedSorts.Recent"/> or <see cref="FeedSorts.Top"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SortText), nameof(IsTop))]
+    public partial string Sort { get; set; } = FeedSorts.Recent;
+
+    public bool IsTop => Sort == FeedSorts.Top;
+    public string SortText => IsTop ? "Top" : "Recent";
+
     public bool IsEmpty => Posts.Count == 0;
 
     /// <summary>Which posts: "following" (see FeedScopes), and/or one person's or one group's. The shared feed leaves them null.</summary>
@@ -50,12 +63,15 @@ public sealed partial class FeedViewModel : ObservableObject
     public Guid? AuthorId { get; set; }
     public Guid? GroupId { get; set; }
 
+    /// <summary>Only posts with photos (a profile's Images).</summary>
+    public bool ImagesOnly { get; set; }
+
     [RelayCommand]
     async Task RefreshAsync()
     {
         try
         {
-            var page = await _api.GetFeedAsync(author: AuthorId, scope: Scope, group: GroupId);
+            var page = await _api.GetFeedAsync(author: AuthorId, scope: Scope, group: GroupId, sort: Sort, imagesOnly: ImagesOnly);
             Apply(page);
             Posts.Clear();
             foreach (var post in page.Posts)
@@ -80,9 +96,12 @@ public sealed partial class FeedViewModel : ObservableObject
         IsLoadingMore = true;
         try
         {
-            var page = await _api.GetFeedAsync(before: Posts[^1].Id, author: AuthorId, scope: Scope, group: GroupId);
+            // Top is ranked, so it pages by position; Recent by the last post shown.
+            var page = IsTop
+                ? await _api.GetFeedAsync(author: AuthorId, scope: Scope, group: GroupId, sort: Sort, skip: Posts.Count, imagesOnly: ImagesOnly)
+                : await _api.GetFeedAsync(before: Posts[^1].Id, author: AuthorId, scope: Scope, group: GroupId, sort: Sort, imagesOnly: ImagesOnly);
             Apply(page);
-            foreach (var post in page.Posts.Where(p => Find(p.Id) is null))
+            foreach (var post in page.Posts.Where(p => Posts.All(q => q.Id != p.Id)))
                 Posts.Add(Item(post));
         }
         catch (ApiException ex)
@@ -96,6 +115,15 @@ public sealed partial class FeedViewModel : ObservableObject
     }
 
     [RelayCommand]
+    async Task SetSortAsync(string sort)
+    {
+        if (sort == Sort)
+            return;
+        Sort = sort;
+        await RefreshAsync();
+    }
+
+    [RelayCommand]
     Task ComposeAsync() => _navigator.GoToAsync(Routes.ComposePost);
 
     /// <summary>Shows at once, then settles on the server's count; undone if the server refuses.</summary>
@@ -103,16 +131,143 @@ public sealed partial class FeedViewModel : ObservableObject
     async Task ToggleLikeAsync(PostItemViewModel post)
     {
         var like = !post.LikedByMe;
-        post.SetLike(like, post.LikeCount + (like ? 1 : -1));
+        var count = post.LikeCount + (like ? 1 : -1);
+        foreach (var item in Showing(post.TargetId))
+            item.SetLike(like, count);
         try
         {
-            var result = await _api.SetPostLikeAsync(post.Id, like);
-            post.SetLike(result.LikedByMe, result.LikeCount);
+            var result = await _api.SetPostLikeAsync(post.TargetId, like);
+            foreach (var item in Showing(post.TargetId))
+                item.SetLike(result.LikedByMe, result.LikeCount);
         }
         catch (ApiException ex)
         {
-            post.SetLike(!like, post.LikeCount + (like ? -1 : 1));
+            foreach (var item in Showing(post.TargetId))
+                item.SetLike(!like, count + (like ? -1 : 1));
             await _dialogs.AlertAsync("Couldn't update the like", ex.Message);
+        }
+    }
+
+    // ---- Comments ----
+
+    /// <summary>Opens (loading them the first time) or closes a post's comments.</summary>
+    [RelayCommand]
+    async Task ToggleCommentsAsync(PostItemViewModel post)
+    {
+        post.IsCommentsOpen = !post.IsCommentsOpen;
+        if (post.IsCommentsOpen && !post.CommentsLoaded)
+            await LoadCommentsAsync(post);
+    }
+
+    public async Task LoadCommentsAsync(PostItemViewModel post)
+    {
+        post.IsLoadingComments = true;
+        try
+        {
+            var comments = await _api.GetCommentsAsync(post.TargetId);
+            post.Comments.Clear();
+            foreach (var comment in comments)
+                post.Comments.Add(new CommentItemViewModel(comment, _clock));
+            post.CommentsLoaded = true;
+        }
+        catch (ApiException ex)
+        {
+            await _dialogs.AlertAsync("Couldn't load the comments", ex.Message);
+        }
+        finally
+        {
+            post.IsLoadingComments = false;
+        }
+    }
+
+    [RelayCommand]
+    async Task AddCommentAsync(PostItemViewModel post)
+    {
+        var text = post.CommentDraft?.Trim();
+        if (string.IsNullOrEmpty(text) || post.IsSendingComment)
+            return;
+        post.IsSendingComment = true;
+        try
+        {
+            var comment = await _api.AddCommentAsync(post.TargetId, text);
+            post.CommentDraft = "";
+            foreach (var item in Showing(post.TargetId))
+            {
+                if (item.CommentsLoaded)
+                    item.Comments.Add(new CommentItemViewModel(comment, _clock));
+                item.CommentCount++;
+            }
+        }
+        catch (ApiException ex)
+        {
+            await _dialogs.AlertAsync("Couldn't add the comment", ex.Message);
+        }
+        finally
+        {
+            post.IsSendingComment = false;
+        }
+    }
+
+    [RelayCommand]
+    async Task DeleteCommentAsync(CommentItemViewModel comment)
+    {
+        try
+        {
+            await _api.DeleteCommentAsync(comment.PostId, comment.Id);
+            foreach (var item in Showing(comment.PostId))
+            {
+                if (item.Comments.FirstOrDefault(c => c.Id == comment.Id) is { } shown)
+                    item.Comments.Remove(shown);
+                item.CommentCount = Math.Max(0, item.CommentCount - 1);
+            }
+        }
+        catch (ApiException ex)
+        {
+            await _dialogs.AlertAsync("Couldn't delete the comment", ex.Message);
+        }
+    }
+
+    // ---- Reposts ----
+
+    /// <summary>Reposts it straight away, or takes your repost back if you already have.</summary>
+    [RelayCommand]
+    Task RepostAsync(PostItemViewModel post) => post.RepostedByMe ? UndoRepostAsync(post) : RepostWithThoughtsAsync(post, null);
+
+    /// <summary>Reposts with your own thoughts on top (or none); the repost joins the top of the feed.</summary>
+    public async Task RepostWithThoughtsAsync(PostItemViewModel post, string? thoughts)
+    {
+        try
+        {
+            var repost = await _api.RepostAsync(post.TargetId, string.IsNullOrWhiteSpace(thoughts) ? null : thoughts.Trim());
+            // Reposting again replaces the earlier one.
+            foreach (var mine in Posts.Where(p => p.Post.IsRepost && p.IsMine && p.Post.RepostOf?.Id == post.TargetId).ToList())
+                Posts.Remove(mine);
+            if (repost.RepostOf is { } original)
+                foreach (var item in Showing(original.Id))
+                    item.SetReposts(true, original.RepostCount);
+            if (AuthorId is null || AuthorId == _session.MyUserId)
+                Prepend(repost);
+        }
+        catch (ApiException ex)
+        {
+            await _dialogs.AlertAsync("Couldn't repost", ex.Message);
+        }
+    }
+
+    async Task UndoRepostAsync(PostItemViewModel post)
+    {
+        try
+        {
+            var original = await _api.UndoRepostAsync(post.TargetId);
+            foreach (var mine in Posts.Where(p => p.Post.IsRepost && p.IsMine && p.Post.RepostOf?.Id == original.Id).ToList())
+                Posts.Remove(mine);
+            foreach (var item in Showing(original.Id))
+                item.SetReposts(false, original.RepostCount);
+            OnPropertyChanged(nameof(IsEmpty));
+        }
+        catch (ApiException ex)
+        {
+            await _dialogs.AlertAsync("Couldn't undo the repost", ex.Message);
         }
     }
 
@@ -147,7 +302,12 @@ public sealed partial class FeedViewModel : ObservableObject
         try
         {
             await _api.DeletePostAsync(post.Id);
-            Posts.Remove(post);
+            // Its reposts go with it; a repost of mine going frees the original's repost button.
+            foreach (var gone in Posts.Where(p => p.Id == post.Id || p.Post.RepostOf?.Id == post.Id).ToList())
+                Posts.Remove(gone);
+            if (post.Post.IsRepost && post.Post.RepostOf is { } original)
+                foreach (var item in Showing(original.Id))
+                    item.SetReposts(false, Math.Max(0, item.RepostCount - 1));
             OnPropertyChanged(nameof(IsEmpty));
         }
         catch (ApiException ex)
@@ -160,52 +320,103 @@ public sealed partial class FeedViewModel : ObservableObject
     /// <summary>A post just published on this device goes to the top without a reload.</summary>
     public void Prepend(PostDto post)
     {
-        if (Find(post.Id) is not null)
+        if (Posts.Any(p => p.Id == post.Id))
             return;
         Posts.Insert(0, Item(post));
         OnPropertyChanged(nameof(IsEmpty));
     }
 
-    PostItemViewModel? Find(Guid id) => Posts.FirstOrDefault(p => p.Id == id);
+    /// <summary>Every card showing this post: itself, and plain reposts of it.</summary>
+    IEnumerable<PostItemViewModel> Showing(Guid postId) => Posts.Where(p => p.TargetId == postId).ToList();
 
     PostItemViewModel Item(PostDto post) => new(post, _session.MyUserId, MintingEnabled, _clock);
 
     void Apply(FeedPageDto page) => (HasMore, MintingEnabled, NftChain) = (page.HasMore, page.MintingEnabled, page.NftChain);
 }
 
+/// <summary>
+/// One card in a feed. A plain repost shows the original (with "X reposted this" above it), and
+/// likes, comments and reposts go to the original. A repost with the reposter's thoughts is a post of
+/// its own: their words, with the original inside it.
+/// </summary>
 public sealed partial class PostItemViewModel : ObservableObject
 {
     readonly bool _mintingEnabled;
+    readonly TimeProvider _clock;
 
     public PostItemViewModel(PostDto post, Guid myUserId, bool mintingEnabled, TimeProvider clock)
     {
         Post = post;
         _mintingEnabled = mintingEnabled;
+        _clock = clock;
         IsMine = post.Author.Id == myUserId;
-        TimeText = Display.ListTime(post.CreatedAt, clock.GetUtcNow());
-        LikeCount = post.LikeCount;
-        LikedByMe = post.LikedByMe;
-        Nft = post.Nft;
+        Shown = post is { IsRepost: true, Caption: null, RepostOf: { } original } ? original : post;
+        TimeText = Display.ListTime(Shown.CreatedAt, clock.GetUtcNow());
+        LikeCount = Shown.LikeCount;
+        LikedByMe = Shown.LikedByMe;
+        CommentCount = Shown.CommentCount;
+        RepostCount = Shown.RepostCount;
+        RepostedByMe = Shown.RepostedByMe;
+        Nft = Shown.Nft;
     }
 
+    /// <summary>The post this card is for (possibly a repost).</summary>
     public PostDto Post { get; }
+
+    /// <summary>What the card shows: the post, or for a plain repost, its original.</summary>
+    public PostDto Shown { get; }
+
     public Guid Id => Post.Id;
-    public string AuthorName => Post.Author.DisplayName;
-    public string AuthorInitials => Display.Initials(Post.Author.DisplayName);
-    public string? AuthorAvatarUrl => Post.Author.AvatarUrl;
-    public string? Caption => Post.Caption;
-    public bool HasCaption => Post.Caption is not null;
-    public IReadOnlyList<PostMediaDto> Photos => Post.Media;
-    public bool HasSeveralPhotos => Post.Media.Count > 1;
+
+    /// <summary>What likes, comments and reposts on this card go to.</summary>
+    public Guid TargetId => Shown.Id;
+
+    public bool IsPlainRepost => !ReferenceEquals(Shown, Post);
+    public string? RepostedByText => IsPlainRepost ? $"{Post.Author.DisplayName} reposted this" : null;
+
+    public Guid AuthorId => Shown.Author.Id;
+    public string AuthorName => Shown.Author.DisplayName;
+    public string AuthorInitials => Display.Initials(Shown.Author.DisplayName);
+    public string? AuthorAvatarUrl => Shown.Author.AvatarUrl;
+    public string? Caption => Shown.Caption;
+    public bool HasCaption => Shown.Caption is not null;
+    public IReadOnlyList<PostMediaDto> Photos => Shown.Media;
+    public bool HasPhotos => Shown.Media.Count > 0;
+    public bool HasSeveralPhotos => Shown.Media.Count > 1;
+    public GroupRefDto? Group => Shown.Group;
     public bool IsMine { get; }
     public string TimeText { get; }
 
+    /// <summary>A repost with thoughts: the original inside it.</summary>
+    public PostDto? Embedded => !IsPlainRepost && Post.IsRepost ? Post.RepostOf : null;
+    public bool HasEmbedded => Embedded is not null;
+    public bool IsEmbeddedMissing => Post.IsRepost && Post.RepostOf is null;
+    public string EmbeddedAuthorName => Embedded?.Author.DisplayName ?? "";
+    public string EmbeddedAuthorInitials => Display.Initials(Embedded?.Author.DisplayName);
+    public string? EmbeddedAuthorAvatarUrl => Embedded?.Author.AvatarUrl;
+    public string? EmbeddedCaption => Embedded?.Caption;
+    public bool HasEmbeddedCaption => Embedded?.Caption is not null;
+    public IReadOnlyList<PostMediaDto> EmbeddedPhotos => Embedded?.Media ?? [];
+    public bool HasEmbeddedPhotos => EmbeddedPhotos.Count > 0;
+    public string EmbeddedTimeText => Embedded is { } e ? Display.ListTime(e.CreatedAt, _clock.GetUtcNow()) : "";
+
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LikeText))]
+    [NotifyPropertyChangedFor(nameof(LikeText), nameof(StatsText))]
     public partial int LikeCount { get; set; }
 
     [ObservableProperty]
     public partial bool LikedByMe { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CommentText), nameof(StatsText))]
+    public partial int CommentCount { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RepostText), nameof(StatsText))]
+    public partial int RepostCount { get; set; }
+
+    [ObservableProperty]
+    public partial bool RepostedByMe { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasNft), nameof(IsMinted), nameof(NftText), nameof(CanMint), nameof(MintText), nameof(CanDelete))]
@@ -215,7 +426,30 @@ public sealed partial class PostItemViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
 
+    public ObservableCollection<CommentItemViewModel> Comments { get; } = [];
+
+    [ObservableProperty]
+    public partial bool IsCommentsOpen { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsLoadingComments { get; set; }
+
+    public bool CommentsLoaded { get; set; }
+
+    [ObservableProperty]
+    public partial string? CommentDraft { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsSendingComment { get; set; }
+
     public string LikeText => LikeCount == 1 ? "1 like" : $"{LikeCount} likes";
+    public string CommentText => CommentCount == 1 ? "1 comment" : $"{CommentCount} comments";
+    public string RepostText => RepostCount == 1 ? "1 repost" : $"{RepostCount} reposts";
+
+    /// <summary>"3 likes · 2 comments · 1 repost", leaving out what's zero.</summary>
+    public string StatsText => string.Join(" · ", new[] { (LikeCount, LikeText), (CommentCount, CommentText), (RepostCount, RepostText) }
+        .Where(s => s.Item1 > 0).Select(s => s.Item2));
+
     public bool HasNft => Nft is not null;
     public bool IsMinted => Nft?.Status == TransferStatuses.Confirmed;
 
@@ -229,20 +463,38 @@ public sealed partial class PostItemViewModel : ObservableObject
         var n => n.Status
     };
 
-    /// <summary>Your own post, not minted or being minted -- or whose mint failed -- on a server that mints.</summary>
-    public bool CanMint => IsMine && _mintingEnabled && Post.Media.Count > 0 && (Nft is null || Nft.Status == TransferStatuses.Failed);
+    /// <summary>Your own post (not a repost), not minted or being minted -- or whose mint failed -- on a server that mints.</summary>
+    public bool CanMint => IsMine && !Post.IsRepost && _mintingEnabled && Post.Media.Count > 0 && (Nft is null || Nft.Status == TransferStatuses.Failed);
 
     public string MintText => Nft?.Status == TransferStatuses.Failed ? "Retry mint" : "Mint as NFT";
 
-    /// <summary>Minted posts stay: their NFT shows these photos.</summary>
-    public bool CanDelete => IsMine && (Nft is null || Nft.Status == TransferStatuses.Failed);
+    /// <summary>Your own posts and reposts; minted posts stay, as their NFT shows these photos.</summary>
+    public bool CanDelete => IsMine && (Post.IsRepost || Nft is null || Nft.Status == TransferStatuses.Failed);
+
+    public string DeleteText => IsPlainRepost ? "Undo repost" : "Delete";
 
     public void SetLike(bool liked, int count) => (LikedByMe, LikeCount) = (liked, Math.Max(0, count));
+
+    public void SetReposts(bool reposted, int count) => (RepostedByMe, RepostCount) = (reposted, Math.Max(0, count));
 
     public void Update(PostNftDto nft) => Nft = nft;
 
     /// <summary>Token ids are 128-bit numbers; the last eight digits tell them apart.</summary>
     static string ShortTokenId(string tokenId) => tokenId.Length > 8 ? "…" + tokenId[^8..] : tokenId;
+}
+
+public sealed class CommentItemViewModel(CommentDto comment, TimeProvider clock)
+{
+    public CommentDto Comment => comment;
+    public Guid Id => comment.Id;
+    public Guid PostId => comment.PostId;
+    public Guid AuthorId => comment.Author.Id;
+    public string AuthorName => comment.Author.DisplayName;
+    public string AuthorInitials => Display.Initials(comment.Author.DisplayName);
+    public string? AuthorAvatarUrl => comment.Author.AvatarUrl;
+    public string Text => comment.Text;
+    public string TimeText => Display.ListTime(comment.CreatedAt, clock.GetUtcNow());
+    public bool CanDelete => comment.CanDelete;
 }
 
 /// <summary>A new post: up to four photos, a caption, and whether to mint it straight away.</summary>

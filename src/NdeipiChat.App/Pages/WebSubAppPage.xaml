@@ -13,12 +13,12 @@
         <WebView x:Name="WebContent" Navigating="OnNavigating" Navigated="OnNavigated" />
 
         <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="12" Padding="32"
-                             IsVisible="{Binding IsLoading}" BackgroundColor="{StaticResource Page}">
+                             IsVisible="{Binding IsLoading}" BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}">
             <ActivityIndicator IsRunning="{Binding IsLoading}" Color="{StaticResource Brand}" />
             <Label Text="{Binding Title, StringFormat='Checking {0}…'}" Style="{StaticResource Muted}" HorizontalOptions="Center" />
         </VerticalStackLayout>
 
-        <VerticalStackLayout VerticalOptions="Center" Spacing="16" Padding="32" BackgroundColor="{StaticResource Page}"
+        <VerticalStackLayout VerticalOptions="Center" Spacing="16" Padding="32" BackgroundColor="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}"
                              IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}">
             <Label Text="{Binding ErrorMessage}" HorizontalTextAlignment="Center" />
             <Button Text="Back to your apps" Clicked="OnClose" Style="{StaticResource Primary}" />

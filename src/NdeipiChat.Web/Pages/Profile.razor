@@ -93,7 +93,48 @@
                         }
                     </div>
                     <div class="sc-col">
-                        <SocialFeed Feed="_feed" CanPost="p.IsMe" Empty="@(p.IsMe ? "Nothing posted yet." : $"{p.User.DisplayName} hasn't posted yet.")" />
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Activity</h3></div>
+                            <span class="muted small" style="margin-top: -8px">@p.FollowerCount @(p.FollowerCount == 1 ? "follower" : "followers")</span>
+                            <div class="activity-chips">
+                                <button class="@(_activity == "posts" ? "on" : "")" @onclick='() => ShowActivityAsync("posts")'>Posts</button>
+                                <button class="@(_activity == "comments" ? "on" : "")" @onclick='() => ShowActivityAsync("comments")'>Comments</button>
+                                <button class="@(_activity == "images" ? "on" : "")" @onclick='() => ShowActivityAsync("images")'>Images</button>
+                            </div>
+                        </section>
+                        @if (_activity == "comments")
+                        {
+                            @foreach (var item in _comments)
+                            {
+                                <article class="activity-comment glass" @key="item.Comment.Id">
+                                    <div class="said"><strong>@item.Comment.Author.DisplayName</strong> commented on <a href="u/@item.Post.Author.Id">@item.Post.Author.DisplayName</a>'s post · @Display.ListTime(item.Comment.CreatedAt, DateTimeOffset.UtcNow)</div>
+                                    <div class="comment"><div class="bubble-box"><p style="margin: 0">@item.Comment.Text</p></div></div>
+                                    <div class="embedded-post" style="margin: 0">
+                                        <div class="post-head">
+                                            <HexAvatar Url="@item.Post.Author.AvatarUrl" Initials="@Display.Initials(item.Post.Author.DisplayName)" Tone="@SocialActions.ToneFor(item.Post.Author.Id)" Size="30" />
+                                            <div class="row-main"><span class="name">@item.Post.Author.DisplayName</span></div>
+                                        </div>
+                                        @if ((item.Post.Caption ?? item.Post.RepostOf?.Caption) is { } words)
+                                        {
+                                            <p class="caption">@words</p>
+                                        }
+                                        @if (item.Post.Media.FirstOrDefault() is { } photo)
+                                        {
+                                            <img src="@photo.Url" alt="" style="width: 100%; max-height: 260px; object-fit: cover; display: block" />
+                                        }
+                                    </div>
+                                </article>
+                            }
+                            @if (_comments.Count == 0)
+                            {
+                                <div class="widget glass empty"><p>@(p.IsMe ? "You haven't commented on anything yet." : "No comments yet.")</p></div>
+                            }
+                        }
+                        else
+                        {
+                            <SocialFeed Feed="_feed" CanPost="@(p.IsMe && _activity == "posts")" ShowSort="@(_activity == "posts")"
+                                        Empty="@(_activity == "images" ? "No posts with photos yet." : p.IsMe ? "Nothing posted yet." : $"{p.User.DisplayName} hasn't posted yet.")" />
+                        }
                     </div>
                     <div class="sc-col side">
                         <section class="widget glass">
@@ -278,6 +319,22 @@
 
     SocialProfileDto? _profile;
     FeedViewModel _feed = null!;
+
+    /// <summary>The Activity chip: posts, comments or images.</summary>
+    string _activity = "posts";
+    List<CommentActivityDto> _comments = [];
+
+    async Task ShowActivityAsync(string activity)
+    {
+        _activity = activity;
+        if (activity == "comments")
+        {
+            await Run(async () => _comments = await Api.GetCommentActivityAsync(Id));
+            return;
+        }
+        _feed.ImagesOnly = activity == "images";
+        await _feed.RefreshCommand.ExecuteAsync(null);
+    }
     List<PersonCardDto> _people = [];
     string _tab = "timeline";
     string? _error, _editing;
@@ -289,6 +346,7 @@
     {
         _feed = ActivatorUtilities.CreateInstance<FeedViewModel>(Services);
         _feed.AuthorId = Id;
+        (_activity, _comments) = ("posts", []);
         _tab = Tab ?? "timeline";
         _profile = null;
         await Run(async () => _profile = await Api.GetJsonAsync<SocialProfileDto>($"{SocialActions.Base}/profiles/{Id}"));

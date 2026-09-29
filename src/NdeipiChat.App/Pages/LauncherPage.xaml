@@ -1,85 +1,56 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- Every app the user's manifest allows, as on the web's "All apps". ★ pins it: pinned apps show on
+     Home, and the first three get tabs. -->
 <pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                      xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                      xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
                      xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
                      x:Class="NdeipiChat.App.Pages.LauncherPage"
                      x:DataType="vm:LauncherViewModel"
-                     Title="Ndeipi">
+                     Title="All apps">
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsRefreshing}">
         <ScrollView>
-            <VerticalStackLayout Padding="16" Spacing="12">
-                <Border IsVisible="{Binding IsOffline}" BackgroundColor="#FFF4D6" StrokeThickness="0" Padding="12,8">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="8" />
-                    </Border.StrokeShape>
-                    <Label Text="You're offline. These are your apps from last time." TextColor="#7A5B00" />
+            <VerticalStackLayout Padding="16,8,16,24" Spacing="14">
+                <Border Style="{StaticResource Notice}" IsVisible="{Binding IsOffline}">
+                    <Label Text="You're offline. These are your apps from last time." TextColor="#8A6100" FontSize="14" />
                 </Border>
 
-                <!-- Apps open in this session: tap to go back to one, ✕ to close it. -->
-                <Label Text="OPEN" Style="{StaticResource SectionHeader}" Margin="0" IsVisible="{Binding HasRunning}" />
-                <CollectionView ItemsSource="{Binding Running}" ItemsLayout="HorizontalList" HeightRequest="44" IsVisible="{Binding HasRunning}">
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="vm:SubAppItemViewModel">
-                            <Border BackgroundColor="{StaticResource Surface}" StrokeThickness="0" Margin="0,0,8,0" Padding="12,0,4,0">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="18" />
-                                </Border.StrokeShape>
-                                <HorizontalStackLayout Spacing="2">
-                                    <Label Text="{Binding Icon}" VerticalOptions="Center" />
-                                    <Label Text="{Binding Title}" VerticalOptions="Center" Margin="4,0">
-                                        <Label.GestureRecognizers>
-                                            <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
-                                                                  CommandParameter="{Binding .}" />
-                                        </Label.GestureRecognizers>
-                                    </Label>
-                                    <Button Text="✕" FontSize="12" Padding="8,0" BackgroundColor="Transparent" TextColor="{StaticResource TextMuted}"
-                                            Command="{Binding CloseCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
-                                            CommandParameter="{Binding .}" />
-                                </HorizontalStackLayout>
-                            </Border>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
+                <Label Text="Tap to open. ★ pins an app to Home; the first three pinned get tabs." Style="{StaticResource Muted}" FontSize="14" />
 
-                <!-- Every app the user's manifest allows. ★ pins it; the first three pins get tabs. -->
-                <Label Text="YOUR APPS" Style="{StaticResource SectionHeader}" Margin="0" />
-                <CollectionView ItemsSource="{Binding Apps}" SelectionMode="None">
-                    <CollectionView.ItemsLayout>
-                        <GridItemsLayout Orientation="Vertical" Span="3" HorizontalItemSpacing="10" VerticalItemSpacing="10" />
-                    </CollectionView.ItemsLayout>
-                    <CollectionView.ItemTemplate>
+                <FlexLayout Wrap="Wrap" JustifyContent="Start" BindableLayout.ItemsSource="{Binding Apps}">
+                    <BindableLayout.ItemTemplate>
                         <DataTemplate x:DataType="vm:SubAppItemViewModel">
-                            <Border BackgroundColor="{StaticResource Surface}" StrokeThickness="0" Padding="8,14,8,10">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="14" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
-                                                          CommandParameter="{Binding .}" />
-                                </Border.GestureRecognizers>
-                                <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="4">
-                                    <Label Text="{Binding Icon}" FontSize="32" HorizontalOptions="Center" />
-                                    <Label Grid.Row="1" Text="{Binding Title}" FontSize="13" HorizontalOptions="Center" HorizontalTextAlignment="Center" />
-                                    <Label Grid.Row="2" Text="Open" FontSize="11" TextColor="{StaticResource Brand}" HorizontalOptions="Center" IsVisible="{Binding IsRunning}" />
-                                    <Button Grid.RowSpan="3" Text="☆" FontSize="16" Padding="0" WidthRequest="30" HeightRequest="30"
-                                            BackgroundColor="Transparent" TextColor="{StaticResource TextMuted}"
-                                            HorizontalOptions="End" VerticalOptions="Start" Margin="0,-10,-4,0"
-                                            Command="{Binding TogglePinCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
-                                            CommandParameter="{Binding .}">
-                                        <Button.Triggers>
-                                            <DataTrigger TargetType="Button" Binding="{Binding IsPinned}" Value="True">
-                                                <Setter Property="Text" Value="★" />
-                                                <Setter Property="TextColor" Value="#FA9D3B" />
-                                            </DataTrigger>
-                                        </Button.Triggers>
-                                    </Button>
-                                </Grid>
-                            </Border>
+                            <Grid FlexLayout.Basis="33.3%" Padding="5">
+                                <Border Style="{StaticResource Glass}" Padding="8,16,8,12">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                                              CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                                        <Border WidthRequest="52" HeightRequest="52" StrokeShape="RoundRectangle 16" StrokeThickness="0"
+                                                Background="{Binding Tone, Converter={StaticResource ToneBrush}}" HorizontalOptions="Center">
+                                            <Label Text="{Binding Icon}" FontSize="26" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                        <Label Grid.Row="1" Text="{Binding Title}" FontSize="13" FontAttributes="Bold" HorizontalOptions="Center" HorizontalTextAlignment="Center" LineBreakMode="TailTruncation" />
+                                        <Label Grid.Row="2" Text="Open" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource Brand}" HorizontalOptions="Center" IsVisible="{Binding IsRunning}" />
+                                        <Button Grid.RowSpan="3" Text="☆" FontSize="16" Padding="0" WidthRequest="30" HeightRequest="30"
+                                                BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}"
+                                                HorizontalOptions="End" VerticalOptions="Start" Margin="0,-12,-4,0"
+                                                Command="{Binding TogglePinCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                                CommandParameter="{Binding .}">
+                                            <Button.Triggers>
+                                                <DataTrigger TargetType="Button" Binding="{Binding IsPinned}" Value="True">
+                                                    <Setter Property="Text" Value="★" />
+                                                    <Setter Property="TextColor" Value="#F5B324" />
+                                                </DataTrigger>
+                                            </Button.Triggers>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </Grid>
                         </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
-                <Label Text="Pinned apps get a tab (up to three). Pull down to refresh your apps." Style="{StaticResource Muted}" FontSize="13" />
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
             </VerticalStackLayout>
         </ScrollView>
     </RefreshView>

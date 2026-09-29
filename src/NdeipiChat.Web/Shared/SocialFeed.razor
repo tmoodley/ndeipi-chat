@@ -23,6 +23,15 @@
     </div>
 }
 
+@if (ShowSort)
+{
+    <div class="feed-sort">
+        <span>Sort by:</span>
+        <button class="@(Feed.IsTop ? "on" : "")" @onclick='() => Feed.SetSortCommand.ExecuteAsync(FeedSorts.Top)'>Top</button>
+        <button class="@(Feed.IsTop ? "" : "on")" @onclick='() => Feed.SetSortCommand.ExecuteAsync(FeedSorts.Recent)'>Recent</button>
+    </div>
+}
+
 @if (Feed.IsEmpty && !Feed.IsRefreshing)
 {
     <div class="widget glass empty" style="padding: 40px 20px">
@@ -46,6 +55,9 @@
     [Parameter] public bool CanPost { get; set; } = true;
     [Parameter] public string Placeholder { get; set; } = "What's on your mind?";
     [Parameter] public string Empty { get; set; } = "Nothing here yet.";
+
+    /// <summary>Offer "Sort by: Top / Recent" above the posts.</summary>
+    [Parameter] public bool ShowSort { get; set; } = true;
 
     string _draft = "";
     string? _error;

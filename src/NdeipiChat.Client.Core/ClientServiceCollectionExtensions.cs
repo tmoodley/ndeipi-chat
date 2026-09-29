@@ -58,6 +58,7 @@ public static class ClientServiceCollectionExtensions
         services.AddSingleton<ContactsViewModel>();
         services.AddSingleton<FeedViewModel>();
         services.AddSingleton<LauncherViewModel>();
+        services.AddSingleton<HomeViewModel>();
         services.AddTransient<WebSubAppViewModel>();
 
         // Sub-apps must be signed by a publisher key compiled into the shell. A shell may register its
