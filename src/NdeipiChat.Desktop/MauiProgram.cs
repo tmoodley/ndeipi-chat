@@ -10,6 +10,12 @@ public static class MauiProgram
 
     public static MauiApp CreateMauiApp()
     {
+        // WebView2 otherwise keeps its profile beside Ndeipi.exe, which fails in a read-only folder
+        // such as Program Files; keep it with the user's app data instead.
+        if (OperatingSystem.IsWindows())
+            Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER",
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Ndeipi", "WebView2"));
+
         var builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
