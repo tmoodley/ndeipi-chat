@@ -487,3 +487,6 @@ src/NdeipiChat.Api/appsettings.Production.json
 # Hardhat (contracts/): build output and caches.
 contracts/cache/
 contracts/typechain-types/
+
+# Desktop app builds
+dist/

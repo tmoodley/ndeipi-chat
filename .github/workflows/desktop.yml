@@ -1,0 +1,63 @@
+# Builds the Ndeipi desktop app (src/NdeipiChat.Desktop) for Windows and the Mac, and attaches the
+# results to the run as downloads. The Mac app can only be built on macOS.
+#
+# The Mac build is unsigned unless signing secrets are added (see "Sign" below), so macOS asks the
+# first time: right-click Ndeipi.app > Open, or run `xattr -dr com.apple.quarantine Ndeipi.app`.
+name: Desktop apps
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/NdeipiChat.Desktop/**"
+      - ".github/workflows/desktop.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/NdeipiChat.Desktop/**"
+      - "src/NdeipiChat.Client.Core/**"
+      - "src/NdeipiChat.Contracts/**"
+      - ".github/workflows/desktop.yml"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Install the MAUI Windows workload
+        run: dotnet workload install maui-windows
+      - name: Publish
+        run: dotnet publish src/NdeipiChat.Desktop -f net10.0-windows10.0.19041.0 -c Release -p:SelfContained=true -o out/Ndeipi-Windows-x64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ndeipi-Windows-x64
+          path: out/Ndeipi-Windows-x64
+
+  mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Use the newest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Install the MAUI Mac Catalyst workload
+        run: dotnet workload install maui-maccatalyst
+      - name: Publish (Apple silicon and Intel)
+        run: dotnet publish src/NdeipiChat.Desktop -f net10.0-maccatalyst -c Release -p:CreatePackage=false -o out/mac
+      - name: Zip Ndeipi.app
+        run: |
+          app="$(find out/mac src/NdeipiChat.Desktop/bin/Release -name 'Ndeipi.app' -maxdepth 6 | head -1)"
+          echo "Found $app"
+          ditto -c -k --keepParent "$app" out/Ndeipi-Mac.zip
+      # Sign: to ship a signed, notarized app, add a Developer ID certificate and an App Store Connect
+      # key as secrets, then publish with -p:CodesignKey="Developer ID Application: ..." and
+      # -p:CreatePackage=true, and run `xcrun notarytool submit` on the result.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ndeipi-Mac
+          path: out/Ndeipi-Mac.zip

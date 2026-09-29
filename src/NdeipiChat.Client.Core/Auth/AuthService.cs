@@ -58,7 +58,8 @@ public sealed class AuthService(HttpClient http, ITokenStore store, IBrowserAuth
     /// PKCE verifier travels in the URL fragment, which never leaves the device. The web shell redeems
     /// the code for a session of its own, then opens <paramref name="next"/> (e.g. "apps/inventory").
     /// </summary>
-    public async Task<Uri> CreateWebHandoffAsync(string next, CancellationToken ct = default)
+    /// <param name="embedded">True in the phone's WebView (the app draws the chrome); false for the desktop app, which shows the whole web app.</param>
+    public async Task<Uri> CreateWebHandoffAsync(string next, CancellationToken ct = default, bool embedded = true)
     {
         var token = await GetAccessTokenAsync(ct: ct) ?? throw new AuthException("Sign in again to open this app.");
         var pending = new PendingSignIn(Pkce.NewSecret(), Pkce.NewSecret());
@@ -75,7 +76,7 @@ public sealed class AuthService(HttpClient http, ITokenStore store, IBrowserAuth
         var code = (await response.Content.ReadFromJsonAsync<HandoffCode>(ct))?.Code
             ?? throw new AuthException("Couldn't open the app. Please try again.");
 
-        return new Uri($"{callback}?code={Uri.EscapeDataString(code)}&state={pending.State}&next={Uri.EscapeDataString(next)}&embedded=1#verifier={pending.Verifier}");
+        return new Uri($"{callback}?code={Uri.EscapeDataString(code)}&state={pending.State}&next={Uri.EscapeDataString(next)}{(embedded ? "&embedded=1" : "")}#verifier={pending.Verifier}");
     }
 
     sealed record HandoffCode(string Code);
