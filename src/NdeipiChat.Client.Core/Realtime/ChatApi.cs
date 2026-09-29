@@ -138,6 +138,11 @@ public sealed class ChatApi(HttpClient http)
         {
             throw new ApiException(null, "Can't reach the server. Check your connection.", ex);
         }
+        catch (TaskCanceledException ex) when (!ct.IsCancellationRequested)
+        {
+            // HttpClient's own timeout, not the caller cancelling: a slow or dropped connection.
+            throw new ApiException(null, "The server took too long to answer. Check your connection.", ex);
+        }
 
         using (response)
         {

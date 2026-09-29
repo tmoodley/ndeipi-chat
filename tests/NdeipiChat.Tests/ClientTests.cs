@@ -269,6 +269,29 @@ public sealed class ClientTests(TestApp app) : IClassFixture<TestApp>
             throw new HttpRequestException("No connection.");
     }
 
+    sealed class NeverAnswers : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await Task.Delay(Timeout.Infinite, ct);
+            throw new System.Diagnostics.UnreachableException();
+        }
+    }
+
+    [Fact]
+    public async Task A_request_that_times_out_is_reported_as_offline_not_thrown_raw()
+    {
+        // At launch this used to escape as TaskCanceledException and crash the Android app.
+        var slow = new ChatApi(new HttpClient(new NeverAnswers()) { BaseAddress = new Uri("https://chat.test/"), Timeout = TimeSpan.FromMilliseconds(50) });
+        var ex = await Assert.ThrowsAsync<ApiException>(() => slow.GetJsonAsync<MeDto>("api/me"));
+        Assert.Null(ex.StatusCode);
+
+        // The caller cancelling is still a cancellation.
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+        var patient = new ChatApi(new HttpClient(new NeverAnswers()) { BaseAddress = new Uri("https://chat.test/") });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => patient.GetJsonAsync<MeDto>("api/me", cancel.Token));
+    }
+
     [Fact]
     public void Kinds_this_build_does_not_know_render_as_a_placeholder()
     {
