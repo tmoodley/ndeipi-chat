@@ -56,6 +56,8 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(u => u.Bio).HasMaxLength(500);
             e.Property(u => u.City).HasMaxLength(80);
             e.Property(u => u.Website).HasMaxLength(200);
+            e.Property(u => u.ClerkAvatarUrl).HasMaxLength(1000);
+            e.Property(u => u.CoverUrl).HasMaxLength(1000);
             e.HasMany(u => u.Wallets).WithOne().HasForeignKey(w => w.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -88,6 +90,11 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.Property(g => g.Rules).HasMaxLength(2000);
             e.Property(g => g.Icon).HasMaxLength(16);
             e.Property(g => g.Tone).HasMaxLength(16);
+            e.Property(g => g.Tagline).HasMaxLength(120);
+            e.Property(g => g.Email).HasMaxLength(320);
+            e.Property(g => g.Website).HasMaxLength(200);
+            e.Property(g => g.AvatarUrl).HasMaxLength(1000);
+            e.Property(g => g.CoverUrl).HasMaxLength(1000);
             e.HasIndex(g => g.Name);
             e.HasOne(g => g.Owner).WithMany().HasForeignKey(g => g.OwnerId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(g => g.Members).WithOne().HasForeignKey(m => m.GroupId).OnDelete(DeleteBehavior.Cascade);

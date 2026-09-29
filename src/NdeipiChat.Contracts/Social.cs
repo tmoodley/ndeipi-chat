@@ -112,11 +112,54 @@ public sealed record SocialProfileDto(
     bool IsShamwari,
     IReadOnlyList<GroupSummaryDto> Groups,
     IReadOnlyList<PostMediaDto> Photos,
-    GigProfileBriefDto? Gig);
+    GigProfileBriefDto? Gig,
+    string? CoverUrl = null,
+    ProfileDetailsDto? Details = null,
+    int Completion = 0,
+    bool HasCustomAvatar = false);
 
 public sealed record GigProfileBriefDto(string Headline, IReadOnlyList<string> Skills, double? Rating, int RatingCount, int CompletedGigs, bool IsAvailable);
 
 public sealed record SaveSocialProfileRequest(string? Bio, string? City, string? Website);
+
+/// <summary>
+/// The rest of a profile, edited as a whole: what they do, where they're from, what they're into,
+/// their work and study history, skills and links elsewhere.
+/// </summary>
+public sealed record ProfileDetailsDto(
+    string? Occupation,
+    string? Country,
+    IReadOnlyList<string> Skills,
+    IReadOnlyList<InterestDto> Interests,
+    IReadOnlyList<TimelineEntryDto> Jobs,
+    IReadOnlyList<TimelineEntryDto> Education,
+    IReadOnlyList<SocialLinkDto> Links)
+{
+    public static ProfileDetailsDto Empty { get; } = new(null, null, [], [], [], [], []);
+}
+
+/// <summary>A heading and a line of things, e.g. "Favourite music" and "Oliver Mtukudzi, Jah Prayzah".</summary>
+public sealed record InterestDto(string Title, string Text);
+
+/// <param name="Period">Free text, e.g. "2019 - now".</param>
+public sealed record TimelineEntryDto(string Title, string? Place, string? Period, string? Description);
+
+/// <param name="Kind">One of <see cref="SocialLinkKinds.All"/>.</param>
+public sealed record SocialLinkDto(string Kind, string Url);
+
+public static class SocialLinkKinds
+{
+    public static readonly IReadOnlyList<string> All = ["facebook", "x", "instagram", "tiktok", "youtube", "linkedin", "whatsapp", "website"];
+}
+
+public static class ProfileLimits
+{
+    public const int MaxSkills = 20;
+    public const int MaxInterests = 10;
+    public const int MaxTimeline = 12;
+    public const int MaxLinks = 8;
+    public const int MaxImageBytes = 10 * 1024 * 1024;
+}
 
 /// <summary>A person as a card: in People, Followers, Following and a group's Members.</summary>
 public sealed record PersonCardDto(UserDto User, string? Bio, string? City, int PostCount, int FollowerCount, bool IFollow, bool IsShamwari);
@@ -131,16 +174,30 @@ public sealed record GroupSummaryDto(
     int MemberCount,
     int PostCount,
     bool IsMember,
-    string? MyRole);
+    string? MyRole,
+    string? Tagline = null,
+    string? AvatarUrl = null,
+    string? CoverUrl = null);
 
 public sealed record GroupDetailDto(
     GroupSummaryDto Group,
     string Rules,
     UserDto Owner,
     DateTimeOffset CreatedAt,
-    IReadOnlyList<PersonCardDto> RecentMembers);
+    IReadOnlyList<PersonCardDto> RecentMembers,
+    string? Email = null,
+    string? Website = null);
 
-public sealed record SaveGroupRequest(string Name, string? Description, string? Rules, string? Icon, string? Tone, bool IsPrivate);
+public sealed record SaveGroupRequest(
+    string Name,
+    string? Description,
+    string? Rules,
+    string? Icon,
+    string? Tone,
+    bool IsPrivate,
+    string? Tagline = null,
+    string? Email = null,
+    string? Website = null);
 
 public sealed record AddGroupMemberRequest(string Email);
 

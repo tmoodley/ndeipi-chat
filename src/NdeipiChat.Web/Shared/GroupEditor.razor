@@ -1,0 +1,283 @@
+@* Creating or managing a group, in one window: its info, pictures, settings, members, and deleting it.
+   A new group gets its pictures and members once it's created. *@
+@inject ChatApi Api
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<div class="modal-scrim" @onclick="CloseAsync">
+    <div class="modal" @onclick:stopPropagation="true" role="dialog" aria-label="@(IsNew ? "Create a group" : "Manage group")">
+        <button class="modal-close" title="Close" @onclick="CloseAsync">✕</button>
+
+        <aside class="modal-side">
+            <div class="preview-cover @(_detail?.Group.CoverUrl is not null ? "has-image" : "tone-" + _tone)" style="@(_detail?.Group.CoverUrl is { } u ? $"background-image: url('{u}')" : "")"></div>
+            <div class="preview-who">
+                <HexAvatar Url="@_detail?.Group.AvatarUrl" Icon="@(string.IsNullOrWhiteSpace(_icon) ? "👥" : _icon)" Tone="@("tone-" + _tone)" Size="88" Class="icon-hex" />
+                <strong>@(string.IsNullOrWhiteSpace(_name) ? "New group" : _name)</strong>
+                <small>@(string.IsNullOrWhiteSpace(_tagline) ? (_private ? "Private group" : "Public group") : _tagline)</small>
+            </div>
+            <nav class="modal-nav">
+                @foreach (var (key, label) in Sections)
+                {
+                    if (IsNew && key is "images" or "members" or "delete")
+                        continue;
+                    <button class="@(_section == key ? "on" : "") @(key == "delete" ? "danger" : "")" @onclick="() => _section = key">@label</button>
+                }
+            </nav>
+            <div class="modal-buttons">
+                <button class="btn-a" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" @onclick="SaveAsync">@(_busy ? "Saving…" : IsNew ? "Create group" : "Save changes")</button>
+                <button class="secondary" disabled="@_busy" @onclick="Discard">Discard all</button>
+            </div>
+        </aside>
+
+        <section class="modal-body">
+            @if (_message is not null)
+            {
+                <div class="notice" style="@(_ok ? "background: rgba(31, 169, 113, .14); color: var(--success)" : "")">@_message</div>
+            }
+
+            @switch (_section)
+            {
+                case "info":
+                    <h3>Group info</h3>
+                    <div class="fl-row" style="grid-template-columns: 90px 1fr">
+                        <label class="fl"><span>Icon</span><input @bind="_icon" maxlength="4" style="text-align: center; font-size: 22px" /></label>
+                        <label class="fl"><span>Group name</span><input @bind="_name" @bind:event="oninput" maxlength="@SocialGraphContract.MaxGroupName" placeholder="e.g. Harare Photographers" /></label>
+                    </div>
+                    <label class="fl"><span>Tagline</span><input @bind="_tagline" @bind:event="oninput" maxlength="120" placeholder="One line on what it's for" /></label>
+                    <label class="fl"><span>Description</span><textarea @bind="_description" rows="4" maxlength="@SocialGraphContract.MaxGroupDescription" placeholder="What's it about?"></textarea></label>
+                    <label class="fl"><span>Rules</span><textarea @bind="_rules" rows="4" maxlength="@SocialGraphContract.MaxGroupRules" placeholder="One per line"></textarea></label>
+                    <div class="fl-row">
+                        <label class="fl"><span>Public email</span><input type="email" @bind="_email" maxlength="320" placeholder="hello@example.com" /></label>
+                        <label class="fl"><span>Public website</span><input @bind="_website" maxlength="200" placeholder="example.com" /></label>
+                    </div>
+                    break;
+
+                case "images":
+                    <h3>Avatar and cover</h3>
+                    <div class="image-pick">
+                        <div class="image-slot">
+                            <HexAvatar Url="@_detail!.Group.AvatarUrl" Icon="@_detail.Group.Icon" Tone="@("tone-" + _tone)" Size="96" Class="icon-hex" />
+                            <strong>Avatar</strong>
+                            <span class="muted small">Without one, the group shows its icon.</span>
+                            <div class="actions-row">
+                                <label class="button btn-a file-button" style="height: 40px">@(_uploading == "avatar" ? "Uploading…" : "Upload")<InputFile OnChange='e => UploadAsync(e, "avatar")' accept="image/*" disabled="@(_uploading is not null)" /></label>
+                                @if (_detail.Group.AvatarUrl is not null)
+                                {
+                                    <button class="secondary" style="height: 40px" disabled="@(_uploading is not null)" @onclick='() => RemoveImageAsync("avatar")'>Remove</button>
+                                }
+                            </div>
+                        </div>
+                        <div class="image-slot">
+                            <div class="cover-preview @(_detail.Group.CoverUrl is null ? "tone-" + _tone : "")" style="@(_detail.Group.CoverUrl is { } coverUrl ? $"background-image: url('{coverUrl}')" : "")"></div>
+                            <strong>Cover</strong>
+                            <span class="muted small">The banner across the top of the group. Wide photos work best.</span>
+                            <div class="actions-row">
+                                <label class="button btn-a file-button" style="height: 40px">@(_uploading == "cover" ? "Uploading…" : "Upload")<InputFile OnChange='e => UploadAsync(e, "cover")' accept="image/*" disabled="@(_uploading is not null)" /></label>
+                                @if (_detail.Group.CoverUrl is not null)
+                                {
+                                    <button class="secondary" style="height: 40px" disabled="@(_uploading is not null)" @onclick='() => RemoveImageAsync("cover")'>Remove</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    break;
+
+                case "settings":
+                    <h3>Settings</h3>
+                    <label class="drawer-row" style="padding: 0">
+                        <input type="checkbox" class="toggle" @bind="_private" />
+                        <span class="grow"><strong>Private group</strong><br /><span class="muted small">Only members see its posts, rules and members. People join when you add them.</span></span>
+                    </label>
+                    <div>
+                        <div class="muted small" style="margin-bottom: 8px">Colour, used when there's no cover or avatar</div>
+                        <div class="skill-chips">
+                            @foreach (var tone in SocialGraphContract.GroupTones)
+                            {
+                                <button class="tone-@tone" title="@tone" style="width: 38px; height: 38px; padding: 0; border-radius: 12px; @(tone == _tone ? "outline: 3px solid var(--social-a); outline-offset: 2px" : "")" @onclick="() => _tone = tone"></button>
+                            }
+                        </div>
+                    </div>
+                    break;
+
+                case "members":
+                    <h3>Members</h3>
+                    <form class="inline-form" @onsubmit="AddMemberAsync">
+                        <input type="email" @bind="_newMember" placeholder="Add by their account email" />
+                        <button type="submit" class="btn-a" disabled="@(_busy || string.IsNullOrWhiteSpace(_newMember))">Add</button>
+                    </form>
+                    @if (_members is null)
+                    {
+                        <p class="muted">Loading…</p>
+                    }
+                    else
+                    {
+                        @foreach (var m in _members)
+                        {
+                            <div class="drawer-row" @key="m.User.Id" style="padding: 4px 0">
+                                <HexAvatar Url="@m.User.AvatarUrl" Initials="@Display.Initials(m.User.DisplayName)" Tone="@SocialActions.ToneFor(m.User.Id)" Size="40" />
+                                <span class="grow">@m.User.DisplayName@(m.User.Id == _detail!.Owner.Id ? " · Organizer" : "")</span>
+                                @if (m.User.Id != _detail.Owner.Id)
+                                {
+                                    <button class="secondary" style="height: 34px" disabled="@_busy" @onclick="() => RemoveMemberAsync(m)">Remove</button>
+                                }
+                            </div>
+                        }
+                    }
+                    break;
+
+                case "delete":
+                    <h3>Delete group</h3>
+                    <p style="margin: 0">This deletes <strong>@_detail!.Group.Name</strong>, all its posts and photos, and its member list, for everyone. It can't be undone.</p>
+                    <label class="fl"><span>Type the group's name to confirm</span><input @bind="_confirm" @bind:event="oninput" /></label>
+                    <button class="danger" style="align-self: flex-start" disabled="@(_busy || _confirm?.Trim() != _detail.Group.Name)" @onclick="DeleteAsync">Delete group for good</button>
+                    break;
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    /// <summary>The group to manage; none to create one.</summary>
+    [Parameter] public GroupDetailDto? Group { get; set; }
+    [Parameter] public string Section { get; set; } = "info";
+    [Parameter] public EventCallback<GroupDetailDto> Saved { get; set; }
+    [Parameter] public EventCallback Closed { get; set; }
+
+    static readonly (string Key, string Label)[] Sections =
+        [("info", "Group info"), ("images", "Avatar and cover"), ("settings", "Settings"), ("members", "Members"), ("delete", "Delete group")];
+
+    GroupDetailDto? _detail;
+    List<PersonCardDto>? _members;
+    string _section = "info", _name = "", _tone = "purple";
+    string? _icon, _tagline, _description, _rules, _email, _website, _newMember, _confirm, _message, _uploading;
+    bool _private, _busy, _ok, _loaded;
+
+    bool IsNew => _detail is null;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded)
+            return;
+        _loaded = true;
+        (_detail, _section) = (Group, Section);
+        Discard();
+        if (_section == "members")
+            await LoadMembersAsync();
+    }
+
+    void Discard()
+    {
+        _message = null;
+        if (_detail is not { } d)
+        {
+            (_name, _icon, _tagline, _description, _rules, _email, _website, _private) = ("", "👥", null, null, null, null, null, false);
+            _tone = SocialGraphContract.GroupTones[Random.Shared.Next(SocialGraphContract.GroupTones.Count)];
+            return;
+        }
+        var g = d.Group;
+        (_name, _icon, _tagline, _description, _rules, _email, _website, _private, _tone) =
+            (g.Name, g.Icon, g.Tagline, g.Description, d.Rules, d.Email, d.Website, g.IsPrivate, g.Tone);
+    }
+
+    async Task SaveAsync()
+    {
+        var request = new SaveGroupRequest(_name, _description, _rules, _icon, _tone, _private, _tagline, _email, _website);
+        await Run(async () =>
+        {
+            var created = IsNew;
+            _detail = created
+                ? await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups", request)
+                : await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Put, $"{SocialActions.Base}/groups/{_detail!.Group.Id}", request);
+            (_message, _ok) = (created ? "Group created. Add a cover and avatar, or invite people." : "Saved.", true);
+            if (created)
+                _section = "images";
+            await Saved.InvokeAsync(_detail);
+        });
+    }
+
+    async Task UploadAsync(InputFileChangeEventArgs e, string part)
+    {
+        (_uploading, _message) = (part, null);
+        try
+        {
+            using var original = new MemoryStream();
+            await e.File.OpenReadStream(40 * 1024 * 1024).CopyToAsync(original);
+            var image = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", original.ToArray(), part == "cover" ? 2048 : 800, 0.9);
+            _detail = await Api.UploadImageAsync<GroupDetailDto>($"{SocialActions.Base}/groups/{_detail!.Group.Id}/{part}", image);
+            (_message, _ok) = (part == "cover" ? "Cover updated." : "Avatar updated.", true);
+            await Saved.InvokeAsync(_detail);
+        }
+        catch (Exception ex) when (ex is ApiException or IOException or JSException)
+        {
+            (_message, _ok) = (ex is ApiException ? ex.Message : "Couldn't read that image. Try a JPEG or PNG.", false);
+        }
+        finally
+        {
+            _uploading = null;
+        }
+    }
+
+    async Task RemoveImageAsync(string part)
+    {
+        _uploading = part;
+        await Run(async () =>
+        {
+            _detail = await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Delete, $"{SocialActions.Base}/groups/{_detail!.Group.Id}/{part}");
+            await Saved.InvokeAsync(_detail);
+        });
+        _uploading = null;
+    }
+
+    async Task LoadMembersAsync() =>
+        await Run(async () => _members = await Api.GetJsonAsync<List<PersonCardDto>>($"{SocialActions.Base}/groups/{_detail!.Group.Id}/members"));
+
+    async Task AddMemberAsync()
+    {
+        await Run(async () =>
+        {
+            var added = await Api.SendJsonAsync<PersonCardDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{_detail!.Group.Id}/members", new AddGroupMemberRequest(_newMember ?? ""));
+            (_newMember, _message, _ok) = (null, $"Added {added.User.DisplayName}.", true);
+        });
+        await LoadMembersAsync();
+    }
+
+    async Task RemoveMemberAsync(PersonCardDto member) => await Run(async () =>
+    {
+        await Api.SendJsonAsync<object>(HttpMethod.Delete, $"{SocialActions.Base}/groups/{_detail!.Group.Id}/members/{member.User.Id}");
+        _members?.Remove(member);
+    });
+
+    async Task DeleteAsync() => await Run(async () =>
+    {
+        await Api.SendJsonAsync<object>(HttpMethod.Delete, $"{SocialActions.Base}/groups/{_detail!.Group.Id}");
+        Navigation.NavigateTo("feed?tab=groups");
+    });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_section == "members" && _members is null && !_busy && _detail is not null)
+        {
+            await LoadMembersAsync();
+            StateHasChanged();
+        }
+    }
+
+    async Task Run(Func<Task> work)
+    {
+        (_busy, _message) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (ApiException ex)
+        {
+            (_message, _ok) = (ex.Message, false);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    Task CloseAsync() => Closed.InvokeAsync();
+}

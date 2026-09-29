@@ -1,61 +1,120 @@
 @page "/wallet"
 @inherits ViewModelPage<WalletViewModel>
+@inject IJSRuntime JS
 
-<PageTitle>Wallet · Ndeipi Chat</PageTitle>
+@* Your wallet: the balance card, the steps to get verified with Bridge, and the addresses token
+   transfers to you arrive at. *@
 
-<header class="bar">
-    <a class="bar-back" href="me" title="Back">‹</a>
-    <h1>Wallet</h1>
-    <button class="bar-action text" disabled="@Vm.IsBusy" @onclick="() => Vm.RefreshCommand.ExecuteAsync(null)">Refresh</button>
-</header>
+<PageTitle>Wallet · Ndeipi</PageTitle>
 
-<div class="page">
-    <section class="card">
-        <h2>Money</h2>
-        <p class="status @(Vm.IsVerified ? "ok" : "")">@Vm.StatusText</p>
-        @if (Vm.WalletText.Length > 0)
+<div class="sc-page wallet-page">
+    <section class="wallet-card">
+        <button class="more" title="Refresh" disabled="@Vm.IsBusy" @onclick="() => Vm.RefreshCommand.ExecuteAsync(null)">⟳</button>
+        <div class="label">NDEIPI WALLET</div>
+        @if (Vm.Status is null)
         {
-            <p class="muted mono">@Vm.WalletText</p>
+            <div class="amount">…</div>
         }
-        @foreach (var balance in Vm.Balances)
+        else if (!Vm.IsVerified)
         {
-            <div class="balance"><span>@balance.Currency.ToUpperInvariant()</span><strong>@balance.Amount</strong></div>
+            <div class="amount" style="font-size: 26px">@Vm.StatusText</div>
+            <div>Verify your identity to send and receive money in chats.</div>
         }
-        @if (Vm.CanVerify)
+        else
         {
-            <button class="primary wide" disabled="@Vm.IsBusy" @onclick="() => Vm.VerifyCommand.ExecuteAsync(null)">@Vm.VerifyButtonText</button>
-            <p class="muted small">Verification opens in a new tab. Come back and press Refresh when you're done.</p>
-        }
-    </section>
-
-    <section class="card">
-        <h2>Receiving wallets</h2>
-        <p class="muted small">Where people's token transfers to you arrive, one address per chain.</p>
-        <ul class="list">
-            @foreach (var wallet in Vm.ReceivingWallets)
+            <div class="amount">@(Vm.Balances.FirstOrDefault() is { } b ? $"{b.Amount} {b.Currency.ToUpperInvariant()}" : $"0 {Vm.Status.Currency.ToUpperInvariant()}")</div>
+            @foreach (var extra in Vm.Balances.Skip(1))
             {
-                <li class="row" @key="wallet.Chain">
-                    <div class="row-main">
-                        <span class="name">@wallet.Chain</span>
-                        <span class="preview mono">@wallet.Address</span>
-                    </div>
-                    <button class="secondary small" @onclick="() => Vm.RemoveWalletCommand.ExecuteAsync(wallet)">Remove</button>
-                </li>
+                <div class="small">@extra.Amount @extra.Currency.ToUpperInvariant() · @extra.Chain</div>
             }
-        </ul>
-        <form class="inline-form" @onsubmit="() => Vm.SaveWalletCommand.ExecuteAsync(null)">
-            <input class="narrow" @bind="Vm.NewWalletChain" @bind:event="oninput" placeholder="Chain" />
-            <input class="mono" @bind="Vm.NewWalletAddress" @bind:event="oninput" placeholder="Address" />
-            <button type="submit" class="primary" disabled="@Vm.IsBusy">Save</button>
-        </form>
+        }
+        <div class="foot">
+            <span class="mono">@(Vm.WalletText.Length > 0 ? Vm.WalletText : "Held with Bridge")</span>
+            @if (Vm.Status?.WalletAddress is { } address)
+            {
+                <button @onclick="() => CopyAsync(address)">@(_copied == address ? "Copied ✓" : "Copy address")</button>
+            }
+        </div>
     </section>
 
     @if (Vm.ErrorMessage is not null)
     {
         <p class="error">@Vm.ErrorMessage</p>
     }
+
+    <div class="sc-grid two">
+        <section class="widget glass">
+            <div class="widget-head">
+                <h3>Verification</h3>
+                <button disabled="@Vm.IsBusy" @onclick="() => Vm.RefreshCommand.ExecuteAsync(null)">@(Vm.IsBusy ? "Checking…" : "Refresh")</button>
+            </div>
+            <ol class="wallet-steps">
+                <li class="@StepClass(Vm.Status?.TosStatus == "approved", true)">
+                    <span class="dot">@(Vm.Status?.TosStatus == "approved" ? "✓" : "1")</span>
+                    <span class="grow"><strong>Accept Bridge's terms</strong><small>Bridge holds the money; Ndeipi moves it for you.</small></span>
+                </li>
+                <li class="@StepClass(Vm.Status?.KycStatus == "approved", Vm.Status?.TosStatus == "approved")">
+                    <span class="dot">@(Vm.Status?.KycStatus == "approved" ? "✓" : "2")</span>
+                    <span class="grow"><strong>Verify your identity</strong><small>@(Vm.Status?.KycStatus is "under_review" or "awaiting_ubo" ? "Bridge is reviewing your details." : "A photo ID and a selfie, on Bridge's site.")</small></span>
+                </li>
+                <li class="@StepClass(Vm.Status?.WalletAddress is not null, Vm.Status?.KycStatus == "approved")">
+                    <span class="dot">@(Vm.Status?.WalletAddress is not null ? "✓" : "3")</span>
+                    <span class="grow"><strong>Your wallet</strong><small>@(Vm.Status?.WalletAddress is not null ? $"Ready on {Vm.Status.WalletChain}." : "Created as soon as you're verified.")</small></span>
+                </li>
+            </ol>
+            @if (Vm.CanVerify)
+            {
+                <button class="btn-a wide" disabled="@Vm.IsBusy" @onclick="() => Vm.VerifyCommand.ExecuteAsync(null)">@Vm.VerifyButtonText</button>
+                <p class="muted small" style="margin: 0">Opens in a new tab. Come back and press Refresh when you're done.</p>
+            }
+            else if (Vm.IsVerified)
+            {
+                <p class="muted small" style="margin: 0">Send money from any chat: open the exchange panel and choose Send money.</p>
+            }
+        </section>
+
+        <section class="widget glass">
+            <div class="widget-head"><h3>Receiving wallets<em>@Vm.ReceivingWallets.Count</em></h3></div>
+            <p class="muted small" style="margin: 0">Where people's token transfers to you arrive, one address per chain.</p>
+            @foreach (var wallet in Vm.ReceivingWallets)
+            {
+                <div class="mini-row" @key="wallet.Chain">
+                    <span class="tile-icon tone-purple" style="width: 44px; height: 44px; border-radius: 14px">⛓</span>
+                    <span class="grow"><strong>@wallet.Chain</strong><small class="mono">@Display.ShortAddress(wallet.Address)</small></span>
+                    <button class="round-btn" title="Copy address" @onclick="() => CopyAsync(wallet.Address)">@(_copied == wallet.Address ? "✓" : "⧉")</button>
+                    <button class="round-btn" title="Remove" @onclick="() => Vm.RemoveWalletCommand.ExecuteAsync(wallet)">✕</button>
+                </div>
+            }
+            @if (Vm.ReceivingWallets.Count == 0)
+            {
+                <div class="empty" style="padding: 8px 0"><p class="muted small" style="margin: 0">No receiving wallets yet.</p></div>
+            }
+            <form class="wallet-add" @onsubmit="() => Vm.SaveWalletCommand.ExecuteAsync(null)">
+                <label class="fl"><span>Chain</span><input @bind="Vm.NewWalletChain" @bind:event="oninput" placeholder="e.g. solana" /></label>
+                <label class="fl"><span>Address</span><input class="mono" @bind="Vm.NewWalletAddress" @bind:event="oninput" placeholder="Wallet address" /></label>
+                <button type="submit" class="btn-a" disabled="@Vm.IsBusy">Save</button>
+            </form>
+        </section>
+    </div>
 </div>
 
 @code {
+    string? _copied;
+
     protected override Task OnInitializedAsync() => Vm.LoadCommand.ExecuteAsync(null);
+
+    static string StepClass(bool done, bool current) => done ? "done" : current ? "current" : "";
+
+    async Task CopyAsync(string address)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", address);
+            _copied = address;
+        }
+        catch (JSException)
+        {
+            // No clipboard access: the address is still on screen.
+        }
+    }
 }

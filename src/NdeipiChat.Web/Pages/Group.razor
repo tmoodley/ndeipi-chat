@@ -16,7 +16,7 @@
         var g = _group.Group;
         var canSee = !g.IsPrivate || g.IsMember;
         <section class="sc-hero glass">
-            <div class="sc-cover tone-@g.Tone"></div>
+            <div class="sc-cover @(g.CoverUrl is null ? "tone-" + g.Tone : "has-image")" style="@(g.CoverUrl is { } cover ? $"background-image: url('{cover}')" : "")"></div>
             <div class="sc-hero-body">
                 <div class="sc-stats">
                     <button class="sc-stat" @onclick='() => _tab = "members"'><b>@g.MemberCount</b><span>Members</span></button>
@@ -24,16 +24,16 @@
                     <div class="sc-stat"><b>@(g.IsPrivate ? "🔒" : "🌍")</b><span>@(g.IsPrivate ? "Private" : "Public")</span></div>
                 </div>
                 <div class="sc-center">
-                    <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="128" Class="icon-hex" />
+                    <HexAvatar Url="@g.AvatarUrl" Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="128" Class="icon-hex" />
                     <div class="sc-identity">
                         <div class="name">@g.Name</div>
-                        <div class="sub">Started by @_group.Owner.DisplayName</div>
+                        <div class="sub">@(g.Tagline ?? $"Started by {_group.Owner.DisplayName}")</div>
                     </div>
                 </div>
                 <div class="sc-actions">
                     @if (g.MyRole == GroupRoles.Owner)
                     {
-                        <button class="btn-a" @onclick='() => _tab = "info"'>Manage</button>
+                        <button class="btn-a" @onclick='() => Manage("info")'>Manage group</button>
                     }
                     else if (g.IsMember)
                     {
@@ -100,25 +100,14 @@
                         </section>
                         @if (g.MyRole == GroupRoles.Owner)
                         {
-                            <form class="widget glass" @onsubmit="AddMemberAsync">
-                                <div class="widget-head"><h3>Add a member</h3></div>
-                                <p class="muted small" style="margin: 0">By the email on their Ndeipi account.@(g.IsPrivate ? " This is how people join a private group." : "")</p>
-                                <div class="inline-form">
-                                    <input type="email" @bind="_email" placeholder="name@example.com" />
-                                    <button type="submit" class="btn-a" disabled="@(_busy || string.IsNullOrWhiteSpace(_email))">Add</button>
+                            <section class="widget glass">
+                                <div class="widget-head"><h3>Organizer tools</h3></div>
+                                <div class="actions-row" style="display: flex; flex-wrap: wrap; gap: 8px">
+                                    <button class="btn-a" @onclick='() => Manage("info")'>Edit info</button>
+                                    <button class="secondary" @onclick='() => Manage("images")'>Avatar and cover</button>
+                                    <button class="secondary" @onclick='() => Manage("members")'>Members</button>
                                 </div>
-                            </form>
-                            <form class="widget glass" @onsubmit="SaveAsync">
-                                <div class="widget-head"><h3>Edit group</h3></div>
-                                <div class="inline-form">
-                                    <input style="max-width: 80px; text-align: center; font-size: 22px" @bind="_icon" maxlength="4" />
-                                    <input @bind="_name" maxlength="@SocialGraphContract.MaxGroupName" />
-                                </div>
-                                <textarea @bind="_description" maxlength="@SocialGraphContract.MaxGroupDescription" placeholder="What's it about?"></textarea>
-                                <textarea @bind="_rules" maxlength="@SocialGraphContract.MaxGroupRules" placeholder="Rules, one per line"></textarea>
-                                <label class="drawer-row" style="padding: 0"><input type="checkbox" class="toggle" @bind="_private" /><span class="grow">Private</span></label>
-                                <button type="submit" class="btn-a wide" disabled="@_busy">Save</button>
-                            </form>
+                            </section>
                         }
                     </div>
                 </div>
@@ -138,6 +127,11 @@
                 }
                 break;
         }
+
+        @if (_managing is { } section)
+        {
+            <GroupEditor Group="_group" Section="@section" Saved="Show" Closed="() => _managing = null" />
+        }
     }
 </div>
 
@@ -148,9 +142,8 @@
     FeedViewModel _feed = null!;
     List<PersonCardDto> _members = [];
     string _tab = "timeline";
-    string? _error, _email;
-    string _name = "", _description = "", _rules = "", _icon = "";
-    bool _busy, _private;
+    string? _error, _managing;
+    bool _busy;
 
     string On(string tab) => _tab == tab ? "on" : "";
 
@@ -166,11 +159,9 @@
             await _feed.RefreshCommand.ExecuteAsync(null);
     }
 
-    void Show(GroupDetailDto group)
-    {
-        _group = group;
-        (_name, _description, _rules, _icon, _private) = (group.Group.Name, group.Group.Description, group.Rules, group.Group.Icon, group.Group.IsPrivate);
-    }
+    void Show(GroupDetailDto group) => _group = group;
+
+    void Manage(string section) => _managing = section;
 
     async Task ShowMembersAsync()
     {
@@ -185,17 +176,6 @@
     }
 
     Task LeaveAsync() => Run(async () => Show(await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{Id}/leave")));
-
-    Task AddMemberAsync() => Run(async () =>
-    {
-        await Api.SendJsonAsync<PersonCardDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{Id}/members", new AddGroupMemberRequest(_email ?? ""));
-        _email = null;
-        Show(await Api.GetJsonAsync<GroupDetailDto>($"{SocialActions.Base}/groups/{Id}"));
-    });
-
-    Task SaveAsync() => Run(async () =>
-        Show(await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Put, $"{SocialActions.Base}/groups/{Id}",
-            new SaveGroupRequest(_name, _description, _rules, _icon, _group!.Group.Tone, _private))));
 
     async Task Run(Func<Task> work)
     {
