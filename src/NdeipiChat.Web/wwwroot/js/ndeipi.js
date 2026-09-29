@@ -126,3 +126,19 @@
     }
   };
 })();
+
+// The part of the screen actually visible: iOS Safari's keyboard and floating toolbar don't
+// resize the page, so full-screen views (a chat) size and place themselves with these instead.
+(function () {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const update = () => {
+        root.style.setProperty('--vvh', vv.height + 'px');
+        root.style.setProperty('--vvt', vv.offsetTop + 'px');
+        root.classList.toggle('kb-open', window.innerHeight - vv.height > 120);
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+})();

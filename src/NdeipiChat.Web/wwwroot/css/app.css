@@ -981,3 +981,30 @@ textarea { resize: vertical; min-height: 90px; }
 
 /* While editing pins, rows stay readable; only the star does anything. */
 .drawer-row.editing button:disabled { opacity: 1; cursor: default; }
+
+/* Profile and group headers on phones: avatar and name first, then the stats, then the buttons,
+   everything centred and inside the card. */
+.sc-center { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+@media (max-width: 900px) {
+    .sc-hero-body { display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: -64px; padding: 0 16px 18px; }
+    .sc-hero-body .sc-center { order: 1; width: 100%; }
+    .sc-hero-body .sc-stats { order: 2; margin-top: 0; width: 100%; justify-content: center; }
+    .sc-hero-body .sc-actions { order: 3; margin-top: 0; width: 100%; justify-content: stretch; flex-wrap: nowrap; }
+    .sc-hero-body .hex { --size: 112px; }
+    .sc-identity .name { font-size: 22px; overflow-wrap: anywhere; }
+    .sc-stat { padding: 0 10px; flex: 1 1 0; min-width: 0; }
+    .sc-stat b { font-size: 18px; }
+    .sc-stat span { font-size: 10px; letter-spacing: .03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+    .sc-actions button, .sc-actions .button { flex: 1 1 0; min-width: 0; height: 44px; padding: 0 10px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sc-cover { height: 140px; }
+}
+
+/* Chat on phones: pinned to the visible part of the screen (see ndeipi.js), so the header stays at
+   the top and the message box sits on the keyboard, or at the bottom when there isn't one. */
+@media (max-width: 760px) {
+    html:has(.content.in-chat), html:has(.content.in-chat) body { overflow: hidden; overscroll-behavior: none; }
+    .content.in-chat { position: fixed; left: 0; right: 0; top: var(--vvt, 0px); height: var(--vvh, 100dvh); }
+    .content.in-chat .composer { margin-bottom: calc(6px + env(safe-area-inset-bottom)); }
+    html.kb-open .content.in-chat .composer { margin-bottom: 6px; }
+    html.kb-open .content.in-chat .messenger { padding-top: 0; }
+}

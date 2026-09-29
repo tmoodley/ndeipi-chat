@@ -24,7 +24,14 @@
     </header>
     <div class="empty">
         <p>@_error</p>
-        <button class="primary" @onclick="Embedding.Leave">Back</button>
+        @if (_outdated)
+        {
+            <button class="primary" @onclick="() => Navigation.NavigateTo(Navigation.Uri, forceLoad: true)">Reload</button>
+        }
+        else
+        {
+            <button class="primary" @onclick="Embedding.Leave">Back</button>
+        }
     </div>
 }
 else if (_root is null || _context is null)
@@ -59,11 +66,12 @@ else
     Type? _root;
     SubAppContext? _context;
     string? _error;
+    bool _outdated;
     ErrorBoundary? _boundary;
 
     protected override async Task OnParametersSetAsync()
     {
-        (_root, _context, _error) = (null, null, null);
+        (_root, _context, _error, _outdated) = (null, null, null, false);
         if (!Launcher.IsLoaded)
             await Launcher.LoadCommand.ExecuteAsync(null);
 
@@ -77,6 +85,7 @@ else
         try
         {
             _root = await Loader.LoadAsync(_app);
+            await Storage.RemoveAsync("sessionStorage", "ndeipi.reloaded-for-update");
             _context = new SubAppContext(
                 _app.Id,
                 Session.MyUserId,
@@ -86,6 +95,21 @@ else
                 Realtime,
                 new ShellDevice(_app.Id, Session.MyUserId, Storage, Signer, Options),
                 new Uri(Navigation.Uri).Query.TrimStart('?'));
+        }
+        catch (SubAppLoadException ex) when (ex.Outdated)
+        {
+            // The site was updated since this page loaded. Reload once, straight back to this app;
+            // if that doesn't help (it just happened), say so with a button instead of looping.
+            const string Guard = "ndeipi.reloaded-for-update";
+            var last = await Storage.GetAsync("sessionStorage", Guard);
+            if (last != AppId)
+            {
+                await Storage.SetAsync("sessionStorage", Guard, AppId);
+                Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
+                return;
+            }
+            await Storage.RemoveAsync("sessionStorage", Guard);
+            (_error, _outdated) = (ex.Message, true);
         }
         catch (SubAppLoadException ex)
         {

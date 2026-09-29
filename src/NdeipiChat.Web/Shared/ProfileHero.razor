@@ -8,7 +8,7 @@
             <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("following")'><b>@Profile.FollowingCount</b><span>Following</span></button>
             <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("groups")'><b>@Profile.GroupCount</b><span>Groups</span></button>
         </div>
-        <div>
+        <div class="sc-center">
             <HexAvatar Url="@Profile.User.AvatarUrl" Initials="@Display.Initials(Profile.User.DisplayName)" Tone="@SocialActions.ToneFor(Profile.User.Id)" Size="128"
                        Badge="@(Profile.IsShamwari ? "✓" : Profile.Gig is { Rating: { } r } ? $"★{r:0.#}" : null)" />
             <div class="sc-identity">
