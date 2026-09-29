@@ -173,8 +173,9 @@ else
                     Navigation.NavigateTo(WebNavigator.SignInPath, replace: true);
             }
         }
-        // The manifest before any page: it decides which pages this user may see.
-        _signedIn = await Auth.IsSignedInAsync();
+        // The manifest before any page: it decides which pages this user may see. On the callback,
+        // not yet: a sign-in saved earlier could be someone else's; the one arriving decides.
+        _signedIn = !IsCallbackPage && await Auth.IsSignedInAsync();
         if (_signedIn)
             await LoadAppsAsync();
         _started = true;
