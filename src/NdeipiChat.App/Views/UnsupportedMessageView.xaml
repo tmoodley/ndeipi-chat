@@ -6,8 +6,10 @@
                   x:Class="NdeipiChat.App.Views.UnsupportedMessageView"
                   x:DataType="ext:UnsupportedMessageViewModel">
     <views:MessageRow.Bubble>
-        <Border StrokeThickness="0" StrokeShape="RoundRectangle 6" Padding="12,9" BackgroundColor="#F2F2F2" MaximumWidthRequest="270">
-            <Label Text="{Binding Text}" FontSize="14" FontAttributes="Italic" TextColor="{StaticResource TextMuted}" />
+        <Border StrokeThickness="1" Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
+                StrokeShape="RoundRectangle 20,20,6,20" Padding="15,10" MaximumWidthRequest="280"
+                BackgroundColor="{AppThemeBinding Light={StaticResource GlassLight}, Dark={StaticResource GlassDark}}">
+            <Label Text="{Binding Text}" FontSize="14" FontAttributes="Italic" Style="{StaticResource Muted}" />
         </Border>
     </views:MessageRow.Bubble>
 </views:MessageRow>

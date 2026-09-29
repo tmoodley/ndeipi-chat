@@ -67,8 +67,46 @@ public sealed class ChatApi(HttpClient http)
     public Task<LauncherManifestDto> SetPinsAsync(IReadOnlyList<string> appIds, CancellationToken ct = default) =>
         SendAsync<LauncherManifestDto>(HttpMethod.Put, LauncherContract.PinsPath, new SetPinsRequest(appIds), ct);
 
-    public Task<FeedPageDto> GetFeedAsync(Guid? before = null, Guid? author = null, CancellationToken ct = default, string? scope = null, Guid? group = null) =>
-        GetAsync<FeedPageDto>("api/posts" + Query(("before", before), ("author", author), ("group", group)) + (scope is null ? "" : (before is null && author is null && group is null ? "?" : "&") + "scope=" + Uri.EscapeDataString(scope)), ct);
+    /// <param name="sort"><see cref="FeedSorts"/>; Top pages by <paramref name="skip"/> instead of <paramref name="before"/>.</param>
+    /// <param name="imagesOnly">Only posts with photos.</param>
+    public Task<FeedPageDto> GetFeedAsync(Guid? before = null, Guid? author = null, CancellationToken ct = default, string? scope = null, Guid? group = null,
+        string? sort = null, int skip = 0, bool imagesOnly = false)
+    {
+        var query = new List<string>();
+        foreach (var (name, value) in new[] { ("before", before), ("author", author), ("group", group) })
+            if (value is { } v)
+                query.Add($"{name}={v}");
+        if (scope is not null)
+            query.Add("scope=" + Uri.EscapeDataString(scope));
+        if (sort is not null)
+            query.Add("sort=" + Uri.EscapeDataString(sort));
+        if (skip > 0)
+            query.Add($"skip={skip}");
+        if (imagesOnly)
+            query.Add("images=true");
+        return GetAsync<FeedPageDto>("api/posts" + (query.Count == 0 ? "" : "?" + string.Join('&', query)), ct);
+    }
+
+    public Task<List<CommentDto>> GetCommentsAsync(Guid postId, CancellationToken ct = default) =>
+        GetAsync<List<CommentDto>>($"api/posts/{postId}/comments", ct);
+
+    public Task<CommentDto> AddCommentAsync(Guid postId, string text, CancellationToken ct = default) =>
+        SendAsync<CommentDto>(HttpMethod.Post, $"api/posts/{postId}/comments", new AddCommentRequest(text), ct);
+
+    public Task DeleteCommentAsync(Guid postId, Guid commentId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/posts/{postId}/comments/{commentId}", null, ct);
+
+    /// <summary>Someone's comments, with the posts they're on.</summary>
+    public Task<List<CommentActivityDto>> GetCommentActivityAsync(Guid authorId, CancellationToken ct = default) =>
+        GetAsync<List<CommentActivityDto>>($"api/posts/comments?author={authorId}", ct);
+
+    /// <summary>Returns the repost.</summary>
+    public Task<PostDto> RepostAsync(Guid postId, string? caption = null, CancellationToken ct = default) =>
+        SendAsync<PostDto>(HttpMethod.Post, $"api/posts/{postId}/repost", new RepostRequest(caption), ct);
+
+    /// <summary>Returns the original, with its counts updated.</summary>
+    public Task<PostDto> UndoRepostAsync(Guid postId, CancellationToken ct = default) =>
+        SendAsync<PostDto>(HttpMethod.Delete, $"api/posts/{postId}/repost", null, ct);
 
     public Task<PostDto> GetPostAsync(Guid id, CancellationToken ct = default) => GetAsync<PostDto>($"api/posts/{id}", ct);
 
@@ -98,12 +136,6 @@ public sealed class ChatApi(HttpClient http)
 
     public Task DeletePostAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<object>(HttpMethod.Delete, $"api/posts/{id}", null, ct);
-
-    static string Query(params (string Name, Guid? Value)[] parameters)
-    {
-        var set = parameters.Where(p => p.Value is not null).Select(p => $"{p.Name}={p.Value}").ToList();
-        return set.Count == 0 ? "" : "?" + string.Join('&', set);
-    }
 
     /// <summary>For pages without a dedicated method here (Social's profiles and groups).</summary>
     public Task<T> GetJsonAsync<T>(string path, CancellationToken ct = default) => GetAsync<T>(path, ct);

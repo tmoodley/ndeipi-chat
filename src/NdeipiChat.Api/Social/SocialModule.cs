@@ -23,10 +23,49 @@ public static class SocialModule
     {
         var api = app.MapGroup(SocialContract.PostsPath).RequireAuthorization().RequireSubApp(BuiltInApps.Feed);
 
-        api.MapGet("", async (Guid? before, Guid? author, string? scope, Guid? group, HttpContext http, CurrentUserService users, PostService posts) =>
+        api.MapGet("", async (Guid? before, Guid? author, string? scope, Guid? group, string? sort, int? skip, bool? images,
+            HttpContext http, CurrentUserService users, PostService posts) =>
         {
             var me = await users.GetAsync(http.User, http.RequestAborted);
-            return Results.Ok(await posts.FeedAsync(me.Id, before, author, posts.SiteFor(http.Request), http.RequestAborted, scope, group));
+            return Results.Ok(await posts.FeedAsync(me.Id, before, author, posts.SiteFor(http.Request), http.RequestAborted, scope, group,
+                sort, skip ?? 0, images ?? false));
+        });
+
+        // Someone's comments, with the posts they're on: their profile's Activity.
+        api.MapGet("/comments", async (Guid author, HttpContext http, CurrentUserService users, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await posts.CommentActivityAsync(me.Id, author, posts.SiteFor(http.Request), http.RequestAborted));
+        });
+
+        api.MapGet("/{id:guid}/comments", async (Guid id, HttpContext http, CurrentUserService users, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await posts.CommentsAsync(me.Id, id, http.RequestAborted) is { } comments ? Results.Ok(comments) : Results.NotFound();
+        });
+
+        api.MapPost("/{id:guid}/comments", async (Guid id, AddCommentRequest request, HttpContext http, CurrentUserService users, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await posts.AddCommentAsync(me, id, request.Text, http.RequestAborted) is { } comment ? Results.Ok(comment) : Results.NotFound();
+        });
+
+        api.MapDelete("/{id:guid}/comments/{commentId:guid}", async (Guid id, Guid commentId, HttpContext http, CurrentUserService users, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await posts.DeleteCommentAsync(me.Id, id, commentId, http.RequestAborted) ? Results.NoContent() : Results.NotFound();
+        });
+
+        api.MapPost("/{id:guid}/repost", async (Guid id, RepostRequest? request, HttpContext http, CurrentUserService users, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await posts.RepostAsync(me, id, request?.Caption, posts.SiteFor(http.Request), http.RequestAborted) is { } repost ? Results.Ok(repost) : Results.NotFound();
+        });
+
+        api.MapDelete("/{id:guid}/repost", async (Guid id, HttpContext http, CurrentUserService users, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await posts.UndoRepostAsync(me, id, posts.SiteFor(http.Request), http.RequestAborted) is { } original ? Results.Ok(original) : Results.NotFound();
         });
 
         // multipart/form-data: "caption", "mint" ("true" to mint straight away) and one "photos" part per photo.

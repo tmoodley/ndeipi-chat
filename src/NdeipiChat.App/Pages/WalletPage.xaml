@@ -1,74 +1,204 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- The wallet, as on the web: the balance card, Bridge's three verification steps, and the
+     addresses token transfers to you arrive at. -->
 <pages:ViewModelPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                      xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                      xmlns:pages="clr-namespace:NdeipiChat.App.Pages"
                      xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
                      xmlns:contracts="clr-namespace:NdeipiChat.Contracts;assembly=NdeipiChat.Contracts"
                      x:Class="NdeipiChat.App.Pages.WalletPage"
+                     ControlTemplate="{StaticResource WithDock}"
                      x:DataType="vm:WalletViewModel"
                      Title="Wallet"
+                     Shell.NavBarIsVisible="False"
                      Shell.TabBarIsVisible="False">
-    <RefreshView Command="{Binding RefreshCommand}" IsRefreshing="{Binding IsBusy}" RefreshColor="{StaticResource Brand}">
-        <ScrollView>
-            <VerticalStackLayout Spacing="8" Padding="0,8,0,32">
+    <ContentPage.Resources>
+        <!-- A step's number square: grey while waiting, blue when it's next, green once done. -->
+        <Style x:Key="StepDot" TargetType="Border">
+            <Setter Property="WidthRequest" Value="36" />
+            <Setter Property="HeightRequest" Value="36" />
+            <Setter Property="StrokeThickness" Value="0" />
+            <Setter Property="StrokeShape" Value="RoundRectangle 12" />
+            <Setter Property="VerticalOptions" Value="Center" />
+            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SecondaryLight}, Dark={StaticResource SecondaryDark}}" />
+        </Style>
+    </ContentPage.Resources>
 
-                <!-- Bridge banking: verification, then a wallet and a balance. -->
-                <Border Margin="12,4" Padding="20" StrokeThickness="0" StrokeShape="RoundRectangle 12" BackgroundColor="{StaticResource Brand}">
-                    <VerticalStackLayout Spacing="6">
-                        <Label Text="Money" TextColor="White" FontSize="14" />
-                        <Label Text="{Binding StatusText}" TextColor="White" FontSize="22" FontAttributes="Bold" />
-                        <Label Text="{Binding WalletText}" TextColor="White" FontSize="13" IsVisible="{Binding IsVerified}" />
-                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding Balances}" Margin="0,8,0,0">
+    <RefreshView Command="{Binding RefreshCommand}" IsRefreshing="{Binding IsRefreshing}">
+        <ScrollView>
+            <VerticalStackLayout Spacing="16" Padding="16,20,16,24">
+                <VerticalStackLayout Padding="4,0,0,0">
+                    <Label Text="Wallet" Style="{StaticResource PageTitle}" />
+                    <Label Text="Money held with Bridge, and your token addresses" Style="{StaticResource Muted}" FontSize="14" />
+                </VerticalStackLayout>
+
+                <Border Background="{StaticResource WalletGradient}" StrokeThickness="0" StrokeShape="RoundRectangle 26" Padding="22,20" MinimumHeightRequest="200">
+                    <Border.Shadow>
+                        <Shadow Brush="#5850F0" Opacity="0.35" Radius="24" Offset="0,10" />
+                    </Border.Shadow>
+                    <Grid RowDefinitions="Auto,*,Auto" RowSpacing="12">
+                        <Ellipse Grid.RowSpan="3" WidthRequest="220" HeightRequest="220" Stroke="#14FFFFFF" StrokeThickness="28"
+                                 HorizontalOptions="End" VerticalOptions="End" Margin="0,0,-62,-80" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="NDEIPI WALLET" TextColor="#D9FFFFFF" FontSize="13" FontFamily="monospace" FontAttributes="Bold" CharacterSpacing="0.6" VerticalOptions="Center" />
+                            <Button Grid.Column="1" Text="⟳" WidthRequest="36" HeightRequest="36" CornerRadius="12" Padding="0" FontSize="16"
+                                    BackgroundColor="#EBFFFFFF" TextColor="#16181D" Command="{Binding RefreshCommand}" />
+                        </Grid>
+                        <VerticalStackLayout Grid.Row="1" Spacing="6" VerticalOptions="Center">
+                            <Label Text="{Binding StatusText}" TextColor="White" FontSize="26" FontAttributes="Bold" IsVisible="{Binding IsVerified, Converter={StaticResource Not}}" />
+                            <Label Text="Verify your identity to send and receive money in chats." TextColor="White" FontSize="15"
+                                   IsVisible="{Binding IsVerified, Converter={StaticResource Not}}" />
+                            <VerticalStackLayout BindableLayout.ItemsSource="{Binding Balances}" IsVisible="{Binding IsVerified}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="contracts:BalanceDto">
+                                        <HorizontalStackLayout Spacing="8">
+                                            <Label Text="{Binding Amount}" TextColor="White" FontSize="34" FontAttributes="Bold" CharacterSpacing="-0.6" />
+                                            <Label Text="{Binding Currency}" TextColor="#E6FFFFFF" FontSize="16" FontAttributes="Bold" VerticalOptions="End" Margin="0,0,0,6" />
+                                        </HorizontalStackLayout>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Label Text="{Binding WalletText}" TextColor="#E6FFFFFF" FontSize="13" FontFamily="monospace" VerticalOptions="Center" LineBreakMode="TailTruncation" />
+                            <Label Text="Held with Bridge" TextColor="#E6FFFFFF" FontSize="13" FontFamily="monospace" VerticalOptions="Center"
+                                   IsVisible="{Binding WalletText, Converter={StaticResource IsBlank}}" />
+                            <Button Grid.Column="1" Text="Copy address" Clicked="OnCopyAddress" IsVisible="{Binding IsVerified}"
+                                    BackgroundColor="#38FFFFFF" TextColor="White" CornerRadius="12" HeightRequest="34" Padding="12,0" FontSize="13" />
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
+
+                <!-- Verification with Bridge. -->
+                <Border Style="{StaticResource Glass}">
+                    <VerticalStackLayout Spacing="14">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Verification" Style="{StaticResource SectionTitle}" FontSize="16" />
+                            <Label Grid.Column="1" Text="Refresh" Style="{StaticResource SectionLink}">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding RefreshCommand}" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <Border Style="{StaticResource StepDot}" BackgroundColor="{StaticResource Brand}">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding Status.TosStatus}" Value="approved">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource SocialB}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Label Text="1" TextColor="White" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Status.TosStatus}" Value="approved">
+                                            <Setter Property="Text" Value="✓" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label Text="Accept Bridge's terms" FontAttributes="Bold" />
+                                <Label Text="Bridge holds the money; Ndeipi moves it for you." Style="{StaticResource Muted}" FontSize="12" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <Border Style="{StaticResource StepDot}">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding Status.TosStatus}" Value="approved">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Brand}" />
+                                    </DataTrigger>
+                                    <DataTrigger TargetType="Border" Binding="{Binding Status.KycStatus}" Value="approved">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource SocialB}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Label Text="2" TextColor="White" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding Status.KycStatus}" Value="approved">
+                                            <Setter Property="Text" Value="✓" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label Text="Verify your identity" FontAttributes="Bold" />
+                                <Label Text="A photo ID and a selfie, on Bridge's site." Style="{StaticResource Muted}" FontSize="12" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                            <Border Style="{StaticResource StepDot}">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding Status.KycStatus}" Value="approved">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Brand}" />
+                                    </DataTrigger>
+                                    <DataTrigger TargetType="Border" Binding="{Binding IsVerified}" Value="True">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource SocialB}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Label Text="3" TextColor="White" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsVerified}" Value="True">
+                                            <Setter Property="Text" Value="✓" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                <Label Text="Your wallet" FontAttributes="Bold" />
+                                <Label Text="Created as soon as you're verified." Style="{StaticResource Muted}" FontSize="12" />
+                            </VerticalStackLayout>
+                        </Grid>
+
+                        <Button Text="{Binding VerifyButtonText}" Command="{Binding VerifyCommand}" IsVisible="{Binding CanVerify}"
+                                Style="{StaticResource SocialButton}" />
+                        <Label Text="Opens Bridge in your browser. Come back and pull down to refresh when you're done."
+                               Style="{StaticResource Muted}" IsVisible="{Binding CanVerify}" />
+                        <Label Text="Send money from any chat: tap + and choose Send money."
+                               Style="{StaticResource Muted}" IsVisible="{Binding IsVerified}" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Where token transfers to you arrive, one address per chain. -->
+                <Border Style="{StaticResource Glass}">
+                    <VerticalStackLayout Spacing="12">
+                        <Label Text="Receiving wallets" Style="{StaticResource SectionTitle}" FontSize="16" />
+                        <Label Text="Where people's token transfers to you arrive, one address per chain." Style="{StaticResource Muted}" />
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding ReceivingWallets}" Spacing="10">
                             <BindableLayout.ItemTemplate>
-                                <DataTemplate x:DataType="contracts:BalanceDto">
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Label Text="{Binding Amount}" TextColor="White" FontSize="28" FontAttributes="Bold" />
-                                        <Label Text="{Binding Currency}" TextColor="White" FontSize="15" VerticalOptions="End" Margin="0,0,0,4" />
-                                    </HorizontalStackLayout>
+                                <DataTemplate x:DataType="contracts:UserWalletDto">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                        <Border WidthRequest="44" HeightRequest="44" StrokeThickness="0" StrokeShape="RoundRectangle 14">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                    <GradientStop Color="#B69CFF" Offset="0" />
+                                                    <GradientStop Color="#8B5CF6" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Label Text="⛓" FontSize="20" TextColor="White" HorizontalOptions="Center" VerticalOptions="Center" />
+                                        </Border>
+                                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                                            <Label Text="{Binding Chain}" FontAttributes="Bold" />
+                                            <Label Text="{Binding Address}" Style="{StaticResource Muted}" FontFamily="monospace" LineBreakMode="MiddleTruncation" />
+                                        </VerticalStackLayout>
+                                        <Button Grid.Column="2" Text="✕" Style="{StaticResource SmallButton}" WidthRequest="40" Padding="0"
+                                                Command="{Binding RemoveWalletCommand, Source={RelativeSource AncestorType={x:Type vm:WalletViewModel}}, x:DataType=vm:WalletViewModel}"
+                                                CommandParameter="{Binding .}" />
+                                    </Grid>
                                 </DataTemplate>
                             </BindableLayout.ItemTemplate>
                         </VerticalStackLayout>
+                        <Border Style="{StaticResource Field}">
+                            <Entry Text="{Binding NewWalletChain}" Placeholder="Chain, e.g. solana" />
+                        </Border>
+                        <Border Style="{StaticResource Field}">
+                            <Entry Text="{Binding NewWalletAddress}" Placeholder="Wallet address" FontFamily="monospace" />
+                        </Border>
+                        <Button Text="Save address" Command="{Binding SaveWalletCommand}" Style="{StaticResource Primary}" />
                     </VerticalStackLayout>
                 </Border>
-
-                <Button Text="{Binding VerifyButtonText}"
-                        Command="{Binding VerifyCommand}"
-                        IsVisible="{Binding CanVerify}"
-                        Style="{StaticResource Primary}"
-                        Margin="16,8" />
-                <Label Text="Identity checks are run by Bridge. Pull down to refresh once you're done."
-                       Style="{StaticResource Muted}"
-                       IsVisible="{Binding CanVerify}"
-                       HorizontalTextAlignment="Center"
-                       Margin="24,0" />
-
-                <!-- Where Ndeipi sends tokens you receive, one address per chain. -->
-                <Label Text="TOKEN RECEIVING ADDRESSES" Style="{StaticResource SectionHeader}" />
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding ReceivingWallets}" BackgroundColor="{StaticResource Surface}">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="contracts:UserWalletDto">
-                            <Grid ColumnDefinitions="*,Auto" Padding="16,10">
-                                <VerticalStackLayout>
-                                    <Label Text="{Binding Chain}" FontAttributes="Bold" />
-                                    <Label Text="{Binding Address}" Style="{StaticResource Muted}" LineBreakMode="MiddleTruncation" />
-                                </VerticalStackLayout>
-                                <Button Grid.Column="1" Text="Remove" FontSize="13" BackgroundColor="Transparent" TextColor="{StaticResource Danger}"
-                                        Command="{Binding RemoveWalletCommand, Source={RelativeSource AncestorType={x:Type vm:WalletViewModel}}, x:DataType=vm:WalletViewModel}"
-                                        CommandParameter="{Binding .}" />
-                            </Grid>
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </VerticalStackLayout>
-
-                <Border Style="{StaticResource Card}">
-                    <VerticalStackLayout>
-                        <Entry Text="{Binding NewWalletChain}" Placeholder="Chain, e.g. polygon" Style="{StaticResource FormEntry}" />
-                        <Entry Text="{Binding NewWalletAddress}" Placeholder="Wallet address" Style="{StaticResource FormEntry}" />
-                    </VerticalStackLayout>
-                </Border>
-                <Button Text="Save address" Command="{Binding SaveWalletCommand}" Style="{StaticResource Secondary}" Margin="16,4" />
-
-                <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" Margin="16,0" />
             </VerticalStackLayout>
         </ScrollView>
     </RefreshView>

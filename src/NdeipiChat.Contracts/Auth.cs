@@ -24,6 +24,15 @@ public static class MobileAuthContract
     /// link like that opened in a normal browser can't sign it into someone else's account.
     /// </summary>
     public const string InAppAgentToken = "NdeipiApp/1";
+
+    /// <summary>The web shell asks the app's WebView page to close (its "back" to the launcher).</summary>
+    public const string EmbedClosePath = "embed/close";
+
+    /// <summary>
+    /// The web shell, in the app's WebView, needs signing in again. The app answers with a fresh
+    /// handoff: Clerk's sign-in page can't run inside a WebView (it would bounce to the browser).
+    /// </summary>
+    public const string EmbedSignInPath = "embed/signin";
 }
 
 public sealed record MobileTokenRequest(string Code, string CodeVerifier, string RedirectUri);

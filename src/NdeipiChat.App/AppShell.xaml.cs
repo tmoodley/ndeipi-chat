@@ -1,17 +1,17 @@
 using NdeipiChat.App.Pages;
 using NdeipiChat.Client;
-using NdeipiChat.Client.ViewModels;
 using NdeipiChat.Contracts;
 
 namespace NdeipiChat.App;
 
 public partial class AppShell : Shell
 {
-    public const int MaxPinnedTabs = 3;
+    /// <summary>Every app, to open and pin: opened from Home and More.</summary>
+    public const string AllAppsRoute = "all-apps";
 
     /// <summary>
-    /// Each sub-app's page as a route of its own too, so one without a tab opens on top of the
-    /// launcher instead ("subapp-herd"). Wallet has no tab; it always opens this way.
+    /// Each sub-app's page as a route of its own too, so one without a tab opens on top of Home
+    /// instead ("subapp-herd"). Wallet always has its tab.
     /// </summary>
     public static readonly IReadOnlyDictionary<string, Type> SubAppPages = new Dictionary<string, Type>
     {
@@ -22,45 +22,32 @@ public partial class AppShell : Shell
         [BuiltInApps.Wallet] = typeof(WalletPage)
     };
 
-    readonly LauncherViewModel _launcher;
-    readonly Dictionary<string, Tab> _tabs;
+    /// <summary>The apps with a place of their own in the dock, by id: their tab routes.</summary>
+    static readonly IReadOnlyDictionary<string, string> TabRoutes = new Dictionary<string, string>
+    {
+        [BuiltInApps.Chats] = "chats",
+        [BuiltInApps.Feed] = "feed",
+        [BuiltInApps.Wallet] = "wallet"
+    };
 
-    public AppShell(LauncherViewModel launcher)
+    public AppShell()
     {
         InitializeComponent();
-        _launcher = launcher;
-        _tabs = new()
-        {
-            [BuiltInApps.Chats] = ChatsTab,
-            [BuiltInApps.Feed] = FeedTab,
-            [BuiltInApps.Shamwaris] = ShamwarisTab,
-            [BuiltInApps.Herd] = HerdTab
-        };
 
         Routing.RegisterRoute(Routes.Chat, typeof(ChatPage));
         Routing.RegisterRoute(Routes.AssetTransfer, typeof(AssetTransferPage));
         Routing.RegisterRoute(Routes.BankTransfer, typeof(BankTransferPage));
-        Routing.RegisterRoute(Routes.Wallet, typeof(WalletPage));
         Routing.RegisterRoute(Routes.RegisterCow, typeof(RegisterCowPage));
         Routing.RegisterRoute(Routes.Cow, typeof(CowDetailPage));
         Routing.RegisterRoute(Routes.ComposePost, typeof(ComposePostPage));
         Routing.RegisterRoute(Routes.WebSubApp, typeof(WebSubAppPage));
-        foreach (var (id, page) in SubAppPages.Where(p => p.Key != BuiltInApps.Wallet))
+        Routing.RegisterRoute(AllAppsRoute, typeof(LauncherPage));
+        foreach (var (id, page) in SubAppPages.Where(p => !TabRoutes.ContainsKey(p.Key)))
             Routing.RegisterRoute(PageRoute(id), page);
-
-        _launcher.ManifestChanged += () => MainThread.BeginInvokeOnMainThread(ShowPinnedTabs);
     }
 
     public static string PageRoute(string appId) => "subapp-" + appId;
 
-    /// <summary>The tab route of a sub-app whose tab is showing, or null to open it as a page.</summary>
-    public string? TabRouteFor(string appId) => _tabs.TryGetValue(appId, out var tab) && tab.IsVisible ? tab.Route : null;
-
-    /// <summary>Tabs for the first three pinned apps the user may use; the manifest leaves out the rest.</summary>
-    void ShowPinnedTabs()
-    {
-        var shown = _launcher.Pinned.Select(a => a.Id).Where(_tabs.ContainsKey).Take(MaxPinnedTabs).ToHashSet();
-        foreach (var (id, tab) in _tabs)
-            tab.IsVisible = shown.Contains(id);
-    }
+    /// <summary>The tab route of a sub-app with a place in the dock, or null to open it as a page.</summary>
+    public static string? TabRouteFor(string appId) => TabRoutes.GetValueOrDefault(appId);
 }

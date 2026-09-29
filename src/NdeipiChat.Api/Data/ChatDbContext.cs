@@ -24,6 +24,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<Post> Posts => Set<Post>();
     public DbSet<PostMedia> PostMedia => Set<PostMedia>();
     public DbSet<PostLike> PostLikes => Set<PostLike>();
+    public DbSet<PostComment> PostComments => Set<PostComment>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<EventListing> Events => Set<EventListing>();
     public DbSet<TicketTier> TicketTiers => Set<TicketTier>();
@@ -70,6 +71,11 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.HasOne(p => p.Mint).WithMany().HasForeignKey(p => p.MintTransferId).OnDelete(DeleteBehavior.Restrict);
             e.HasMany(p => p.Media).WithOne().HasForeignKey(m => m.PostId).OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(p => new { p.GroupId, p.CreatedAt });
+            // Deleting a post deletes its reposts in PostService (SQL Server won't cascade a table onto itself).
+            e.HasOne(p => p.RepostOf).WithMany().HasForeignKey(p => p.RepostOfId).OnDelete(DeleteBehavior.NoAction);
+            // One repost of a post per person.
+            e.HasIndex(p => new { p.AuthorId, p.RepostOfId }).IsUnique().HasFilter("[RepostOfId] IS NOT NULL");
+            e.HasIndex(p => p.RepostOfId);
             e.HasOne(p => p.Group).WithMany().HasForeignKey(p => p.GroupId).OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -218,6 +224,15 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         });
 
         model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());
+
+        model.Entity<PostComment>(e =>
+        {
+            e.Property(c => c.Text).HasMaxLength(NdeipiChat.Contracts.SocialContract.MaxCommentLength);
+            e.HasIndex(c => new { c.PostId, c.CreatedAt });
+            e.HasIndex(c => new { c.AuthorId, c.CreatedAt });
+            e.HasOne<Post>().WithMany().HasForeignKey(c => c.PostId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(c => c.Author).WithMany().HasForeignKey(c => c.AuthorId).OnDelete(DeleteBehavior.Restrict);
+        });
 
         model.Entity<PostLike>(e =>
         {

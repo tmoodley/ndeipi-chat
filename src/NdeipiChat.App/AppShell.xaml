@@ -10,25 +10,24 @@
                   Shell.TabBarIsVisible="False"
                   ContentTemplate="{DataTemplate pages:SignInPage}" />
 
-    <!-- Apps, up to three pinned sub-apps, and Me: Android shows five tabs at most. AppShell.xaml.cs
-         shows the tabs of the user's first three pinned apps; the rest open from the launcher. -->
+    <!-- The same five places as the web app's dock: Chats, Social, Home, Wallet and More (Me).
+         Android's own tab bar is hidden (see App.xaml); each of these pages draws the web's
+         floating dock instead (Controls/DockView). Other apps, such as Shamwaris and Herd, open
+         as pages over Home. -->
     <TabBar Route="main">
-        <Tab Title="Apps" Route="launcher" Icon="tab_apps.png">
-            <ShellContent ContentTemplate="{DataTemplate pages:LauncherPage}" />
+        <Tab Title="Home" Route="home" Icon="tab_home.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:HomePage}" />
         </Tab>
         <Tab x:Name="ChatsTab" Title="Chats" Route="chats" Icon="tab_chats.png">
             <ShellContent ContentTemplate="{DataTemplate pages:ChatsPage}" />
         </Tab>
-        <Tab x:Name="FeedTab" Title="Feed" Route="feed" Icon="tab_feed.png">
+        <Tab x:Name="FeedTab" Title="Social" Route="feed" Icon="tab_feed.png">
             <ShellContent ContentTemplate="{DataTemplate pages:FeedPage}" />
         </Tab>
-        <Tab x:Name="ShamwarisTab" Title="Shamwaris" Route="contacts" Icon="tab_contacts.png">
-            <ShellContent ContentTemplate="{DataTemplate pages:ContactsPage}" />
+        <Tab x:Name="WalletTab" Title="Wallet" Route="wallet" Icon="tab_apps.png">
+            <ShellContent ContentTemplate="{DataTemplate pages:WalletPage}" />
         </Tab>
-        <Tab x:Name="HerdTab" Title="Herd" Route="herd" Icon="tab_herd.png" IsVisible="False">
-            <ShellContent ContentTemplate="{DataTemplate pages:HerdPage}" />
-        </Tab>
-        <Tab Title="Me" Route="me" Icon="tab_me.png">
+        <Tab Title="More" Route="me" Icon="tab_me.png">
             <ShellContent ContentTemplate="{DataTemplate pages:MePage}" />
         </Tab>
     </TabBar>

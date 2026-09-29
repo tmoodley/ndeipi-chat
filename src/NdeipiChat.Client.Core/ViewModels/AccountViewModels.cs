@@ -251,7 +251,15 @@ public sealed partial class WalletViewModel : ObservableObject
             Status = await _api.RefreshBankingAsync();
             await LoadBalancesAsync();
         });
+        IsRefreshing = false;
     }
+
+    /// <summary>
+    /// The page's pull-to-refresh, apart from <see cref="IsBusy"/>: a pull-to-refresh bound to "busy"
+    /// would start refreshing whenever anything else is busy, and stop taking taps meanwhile.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsRefreshing { get; set; }
 
     [RelayCommand]
     async Task SaveWalletAsync()

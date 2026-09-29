@@ -5,8 +5,10 @@
                      xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
                      xmlns:vm="clr-namespace:NdeipiChat.Client.ViewModels;assembly=NdeipiChat.Client.Core"
                      x:Class="NdeipiChat.App.Pages.ContactsPage"
+                     ControlTemplate="{StaticResource WithDock}"
                      x:DataType="vm:ContactsViewModel"
-                     Title="Shamwaris">
+                     Title="Shamwaris"
+                     Shell.NavBarIsVisible="False">
     <ContentPage.Resources>
         <Style x:Key="SmallButton" TargetType="Button">
             <Setter Property="FontSize" Value="14" />
@@ -17,14 +19,14 @@
         </Style>
 
         <DataTemplate x:Key="ContactTemplate" x:DataType="vm:ContactItemViewModel">
-            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12" BackgroundColor="{StaticResource Surface}">
+            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12">
                 <Grid.GestureRecognizers>
                     <TapGestureRecognizer Command="{Binding SelectCommand, Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, x:DataType=vm:ContactsViewModel}"
                                           CommandParameter="{Binding .}" />
                 </Grid.GestureRecognizers>
-                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="40" />
+                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="44" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                    <Label Text="{Binding Name}" />
+                    <Label Text="{Binding Name}" FontAttributes="Bold" />
                     <Label Text="{Binding Username}" Style="{StaticResource Muted}" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
                 </VerticalStackLayout>
                 <Label Grid.Column="2" Text="✓" TextColor="{StaticResource Brand}" FontSize="20" VerticalOptions="Center" IsVisible="{Binding IsSelected}" />
@@ -42,14 +44,14 @@
                                    CommandParameter="{Binding .}" />
                     </SwipeItems>
                 </SwipeView.RightItems>
-                <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12" BackgroundColor="{StaticResource Surface}">
+                <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12">
                     <Grid.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding SelectCommand, Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, x:DataType=vm:ContactsViewModel}"
                                               CommandParameter="{Binding .}" />
                     </Grid.GestureRecognizers>
-                    <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="40" />
+                    <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="44" />
                     <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                        <Label Text="{Binding Name}" />
+                        <Label Text="{Binding Name}" FontAttributes="Bold" />
                         <Label Text="{Binding Username}" Style="{StaticResource Muted}" IsVisible="{Binding Username, Converter={StaticResource IsNotNull}}" />
                     </VerticalStackLayout>
                     <Label Grid.Column="2" Text="✓" TextColor="{StaticResource Brand}" FontSize="20" VerticalOptions="Center" IsVisible="{Binding IsSelected}" />
@@ -58,104 +60,115 @@
         </DataTemplate>
 
         <DataTemplate x:Key="IncomingTemplate" x:DataType="vm:ShamwariRequestItemViewModel">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Padding="16,10" ColumnSpacing="8" BackgroundColor="{StaticResource Surface}">
-                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="40" />
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Padding="16,10" ColumnSpacing="8">
+                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="44" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Margin="4,0,0,0">
-                    <Label Text="{Binding Name}" />
+                    <Label Text="{Binding Name}" FontAttributes="Bold" />
                     <Label Text="wants to be your Shamwari" Style="{StaticResource Muted}" />
                 </VerticalStackLayout>
                 <Button Grid.Column="2"
                         Text="Accept"
-                        Style="{StaticResource SmallButton}"
-                        BackgroundColor="{StaticResource Brand}"
-                        TextColor="White"
+                        Style="{StaticResource SmallPrimary}"
                         Command="{Binding AcceptCommand, Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, x:DataType=vm:ContactsViewModel}"
                         CommandParameter="{Binding .}" />
                 <Button Grid.Column="3"
                         Text="Decline"
                         Style="{StaticResource SmallButton}"
-                        BackgroundColor="#F2F2F2"
-                        TextColor="{StaticResource Text}"
                         Command="{Binding DismissCommand, Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, x:DataType=vm:ContactsViewModel}"
                         CommandParameter="{Binding .}" />
             </Grid>
         </DataTemplate>
 
         <DataTemplate x:Key="OutgoingTemplate" x:DataType="vm:ShamwariRequestItemViewModel">
-            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12" BackgroundColor="{StaticResource Surface}">
-                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="40" />
+            <Grid ColumnDefinitions="Auto,*,Auto" Padding="16,10" ColumnSpacing="12">
+                <controls:AvatarView Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="44" />
                 <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
-                    <Label Text="{Binding Name}" />
+                    <Label Text="{Binding Name}" FontAttributes="Bold" />
                     <Label Text="{Binding Detail}" Style="{StaticResource Muted}" />
                 </VerticalStackLayout>
                 <Button Grid.Column="2"
                         Text="Cancel"
                         Style="{StaticResource SmallButton}"
-                        BackgroundColor="#F2F2F2"
-                        TextColor="{StaticResource Text}"
                         Command="{Binding DismissCommand, Source={RelativeSource AncestorType={x:Type vm:ContactsViewModel}}, x:DataType=vm:ContactsViewModel}"
                         CommandParameter="{Binding .}" />
             </Grid>
         </DataTemplate>
     </ContentPage.Resources>
 
-    <ContentPage.ToolbarItems>
-        <ToolbarItem Text="Group" Command="{Binding ToggleGroupModeCommand}" />
-    </ContentPage.ToolbarItems>
+    <Grid RowDefinitions="Auto,*,Auto" Padding="0,20,0,0">
+        <VerticalStackLayout Spacing="12" Padding="16,0,16,6">
+            <Grid ColumnDefinitions="*,Auto" Padding="4,0,0,0">
+                <VerticalStackLayout>
+                    <Label Text="Shamwaris" Style="{StaticResource PageTitle}" />
+                    <Label Text="Your friends: chat with them and send them money" Style="{StaticResource Muted}" FontSize="14" />
+                </VerticalStackLayout>
+                <Button Grid.Column="1" Text="Group" Style="{StaticResource SmallButton}" Command="{Binding ToggleGroupModeCommand}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsGroupMode}" Value="True">
+                            <Setter Property="Text" Value="Cancel" />
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+            </Grid>
+            <Border Style="{StaticResource Field}" Padding="4,0">
+                <SearchBar Text="{Binding Query}" Placeholder="Search by name, username or email" />
+            </Border>
+            <Border Style="{StaticResource Field}" IsVisible="{Binding IsGroupMode}">
+                <Entry Text="{Binding GroupTitle}" Placeholder="Group name (optional)" />
+            </Border>
+        </VerticalStackLayout>
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
-        <SearchBar Text="{Binding Query}" Placeholder="Search by name, username or email" />
-
-        <Entry Grid.Row="1"
-               Text="{Binding GroupTitle}"
-               Placeholder="Group name (optional)"
-               IsVisible="{Binding IsGroupMode}"
-               Style="{StaticResource FormEntry}"
-               Margin="16,4" />
-
-        <ScrollView Grid.Row="2">
-            <VerticalStackLayout>
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Padding="0,0,0,24">
                 <Label Text="ADD A SHAMWARI" Style="{StaticResource SectionHeader}" />
-                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Padding="16,4">
-                    <Entry Text="{Binding NewContact}"
-                           Placeholder="Email or phone, e.g. +263 77 123 4567"
-                           Keyboard="Email"
-                           ReturnType="Send"
-                           ReturnCommand="{Binding AddShamwariCommand}"
-                           Style="{StaticResource FormEntry}" />
-                    <Button Grid.Column="1"
-                            Text="Add"
-                            Command="{Binding AddShamwariCommand}"
-                            Style="{StaticResource Primary}"
-                            Padding="20,0" />
-                </Grid>
-                <Label Text="{Binding AddStatus}"
-                       Style="{StaticResource Muted}"
-                       Margin="16,0,16,8"
-                       IsVisible="{Binding AddStatus, Converter={StaticResource IsNotNull}}" />
+                <Border Style="{StaticResource Glass}" Margin="16,0" Padding="14">
+                    <VerticalStackLayout Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                            <Border Style="{StaticResource Field}">
+                                <Entry Text="{Binding NewContact}"
+                                       Placeholder="Email or phone, e.g. +263 77 123 4567"
+                                       Keyboard="Email"
+                                       ReturnType="Send"
+                                       ReturnCommand="{Binding AddShamwariCommand}" />
+                            </Border>
+                            <Button Grid.Column="1" Text="Add" Command="{Binding AddShamwariCommand}" Style="{StaticResource Primary}" HeightRequest="48" Padding="20,0" />
+                        </Grid>
+                        <Label Text="{Binding AddStatus}" Style="{StaticResource Muted}" IsVisible="{Binding AddStatus, Converter={StaticResource IsNotNull}}" />
+                    </VerticalStackLayout>
+                </Border>
 
                 <Label Text="SEARCH RESULTS" Style="{StaticResource SectionHeader}" IsVisible="{Binding HasResults}" />
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Results}" BindableLayout.ItemTemplate="{StaticResource ContactTemplate}" />
+                <Border Style="{StaticResource GlassList}" IsVisible="{Binding HasResults}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Results}" BindableLayout.ItemTemplate="{StaticResource ContactTemplate}" />
+                </Border>
 
                 <Label Text="REQUESTS" Style="{StaticResource SectionHeader}" IsVisible="{Binding HasIncoming}" />
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Incoming}" BindableLayout.ItemTemplate="{StaticResource IncomingTemplate}" />
+                <Border Style="{StaticResource GlassList}" IsVisible="{Binding HasIncoming}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Incoming}" BindableLayout.ItemTemplate="{StaticResource IncomingTemplate}" />
+                </Border>
 
                 <Label Text="SHAMWARIS" Style="{StaticResource SectionHeader}" />
                 <Label Text="Add someone by their email or phone number. Tap a Shamwari to chat or send money."
                        Style="{StaticResource Muted}"
-                       Margin="16,4"
+                       Margin="20,0"
                        IsVisible="{Binding HasShamwaris, Converter={StaticResource Not}}" />
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Shamwaris}" BindableLayout.ItemTemplate="{StaticResource ShamwariTemplate}" />
+                <Border Style="{StaticResource GlassList}" IsVisible="{Binding HasShamwaris}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Shamwaris}" BindableLayout.ItemTemplate="{StaticResource ShamwariTemplate}" />
+                </Border>
 
                 <Label Text="WAITING FOR THEM" Style="{StaticResource SectionHeader}" IsVisible="{Binding HasOutgoing}" />
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Outgoing}" BindableLayout.ItemTemplate="{StaticResource OutgoingTemplate}" />
+                <Border Style="{StaticResource GlassList}" IsVisible="{Binding HasOutgoing}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Outgoing}" BindableLayout.ItemTemplate="{StaticResource OutgoingTemplate}" />
+                </Border>
 
                 <Label Text="OTHERS YOU CHAT WITH" Style="{StaticResource SectionHeader}" IsVisible="{Binding HasRecent}" />
-                <VerticalStackLayout BindableLayout.ItemsSource="{Binding Recent}" BindableLayout.ItemTemplate="{StaticResource ContactTemplate}" />
+                <Border Style="{StaticResource GlassList}" IsVisible="{Binding HasRecent}">
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding Recent}" BindableLayout.ItemTemplate="{StaticResource ContactTemplate}" />
+                </Border>
             </VerticalStackLayout>
         </ScrollView>
 
-        <Button Grid.Row="3"
+        <Button Grid.Row="2"
                 Text="{Binding SelectedCount, StringFormat='Start group chat ({0})'}"
                 Command="{Binding CreateGroupCommand}"
                 IsVisible="{Binding IsGroupMode}"

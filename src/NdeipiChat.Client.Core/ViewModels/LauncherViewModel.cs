@@ -185,6 +185,9 @@ public sealed partial class SubAppItemViewModel(SubAppDto app) : ObservableObjec
     public string Icon => App.Icon;
     public string Route => App.Route;
 
+    /// <summary>Its icon square's colour, the same on the web and the phone.</summary>
+    public string Tone => AppTones.For(Id);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PinText))]
     public partial bool IsPinned { get; set; }

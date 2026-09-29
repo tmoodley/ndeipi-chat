@@ -1,5 +1,6 @@
 using System.Collections.Specialized;
 using NdeipiChat.App.Extensions;
+using NdeipiChat.Client;
 using NdeipiChat.Client.ViewModels;
 using NdeipiChat.Contracts;
 
@@ -30,6 +31,8 @@ public partial class WebSubAppPage : ViewModelPage
 
     void OnNavigating(object? sender, WebNavigatingEventArgs e)
     {
+        // The path only: a handoff's query and fragment carry its one-time code and verifier.
+        NdeipiChat.App.Platform.AppLog.Info($"web navigating {e.Url.Split('?', '#')[0]}");
         if (!Uri.TryCreate(e.Url, UriKind.Absolute, out var target) || _viewModel.Site is not { } site)
             return;
         if (!string.Equals(target.GetLeftPart(UriPartial.Authority), site.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
@@ -40,10 +43,16 @@ public partial class WebSubAppPage : ViewModelPage
             return;
         }
         var path = target.AbsolutePath.Trim('/');
-        if (path is "" or "embed/close")
+        if (path is "" or MobileAuthContract.EmbedClosePath)
         {
             e.Cancel = true;
             _ = CloseAsync();
+        }
+        else if (path == MobileAuthContract.EmbedSignInPath)
+        {
+            // The web shell's sign-in ran out: a fresh handoff, rather than Clerk's page in here.
+            e.Cancel = true;
+            _ = _viewModel.SignInAgainAsync();
         }
     }
 
@@ -73,6 +82,48 @@ public partial class LauncherPage : ViewModelPage
         _viewModel.IsLoaded ? Task.CompletedTask : _viewModel.LoadCommand.ExecuteAsync(null);
 }
 
+public partial class HomePage : ViewModelPage
+{
+    readonly HomeViewModel _viewModel;
+
+    public HomePage(HomeViewModel viewModel) : base(viewModel)
+    {
+        InitializeComponent();
+        _viewModel = viewModel;
+    }
+
+    /// <summary>
+    /// Apps once per launch (they decide the tabs); chats and Shamwaris each time, since Home
+    /// shows the latest of both. Each reports its own errors.
+    /// </summary>
+    protected override Task OnAppearedAsync() => Task.WhenAll(
+        _viewModel.LoadCommand.ExecuteAsync(null),
+        _viewModel.Chats.RefreshCommand.ExecuteAsync(null),
+        _viewModel.Contacts.LoadCommand.ExecuteAsync(null));
+
+    async void OnMe(object? sender, TappedEventArgs e) => await Shell.Current.GoToAsync("//main/me");
+
+    async void OnSendMoney(object? sender, TappedEventArgs e) => await PickAsync("Transfer money to", HomeAction.SendMoney);
+
+    async void OnSendTokens(object? sender, TappedEventArgs e) => await PickAsync("Send tokens to", HomeAction.SendTokens);
+
+    /// <summary>Who to? Then straight onto the money or token form in your chat with them.</summary>
+    async Task PickAsync(string title, HomeAction action)
+    {
+        var people = _viewModel.Everyone;
+        if (people.Count == 0)
+        {
+            if (await DisplayAlertAsync(title.Split(' ')[0] + " who?", "Add a Shamwari first, then send them money or tokens from here.", "Find Shamwaris", "Cancel"))
+                await _viewModel.OpenShamwarisCommand.ExecuteAsync(null);
+            return;
+        }
+        var names = people.Select(p => p.Name).ToArray();
+        var picked = await DisplayActionSheetAsync(title, "Cancel", null, names);
+        if (people.FirstOrDefault(p => p.Name == picked) is { } person)
+            await _viewModel.OpenAsync(person, action);
+    }
+}
+
 public partial class FeedPage : ViewModelPage
 {
     readonly FeedViewModel _viewModel;
@@ -89,9 +140,32 @@ public partial class FeedPage : ViewModelPage
 
     async void OnDelete(object? sender, EventArgs e)
     {
-        if ((sender as Button)?.CommandParameter is PostItemViewModel post
-            && await DisplayAlertAsync("Delete post?", "This can't be undone.", "Delete", "Cancel"))
+        if ((sender as Button)?.CommandParameter is not PostItemViewModel post)
+            return;
+        // Undoing a plain repost needs no warning; deleting a post can't be taken back.
+        if (post.IsPlainRepost || await DisplayAlertAsync("Delete post?", "This can't be undone.", "Delete", "Cancel"))
             await _viewModel.DeleteCommand.ExecuteAsync(post);
+    }
+
+    /// <summary>As LinkedIn: repost straight away, or with your thoughts; or take your repost back.</summary>
+    async void OnRepost(object? sender, EventArgs e)
+    {
+        if ((sender as Button)?.CommandParameter is not PostItemViewModel post)
+            return;
+        const string Now = "Repost", WithThoughts = "Repost with your thoughts", Undo = "Undo repost";
+        var choice = await DisplayActionSheetAsync("Repost", "Cancel", null, post.RepostedByMe ? [Undo, WithThoughts] : [Now, WithThoughts]);
+        switch (choice)
+        {
+            case Now or Undo:
+                await _viewModel.RepostCommand.ExecuteAsync(post);
+                break;
+            case WithThoughts:
+                var thoughts = await DisplayPromptAsync("Repost with your thoughts", $"Sharing {post.AuthorName}'s post", "Repost", "Cancel",
+                    "What do you think of it?", maxLength: SocialContract.MaxCaptionLength);
+                if (thoughts is not null)
+                    await _viewModel.RepostWithThoughtsAsync(post, thoughts);
+                break;
+        }
     }
 }
 
@@ -154,7 +228,8 @@ public partial class ChatsPage : ViewModelPage
 
     protected override Task OnAppearedAsync() => _viewModel.RefreshCommand.ExecuteAsync(null);
 
-    async void OnNewChat(object? sender, EventArgs e) => await Shell.Current.GoToAsync("//main/contacts");
+    /// <summary>A new chat starts from Shamwaris, which opens over Home.</summary>
+    async void OnNewChat(object? sender, EventArgs e) => await Shell.Current.GoToAsync($"//main/home/{AppShell.PageRoute(BuiltInApps.Shamwaris)}");
 }
 
 public partial class ChatPage : ViewModelPage
@@ -204,14 +279,22 @@ public partial class ContactsPage : ViewModelPage
 public partial class MePage : ViewModelPage
 {
     readonly MeViewModel _viewModel;
+    readonly INavigator _navigator;
 
-    public MePage(MeViewModel viewModel) : base(viewModel)
+    public MePage(MeViewModel viewModel, INavigator navigator) : base(viewModel)
     {
         InitializeComponent();
-        _viewModel = viewModel;
+        (_viewModel, _navigator) = (viewModel, navigator);
+        DarkMode.IsToggled = Application.Current?.RequestedTheme == AppTheme.Dark;
     }
 
     protected override Task OnAppearedAsync() => _viewModel.LoadCommand.ExecuteAsync(null);
+
+    async void OnShamwaris(object? sender, TappedEventArgs e) => await _navigator.GoToAsync(Routes.SubApp(BuiltInApps.Shamwaris));
+
+    async void OnAllApps(object? sender, TappedEventArgs e) => await _navigator.GoToAsync(Routes.Launcher);
+
+    void OnDarkModeToggled(object? sender, ToggledEventArgs e) => App.SetTheme(e.Value ? AppTheme.Dark : AppTheme.Light);
 }
 
 public partial class WalletPage : ViewModelPage
@@ -226,6 +309,15 @@ public partial class WalletPage : ViewModelPage
 
     /// <summary>Also runs when the user comes back from Bridge's KYC pages in the browser.</summary>
     protected override Task OnAppearedAsync() => _viewModel.LoadCommand.ExecuteAsync(null);
+
+    async void OnCopyAddress(object? sender, EventArgs e)
+    {
+        if (_viewModel.Status?.WalletAddress is not { } address)
+            return;
+        await Clipboard.Default.SetTextAsync(address);
+        if (sender is Button button)
+            button.Text = "Copied ✓";
+    }
 }
 
 public partial class AssetTransferPage : ViewModelPage

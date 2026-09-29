@@ -1,14 +1,21 @@
-@* One post: author, photos (swipe or scroll sideways when there are several), likes, caption, NFT. *@
+@* One post: author, words, photos (swipe or scroll sideways when there are several), NFT, and
+   Like · Comment · Repost, with its comments underneath. A plain repost shows the original with
+   "X reposted this" above it; a repost with thoughts shows them, with the original inside. *@
+@implements IDisposable
 <article class="post">
+    @if (Post.RepostedByText is { } reposted)
+    {
+        <div class="reposted-by">🔁 <a href="u/@Post.Post.Author.Id">@reposted</a></div>
+    }
     <header class="post-head">
-        <a href="u/@Post.Post.Author.Id">
-            <HexAvatar Url="@Post.AuthorAvatarUrl" Initials="@Post.AuthorInitials" Tone="@SocialActions.ToneFor(Post.Post.Author.Id)" Size="44" />
+        <a href="u/@Post.AuthorId">
+            <HexAvatar Url="@Post.AuthorAvatarUrl" Initials="@Post.AuthorInitials" Tone="@SocialActions.ToneFor(Post.AuthorId)" Size="44" />
         </a>
         <div class="row-main">
-            <a class="name name-link" href="u/@Post.Post.Author.Id">@Post.AuthorName</a>
+            <a class="name name-link" href="u/@Post.AuthorId">@Post.AuthorName</a>
             <span class="time">
-                <a class="time" href="posts/@Post.Id">@Post.TimeText</a>
-                @if (Post.Post.Group is { } group)
+                @Post.TimeText
+                @if (Post.Group is { } group)
                 {
                     <text> · </text><a class="group-chip" href="groups/@group.Id">in @group.Name</a>
                 }
@@ -16,40 +23,57 @@
         </div>
         @if (Post.CanDelete)
         {
-            <button class="link danger" disabled="@Post.IsBusy" @onclick="DeleteAsync">Delete</button>
+            <button class="link danger" disabled="@Post.IsBusy" @onclick="DeleteAsync">@Post.DeleteText</button>
         }
     </header>
 
-    @if (Post.Photos.Count == 0 && Post.HasCaption)
+    @if (Post.HasCaption)
     {
-        @* A text post: the words are the post. *@
-        <p class="caption" style="font-size: 17px; margin-top: 2px">@Post.Caption</p>
+        <p class="caption @(Post.HasPhotos || Post.HasEmbedded ? "" : "text-only")">@Post.Caption</p>
     }
-    <div class="post-photos @(Post.HasSeveralPhotos ? "several" : "")" style="@(Post.Photos.Count == 0 ? "display:none" : "")">
-        @foreach (var photo in Post.Photos)
-        {
-            <img src="@photo.Url" alt="" loading="lazy" width="@photo.Width" height="@photo.Height"
-                 style="aspect-ratio:@photo.Width/@photo.Height" />
-        }
-    </div>
-    @if (Post.HasSeveralPhotos)
+    @if (Post.HasPhotos)
     {
-        <div class="post-count">@Post.Photos.Count photos · scroll sideways</div>
+        <div class="post-photos @(Post.HasSeveralPhotos ? "several" : "")">
+            @foreach (var photo in Post.Photos)
+            {
+                <img src="@photo.Url" alt="" loading="lazy" width="@photo.Width" height="@photo.Height"
+                     style="aspect-ratio:@photo.Width/@photo.Height" />
+            }
+        </div>
+        @if (Post.HasSeveralPhotos)
+        {
+            <div class="post-count">@Post.Photos.Count photos · scroll sideways</div>
+        }
     }
 
-    <div class="post-actions">
-        <button class="like @(Post.LikedByMe ? "liked" : "")" title="@(Post.LikedByMe ? "Unlike" : "Like")"
-                @onclick="() => Feed.ToggleLikeCommand.ExecuteAsync(Post)">@(Post.LikedByMe ? "♥" : "♡")</button>
-        <span class="likes">@Post.LikeText</span>
-        @if (Post.CanMint)
-        {
-            <button class="secondary small mint" disabled="@Post.IsBusy" @onclick="() => Feed.MintCommand.ExecuteAsync(Post)">⬡ @Post.MintText</button>
-        }
-    </div>
-
-    @if (Post.HasCaption && Post.Photos.Count > 0)
+    @if (Post.Embedded is { } original)
     {
-        <p class="caption"><strong>@Post.AuthorName</strong> @Post.Caption</p>
+        <div class="embedded-post">
+            <div class="post-head">
+                <HexAvatar Url="@Post.EmbeddedAuthorAvatarUrl" Initials="@Post.EmbeddedAuthorInitials" Tone="@SocialActions.ToneFor(original.Author.Id)" Size="34" />
+                <div class="row-main">
+                    <a class="name name-link" href="u/@original.Author.Id">@Post.EmbeddedAuthorName</a>
+                    <span class="time">@Post.EmbeddedTimeText</span>
+                </div>
+            </div>
+            @if (Post.HasEmbeddedCaption)
+            {
+                <p class="caption">@Post.EmbeddedCaption</p>
+            }
+            @if (Post.HasEmbeddedPhotos)
+            {
+                <div class="post-photos @(Post.EmbeddedPhotos.Count > 1 ? "several" : "")">
+                    @foreach (var photo in Post.EmbeddedPhotos)
+                    {
+                        <img src="@photo.Url" alt="" loading="lazy" style="aspect-ratio:@photo.Width/@photo.Height" />
+                    }
+                </div>
+            }
+        </div>
+    }
+    else if (Post.IsEmbeddedMissing)
+    {
+        <div class="embedded-post muted">This post is no longer available.</div>
     }
 
     @if (Post.HasNft)
@@ -62,6 +86,92 @@
             }
         </div>
     }
+
+    @if (Post.StatsText.Length > 0 || Post.CanMint)
+    {
+        <div class="post-stats">
+            <button class="link" @onclick="() => Feed.ToggleCommentsCommand.ExecuteAsync(Post)">@Post.StatsText</button>
+            @if (Post.CanMint)
+            {
+                <button class="secondary small mint" disabled="@Post.IsBusy" @onclick="() => Feed.MintCommand.ExecuteAsync(Post)">⬡ @Post.MintText</button>
+            }
+        </div>
+    }
+
+    <div class="post-bar">
+        <button class="@(Post.LikedByMe ? "on liked" : "")" @onclick="() => Feed.ToggleLikeCommand.ExecuteAsync(Post)">
+            <span class="glyph">@(Post.LikedByMe ? "♥" : "♡")</span>Like
+        </button>
+        <button class="@(Post.IsCommentsOpen ? "on" : "")" @onclick="() => Feed.ToggleCommentsCommand.ExecuteAsync(Post)">
+            <span class="glyph">💬</span>Comment
+        </button>
+        <div class="repost-wrap">
+            <button class="@(Post.RepostedByMe ? "on" : "")" @onclick="() => _repostMenu = !_repostMenu">
+                <span class="glyph">🔁</span>@(Post.RepostedByMe ? "Reposted" : "Repost")
+            </button>
+            @if (_repostMenu)
+            {
+                <div class="repost-menu glass">
+                    @if (Post.RepostedByMe)
+                    {
+                        <button @onclick="() => RepostAsync(null, undo: true)"><strong>Undo repost</strong><small>Take it off your profile</small></button>
+                    }
+                    else
+                    {
+                        <button @onclick="() => RepostAsync(null)"><strong>Repost</strong><small>Share it with your followers straight away</small></button>
+                    }
+                    <button @onclick="() => { _thinking = true; _repostMenu = false; }"><strong>Repost with your thoughts</strong><small>Add a few words of your own</small></button>
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (_thinking)
+    {
+        <div class="comment-form">
+            <textarea @bind="_thoughts" @bind:event="oninput" maxlength="@SocialContract.MaxCaptionLength" placeholder="What do you think of it?"></textarea>
+            <div class="actions">
+                <button class="secondary small" @onclick="() => _thinking = false">Cancel</button>
+                <button class="btn-a small" @onclick="() => RepostAsync(_thoughts)">Repost</button>
+            </div>
+        </div>
+    }
+
+    @if (Post.IsCommentsOpen)
+    {
+        <div class="comments">
+            <form class="comment-form" @onsubmit="() => Feed.AddCommentCommand.ExecuteAsync(Post)">
+                <Avatar Url="@Session.Me?.AvatarUrl" Initials="@Display.Initials(Session.Me?.DisplayName ?? "N")" Size="34" />
+                <input @bind="Post.CommentDraft" @bind:event="oninput" maxlength="@SocialContract.MaxCommentLength" placeholder="Add a comment…" />
+                <button type="submit" class="btn-a small" disabled="@(Post.IsSendingComment || string.IsNullOrWhiteSpace(Post.CommentDraft))">Post</button>
+            </form>
+            @if (Post.IsLoadingComments)
+            {
+                <p class="muted small">Loading…</p>
+            }
+            @foreach (var comment in Post.Comments)
+            {
+                <div class="comment" @key="comment.Id">
+                    <a href="u/@comment.AuthorId"><HexAvatar Url="@comment.AuthorAvatarUrl" Initials="@comment.AuthorInitials" Tone="@SocialActions.ToneFor(comment.AuthorId)" Size="34" /></a>
+                    <div class="bubble-box">
+                        <div class="comment-head">
+                            <a class="name name-link" href="u/@comment.AuthorId">@comment.AuthorName</a>
+                            <span class="time">@comment.TimeText</span>
+                            @if (comment.CanDelete)
+                            {
+                                <button class="link danger" @onclick="() => Feed.DeleteCommentCommand.ExecuteAsync(comment)">Delete</button>
+                            }
+                        </div>
+                        <p>@comment.Text</p>
+                    </div>
+                </div>
+            }
+            @if (Post.CommentsLoaded && Post.Comments.Count == 0)
+            {
+                <p class="muted small" style="margin: 0">No comments yet. Start the conversation.</p>
+            }
+        </div>
+    }
 </article>
 
 @code {
@@ -69,10 +179,40 @@
     [Parameter, EditorRequired] public FeedViewModel Feed { get; set; } = null!;
     [Parameter] public EventCallback Deleted { get; set; }
     [Inject] IJSRuntime JS { get; set; } = null!;
+    [Inject] ChatSession Session { get; set; } = null!;
+
+    bool _repostMenu, _thinking;
+    string _thoughts = "";
+
+    protected override void OnInitialized()
+    {
+        // Counts and comments change inside the item; redraw this card when they do.
+        Post.PropertyChanged += OnChanged;
+        Post.Comments.CollectionChanged += OnCommentsChanged;
+    }
+
+    void OnChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
+    void OnCommentsChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Post.PropertyChanged -= OnChanged;
+        Post.Comments.CollectionChanged -= OnCommentsChanged;
+    }
+
+    async Task RepostAsync(string? thoughts, bool undo = false)
+    {
+        (_repostMenu, _thinking) = (false, false);
+        if (undo)
+            await Feed.RepostCommand.ExecuteAsync(Post);
+        else
+            await Feed.RepostWithThoughtsAsync(Post, thoughts);
+        _thoughts = "";
+    }
 
     async Task DeleteAsync()
     {
-        if (!await JS.InvokeAsync<bool>("confirm", "Delete this post? This can't be undone."))
+        if (!Post.IsPlainRepost && !await JS.InvokeAsync<bool>("confirm", "Delete this post? This can't be undone."))
             return;
         await Feed.DeleteCommand.ExecuteAsync(Post);
         await Deleted.InvokeAsync();

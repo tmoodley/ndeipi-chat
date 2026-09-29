@@ -2,56 +2,172 @@
 <Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:converters="clr-namespace:NdeipiChat.App.Converters"
+             xmlns:controls="clr-namespace:NdeipiChat.App.Controls"
              x:Class="NdeipiChat.App.App">
+    <!-- Ndeipi's frosted-glass look, the same as the web app's (NdeipiChat.Web/wwwroot/css/app.css):
+         translucent surfaces over a soft coloured backdrop, blue for actions, rounded everything.
+         Light is the default; dark follows the phone. Colours come in Light/Dark pairs, and pages use
+         them through the styles below or AppThemeBinding. -->
     <Application.Resources>
         <ResourceDictionary>
-            <!-- WeChat's palette -->
-            <Color x:Key="Brand">#07C160</Color>
-            <Color x:Key="BrandPressed">#06AD56</Color>
-            <Color x:Key="Page">#EDEDED</Color>
-            <Color x:Key="Surface">#FFFFFF</Color>
-            <Color x:Key="BubbleMine">#95EC69</Color>
-            <Color x:Key="BubbleTheirs">#FFFFFF</Color>
-            <Color x:Key="Transfer">#FA9D3B</Color>
-            <Color x:Key="TransferDone">#FBD3A6</Color>
-            <Color x:Key="Money">#F37B1D</Color>
-            <Color x:Key="Text">#191919</Color>
-            <Color x:Key="TextMuted">#888888</Color>
-            <Color x:Key="Divider">#E5E5E5</Color>
-            <Color x:Key="Badge">#FA5151</Color>
-            <Color x:Key="Danger">#FA5151</Color>
+            <Color x:Key="Brand">#3D7BF7</Color>
+            <Color x:Key="BrandPressed">#2F66D8</Color>
+            <Color x:Key="BrandSoftLight">#1F3D7BF7</Color>
+            <Color x:Key="BrandSoftDark">#383D7BF7</Color>
+            <Color x:Key="SocialA">#7750F8</Color>
+            <Color x:Key="SocialB">#1FC98A</Color>
+            <Color x:Key="Danger">#E5484D</Color>
+            <Color x:Key="Badge">#E5484D</Color>
+            <Color x:Key="Success">#1FA971</Color>
+
+            <Color x:Key="PageLight">#EEF1F8</Color>
+            <Color x:Key="PageDark">#0C1020</Color>
+            <Color x:Key="TextLight">#16181D</Color>
+            <Color x:Key="TextDark">#EEF1F8</Color>
+            <Color x:Key="MutedLight">#7B8294</Color>
+            <Color x:Key="MutedDark">#98A0B8</Color>
+            <!-- Android can't blur what's behind a view, so the glass is a little more solid than the web's. -->
+            <Color x:Key="GlassLight">#BFFFFFFF</Color>
+            <Color x:Key="GlassDark">#B31C2134</Color>
+            <Color x:Key="GlassStrongLight">#E6FFFFFF</Color>
+            <Color x:Key="GlassStrongDark">#E61C2134</Color>
+            <Color x:Key="GlassBorderLight">#D9FFFFFF</Color>
+            <Color x:Key="GlassBorderDark">#17FFFFFF</Color>
+            <Color x:Key="DividerLight">#1216181D</Color>
+            <Color x:Key="DividerDark">#14FFFFFF</Color>
+            <Color x:Key="SecondaryLight">#0F16181D</Color>
+            <Color x:Key="SecondaryDark">#14FFFFFF</Color>
+            <Color x:Key="BubbleTheirsLight">#E6FFFFFF</Color>
+            <Color x:Key="BubbleTheirsDark">#E6282E46</Color>
+            <Color x:Key="TabBarLight">#F5FFFFFF</Color>
+            <Color x:Key="TabBarDark">#F51C2134</Color>
+
+            <!-- Kept for pages that name them directly. -->
+            <Color x:Key="Page">#EEF1F8</Color>
+            <Color x:Key="Surface">#E6FFFFFF</Color>
+            <Color x:Key="Text">#16181D</Color>
+            <Color x:Key="TextMuted">#7B8294</Color>
+            <Color x:Key="Divider">#1216181D</Color>
+            <Color x:Key="BubbleMine">#3D7BF7</Color>
+            <Color x:Key="BubbleTheirs">#E6FFFFFF</Color>
+            <Color x:Key="Transfer">#FF9A50</Color>
+            <Color x:Key="TransferDone">#1FA971</Color>
+            <Color x:Key="Money">#FF7A59</Color>
+
+            <!-- The colour the glass sits on: the web's three soft blobs, as one diagonal wash. -->
+            <LinearGradientBrush x:Key="BackdropLight" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#D3E1FF" Offset="0" />
+                <GradientStop Color="#EEF1F8" Offset="0.42" />
+                <GradientStop Color="#FBE4EF" Offset="0.72" />
+                <GradientStop Color="#DDF5E8" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="BackdropDark" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#1A2A5E" Offset="0" />
+                <GradientStop Color="#0C1020" Offset="0.42" />
+                <GradientStop Color="#2A1633" Offset="0.72" />
+                <GradientStop Color="#0D3328" Offset="1" />
+            </LinearGradientBrush>
+
+            <!-- The wallet card, and the transfer cards in chats. -->
+            <LinearGradientBrush x:Key="WalletGradient" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#3D7BF7" Offset="0" />
+                <GradientStop Color="#6D5BF7" Offset="0.55" />
+                <GradientStop Color="#9B4DF0" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="TransferGradient" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#FFB547" Offset="0" />
+                <GradientStop Color="#FF7A59" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="TransferDoneGradient" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#34C38F" Offset="0" />
+                <GradientStop Color="#1FA971" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="TransferFailedGradient" StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#B8BDC9" Offset="0" />
+                <GradientStop Color="#8E95A6" Offset="1" />
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="SocialGradient" StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#7750F8" Offset="0" />
+                <GradientStop Color="#1FC98A" Offset="1" />
+            </LinearGradientBrush>
 
             <converters:NotConverter x:Key="Not" />
             <converters:HasTextConverter x:Key="HasText" />
             <converters:IsBlankConverter x:Key="IsBlank" />
             <converters:IsNotNullConverter x:Key="IsNotNull" />
             <converters:BytesToImageConverter x:Key="BytesToImage" />
+            <converters:ToneBrushConverter x:Key="ToneBrush" />
+
+            <Shadow x:Key="SoftShadow" Brush="#1F2D5A" Opacity="0.10" Radius="18" Offset="0,6" />
+            <Shadow x:Key="BrandShadow" Brush="#3D7BF7" Opacity="0.35" Radius="14" Offset="0,6" />
 
             <Style TargetType="ContentPage" ApplyToDerivedTypes="True">
-                <Setter Property="BackgroundColor" Value="{StaticResource Page}" />
-                <Setter Property="Shell.BackgroundColor" Value="{StaticResource Page}" />
-                <Setter Property="Shell.ForegroundColor" Value="{StaticResource Text}" />
-                <Setter Property="Shell.TitleColor" Value="{StaticResource Text}" />
-                <Setter Property="Shell.TabBarBackgroundColor" Value="#F7F7F7" />
+                <Setter Property="Background" Value="{AppThemeBinding Light={StaticResource BackdropLight}, Dark={StaticResource BackdropDark}}" />
+                <Setter Property="Shell.BackgroundColor" Value="{AppThemeBinding Light={StaticResource PageLight}, Dark={StaticResource PageDark}}" />
+                <Setter Property="Shell.ForegroundColor" Value="{StaticResource Brand}" />
+                <Setter Property="Shell.TitleColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="Shell.TabBarBackgroundColor" Value="{AppThemeBinding Light={StaticResource TabBarLight}, Dark={StaticResource TabBarDark}}" />
                 <Setter Property="Shell.TabBarForegroundColor" Value="{StaticResource Brand}" />
                 <Setter Property="Shell.TabBarTitleColor" Value="{StaticResource Brand}" />
-                <Setter Property="Shell.TabBarUnselectedColor" Value="{StaticResource Text}" />
+                <Setter Property="Shell.TabBarUnselectedColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <!-- Android's tab bar stays hidden: the main pages draw the web's dock instead (WithDock). -->
+                <Setter Property="Shell.TabBarIsVisible" Value="False" />
             </Style>
 
+            <!-- A main page with the dock under it, as on the web. -->
+            <ControlTemplate x:Key="WithDock">
+                <Grid RowDefinitions="*,Auto">
+                    <ContentPresenter />
+                    <controls:DockView Grid.Row="1" Margin="14,-18,14,12" />
+                </Grid>
+            </ControlTemplate>
+
             <Style TargetType="Label">
-                <Setter Property="TextColor" Value="{StaticResource Text}" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
                 <Setter Property="FontSize" Value="16" />
             </Style>
 
             <Style x:Key="Muted" TargetType="Label">
-                <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
                 <Setter Property="FontSize" Value="13" />
             </Style>
 
-            <Style x:Key="SectionHeader" TargetType="Label">
-                <Setter Property="TextColor" Value="{StaticResource TextMuted}" />
+            <!-- Big page headings, as on the web ("Mhoro, Ty", "Chats"). -->
+            <Style x:Key="PageTitle" TargetType="Label">
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="FontSize" Value="30" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="CharacterSpacing" Value="-0.5" />
+            </Style>
+
+            <Style x:Key="Kicker" TargetType="Label">
+                <Setter Property="TextColor" Value="{StaticResource Brand}" />
                 <Setter Property="FontSize" Value="13" />
-                <Setter Property="Margin" Value="16,16,16,6" />
+                <Setter Property="FontAttributes" Value="Bold" />
+            </Style>
+
+            <!-- A section title with its link on the right ("Your apps · Edit"). -->
+            <Style x:Key="SectionTitle" TargetType="Label">
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="FontAttributes" Value="Bold" />
+            </Style>
+
+            <Style x:Key="SectionLink" TargetType="Label">
+                <Setter Property="TextColor" Value="{StaticResource Brand}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="VerticalOptions" Value="Center" />
+                <Setter Property="HorizontalOptions" Value="End" />
+            </Style>
+
+            <!-- Small grey capitals above a group of fields, like the web's h2. -->
+            <Style x:Key="SectionHeader" TargetType="Label">
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="CharacterSpacing" Value="0.8" />
+                <Setter Property="Margin" Value="20,18,20,8" />
             </Style>
 
             <Style x:Key="Error" TargetType="Label">
@@ -59,39 +175,208 @@
                 <Setter Property="FontSize" Value="14" />
             </Style>
 
+            <Style TargetType="Button">
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="CornerRadius" Value="14" />
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SecondaryLight}, Dark={StaticResource SecondaryDark}}" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+            </Style>
+
             <Style x:Key="Primary" TargetType="Button">
                 <Setter Property="BackgroundColor" Value="{StaticResource Brand}" />
                 <Setter Property="TextColor" Value="White" />
                 <Setter Property="FontSize" Value="17" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="HeightRequest" Value="48" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="HeightRequest" Value="52" />
+                <Setter Property="Shadow" Value="{StaticResource BrandShadow}" />
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal" />
+                            <VisualState x:Name="Pressed">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{StaticResource BrandPressed}" />
+                                    <Setter Property="Scale" Value="0.97" />
+                                </VisualState.Setters>
+                            </VisualState>
+                            <VisualState x:Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="Opacity" Value="0.5" />
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+
+            <!-- The purple gradient button of the Social pages. -->
+            <Style x:Key="SocialButton" TargetType="Button" BasedOn="{StaticResource Primary}">
+                <Setter Property="Background" Value="{StaticResource SocialGradient}" />
+                <Setter Property="Shadow">
+                    <Shadow Brush="#7750F8" Opacity="0.35" Radius="14" Offset="0,6" />
+                </Setter>
             </Style>
 
             <Style x:Key="Secondary" TargetType="Button">
-                <Setter Property="BackgroundColor" Value="#F2F2F2" />
-                <Setter Property="TextColor" Value="{StaticResource Brand}" />
-                <Setter Property="FontSize" Value="17" />
-                <Setter Property="CornerRadius" Value="8" />
-                <Setter Property="HeightRequest" Value="48" />
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SecondaryLight}, Dark={StaticResource SecondaryDark}}" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="CornerRadius" Value="16" />
+                <Setter Property="HeightRequest" Value="50" />
             </Style>
 
-            <Style x:Key="Card" TargetType="Border">
-                <Setter Property="BackgroundColor" Value="{StaticResource Surface}" />
+            <Style x:Key="SmallButton" TargetType="Button">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="HeightRequest" Value="36" />
+                <Setter Property="Padding" Value="14,0" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="VerticalOptions" Value="Center" />
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SecondaryLight}, Dark={StaticResource SecondaryDark}}" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+            </Style>
+
+            <Style x:Key="SmallPrimary" TargetType="Button" BasedOn="{StaticResource SmallButton}">
+                <Setter Property="BackgroundColor" Value="{StaticResource Brand}" />
+                <Setter Property="TextColor" Value="White" />
+            </Style>
+
+            <Style x:Key="LinkButton" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="Transparent" />
+                <Setter Property="TextColor" Value="{StaticResource Brand}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontAttributes" Value="Bold" />
+                <Setter Property="Padding" Value="4,0" />
+                <Setter Property="HeightRequest" Value="36" />
+            </Style>
+
+            <!-- A round frosted button with one glyph (＋, ⋯, 🔔). -->
+            <Style x:Key="IconButton" TargetType="Button">
+                <Setter Property="WidthRequest" Value="44" />
+                <Setter Property="HeightRequest" Value="44" />
+                <Setter Property="CornerRadius" Value="15" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="FontSize" Value="18" />
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}" />
+                <Setter Property="BorderColor" Value="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}" />
+                <Setter Property="BorderWidth" Value="1" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="Shadow" Value="{StaticResource SoftShadow}" />
+            </Style>
+
+            <!-- Every frosted surface: cards, lists, the composer. -->
+            <Style x:Key="Glass" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource GlassLight}, Dark={StaticResource GlassDark}}" />
+                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}" />
+                <Setter Property="StrokeThickness" Value="1" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 22" />
+                <Setter Property="Padding" Value="18,16" />
+                <Setter Property="Shadow" Value="{StaticResource SoftShadow}" />
+            </Style>
+
+            <!-- A frosted list: rows inside, no padding, so rows reach its edges. -->
+            <Style x:Key="GlassList" TargetType="Border" BasedOn="{StaticResource Glass}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="16,0" />
+            </Style>
+
+            <!-- Kept for pages that use it: a card of fields. -->
+            <Style x:Key="Card" TargetType="Border" BasedOn="{StaticResource Glass}">
+                <Setter Property="Padding" Value="16,6" />
+                <Setter Property="Margin" Value="16,0" />
+            </Style>
+
+            <!-- A text field's box: Entry and Editor sit inside, with no underline of their own. -->
+            <Style x:Key="Field" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}" />
+                <Setter Property="Stroke" Value="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}" />
+                <Setter Property="StrokeThickness" Value="1" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+                <Setter Property="Padding" Value="12,2" />
+                <Setter Property="MinimumHeightRequest" Value="48" />
+            </Style>
+
+            <Style x:Key="Row" TargetType="Grid">
+                <Setter Property="Padding" Value="16,12" />
+                <Setter Property="ColumnSpacing" Value="12" />
+            </Style>
+
+            <Style x:Key="RowDivider" TargetType="BoxView">
+                <Setter Property="HeightRequest" Value="1" />
+                <Setter Property="Color" Value="{AppThemeBinding Light={StaticResource DividerLight}, Dark={StaticResource DividerDark}}" />
+                <Setter Property="Margin" Value="16,0" />
+            </Style>
+
+            <Style x:Key="BadgeBorder" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{StaticResource Badge}" />
                 <Setter Property="StrokeThickness" Value="0" />
-                <Setter Property="Padding" Value="16,4" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 9" />
+                <Setter Property="HeightRequest" Value="18" />
+                <Setter Property="MinimumWidthRequest" Value="18" />
+                <Setter Property="Padding" Value="5,0" />
+            </Style>
+
+            <Style x:Key="Notice" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="#29FFC400" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 14" />
+                <Setter Property="Padding" Value="14,10" />
+            </Style>
+
+            <Style TargetType="Entry">
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
             </Style>
 
             <Style x:Key="FormEntry" TargetType="Entry">
                 <Setter Property="FontSize" Value="16" />
-                <Setter Property="TextColor" Value="{StaticResource Text}" />
-                <Setter Property="PlaceholderColor" Value="#B2B2B2" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
+            </Style>
+
+            <Style TargetType="Editor">
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
+            </Style>
+
+            <Style TargetType="Picker">
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="TitleColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
+            </Style>
+
+            <Style TargetType="SearchBar">
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Setter Property="PlaceholderColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Setter Property="CancelButtonColor" Value="{StaticResource Brand}" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
+            </Style>
+
+            <Style TargetType="Switch">
+                <Setter Property="OnColor" Value="{StaticResource Success}" />
+                <Setter Property="ThumbColor" Value="White" />
+            </Style>
+
+            <Style TargetType="RefreshView">
+                <Setter Property="RefreshColor" Value="{StaticResource Brand}" />
+            </Style>
+
+            <Style TargetType="ActivityIndicator">
+                <Setter Property="Color" Value="{StaticResource Brand}" />
             </Style>
 
             <Style x:Key="Timestamp" TargetType="Label">
-                <Setter Property="TextColor" Value="#B2B2B2" />
+                <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="HorizontalOptions" Value="Center" />
-                <Setter Property="Margin" Value="0,8,0,4" />
+                <Setter Property="Margin" Value="0,10,0,6" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

@@ -55,8 +55,11 @@ public sealed class ShellNavigator : INavigator
     public Task GoToAsync(string route, IDictionary<string, object>? parameters = null) =>
         MainThread.InvokeOnMainThreadAsync(() =>
         {
+            AppLog.Info($"nav go {route} from {Shell.Current.CurrentState.Location}");
             if (route == Routes.Launcher)
-                return Shell.Current.GoToAsync("//main/launcher");
+                return Shell.Current.GoToAsync($"//main/home/{AppShell.AllAppsRoute}");
+            if (route == Routes.Wallet)
+                return Shell.Current.GoToAsync("//main/wallet");
             if (route.StartsWith(Routes.SubAppPrefix, StringComparison.Ordinal))
                 return OpenSubAppAsync(route[Routes.SubAppPrefix.Length..],
                     parameters is not null && parameters.TryGetValue(Routes.SubAppRouteParameter, out var appRoute) ? appRoute as string : null);
@@ -65,26 +68,24 @@ public sealed class ShellNavigator : INavigator
 
     /// <summary>
     /// A loaded sub-app (route apps/{id}) opens in the WebView page. A built-in one opens on its tab
-    /// if it has one showing, or else as a page on top of the launcher.
+    /// if it has a place in the dock, or else as a page on top of Home.
     /// </summary>
     static Task OpenSubAppAsync(string appId, string? route)
     {
         if (route?.StartsWith("apps/", StringComparison.Ordinal) == true)
-            return Shell.Current.GoToAsync($"//main/launcher/{Routes.WebSubApp}",
+            return Shell.Current.GoToAsync($"//main/home/{Routes.WebSubApp}",
                 new Dictionary<string, object> { [Routes.SubAppIdParameter] = appId, [Routes.SubAppRouteParameter] = route! });
-        if (Shell.Current is AppShell shell && shell.TabRouteFor(appId) is { } tab)
-            return shell.GoToAsync($"//main/{tab}");
-        if (appId == BuiltInApps.Wallet)
-            return Shell.Current.GoToAsync($"//main/launcher/{Routes.Wallet}");
+        if (AppShell.TabRouteFor(appId) is { } tab)
+            return Shell.Current.GoToAsync($"//main/{tab}");
         if (AppShell.SubAppPages.ContainsKey(appId))
-            return Shell.Current.GoToAsync($"//main/launcher/{AppShell.PageRoute(appId)}");
+            return Shell.Current.GoToAsync($"//main/home/{AppShell.PageRoute(appId)}");
         // In the manifest, but not in this version of the app (sub-apps loaded at runtime come later).
         return Shell.Current.DisplayAlertAsync("Not available yet", "This app isn't in this version of Ndeipi. Update the app to use it.", "OK");
     }
 
     public Task GoBackAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync(".."));
 
-    public Task ShowMainAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync("//main/launcher"));
+    public Task ShowMainAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync("//main/home"));
 
     public Task ShowSignInAsync() => MainThread.InvokeOnMainThreadAsync(() => Shell.Current.GoToAsync("//signin"));
 }

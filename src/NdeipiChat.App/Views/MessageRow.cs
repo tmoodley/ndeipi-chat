@@ -15,13 +15,13 @@ public class MessageRow : ContentView
         nameof(Bubble), typeof(View), typeof(MessageRow), propertyChanged: (b, _, _) => ((MessageRow)b).Arrange());
 
     readonly Label _time = new() { Style = (Style)Application.Current!.Resources["Timestamp"] };
-    readonly AvatarView _avatar = new() { Size = 40, VerticalOptions = LayoutOptions.Start };
+    readonly AvatarView _avatar = new() { Size = 34, VerticalOptions = LayoutOptions.End };
     readonly ActivityIndicator _sending = new() { IsRunning = true, WidthRequest = 16, HeightRequest = 16, VerticalOptions = LayoutOptions.Center };
     readonly Button _retry = new()
     {
         Text = "!",
         TextColor = Colors.White,
-        BackgroundColor = Color.FromArgb("#FA5151"),
+        BackgroundColor = Color.FromArgb("#E5484D"),
         CornerRadius = 11,
         WidthRequest = 22,
         HeightRequest = 22,
@@ -31,7 +31,7 @@ public class MessageRow : ContentView
         VerticalOptions = LayoutOptions.Center
     };
     readonly HorizontalStackLayout _line = new() { Spacing = 8 };
-    readonly Grid _row = new() { ColumnDefinitions = [new(40), new(GridLength.Star), new(40)], ColumnSpacing = 8 };
+    readonly Grid _row = new() { ColumnDefinitions = [new(34), new(GridLength.Star), new(34)], ColumnSpacing = 8 };
 
     public MessageRow()
     {
@@ -45,7 +45,7 @@ public class MessageRow : ContentView
 
         _row.Add(_avatar);
         _row.Add(_line, 1);
-        Content = new VerticalStackLayout { Padding = new Thickness(12, 4), Children = { _time, _row } };
+        Content = new VerticalStackLayout { Padding = new Thickness(14, 4), Children = { _time, _row } };
     }
 
     public View? Bubble

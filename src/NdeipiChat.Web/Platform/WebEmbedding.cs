@@ -11,8 +11,15 @@ namespace NdeipiChat.Web.Platform;
 /// </summary>
 public sealed class WebEmbedding(IJSRuntime js, NavigationManager navigation)
 {
-    public const string ClosePath = "embed/close";
+    public const string ClosePath = MobileAuthContract.EmbedClosePath;
     const string Key = "ndeipi.embedded";
+
+    /// <summary>
+    /// In the app's WebView, signing in means asking the app for a fresh handoff (the app watches
+    /// for <see cref="MobileAuthContract.EmbedSignInPath"/>): Clerk's page can't run in a WebView.
+    /// </summary>
+    public static void RequestSignIn(NavigationManager navigation) =>
+        navigation.NavigateTo(MobileAuthContract.EmbedSignInPath, forceLoad: true);
 
     IJSInProcessRuntime Js => (IJSInProcessRuntime)js;
 

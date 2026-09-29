@@ -1018,7 +1018,7 @@ textarea { resize: vertical; min-height: 90px; }
 /* A two-pane window: a preview and sections on the left, the section's form on the right. */
 .modal-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(12, 16, 32, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .2s ease; }
 .modal { position: relative; width: min(1000px, 100%); max-height: calc(100vh - 48px); display: grid; grid-template-columns: 290px minmax(0, 1fr); border-radius: 26px; overflow: hidden; background: var(--glass-strong); border: 1px solid var(--glass-border); box-shadow: var(--shadow-strong); animation: rise .25s cubic-bezier(.2, .8, .2, 1); }
-.modal-close { position: absolute; top: -14px; right: -14px; width: 42px; height: 42px; padding: 0; border-radius: 14px; background: var(--social-a); color: #fff; font-size: 18px; z-index: 2; box-shadow: 0 8px 18px rgba(119, 80, 248, .4); }
+.modal-close { position: absolute; top: 14px; right: 14px; width: 38px; height: 38px; padding: 0; border-radius: 12px; background: var(--social-a); color: #fff; font-size: 16px; z-index: 2; box-shadow: 0 8px 18px rgba(119, 80, 248, .4); }
 .modal-side { border-right: 1px solid var(--divider); display: flex; flex-direction: column; overflow-y: auto; }
 .modal-side .preview-cover { height: 96px; }
 .modal-side .preview-who { display: flex; flex-direction: column; align-items: center; margin-top: -44px; padding: 0 16px 16px; text-align: center; border-bottom: 1px solid var(--divider); }
@@ -1123,3 +1123,55 @@ textarea { resize: vertical; min-height: 90px; }
 .wallet-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-top: 6px; }
 .wallet-add button { height: 44px; }
 @media (max-width: 600px) { .wallet-add { grid-template-columns: 1fr; } }
+
+/* ---------- Posts: Like · Comment · Repost, comments, reposts (after LinkedIn) ---------- */
+.caption.text-only { font-size: 17px; margin-top: 2px; }
+.reposted-by { font-size: 13px; color: var(--muted); padding: 10px 14px 0; border-bottom: 1px solid var(--divider); padding-bottom: 8px; }
+.reposted-by a { color: var(--text); font-weight: 700; }
+.embedded-post { margin: 0 14px 12px; border: 1px solid var(--divider); border-radius: 16px; overflow: hidden; }
+.embedded-post.muted { padding: 14px; font-size: 14px; }
+.embedded-post .post-head { padding: 10px 12px; }
+.embedded-post .caption { margin: 0 12px 10px; }
+.post-stats { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 14px 0; }
+.post-stats .link { padding: 0; font-size: 13px; font-weight: 600; color: var(--muted); }
+.post-bar { display: flex; margin: 8px 8px 6px; padding-top: 4px; border-top: 1px solid var(--divider); }
+.post-bar > button, .post-bar .repost-wrap > button { flex: 1; width: 100%; background: none; box-shadow: none; color: var(--muted); font-size: 14px; padding: 10px 4px; border-radius: 12px; gap: 6px; }
+.post-bar .repost-wrap { flex: 1; display: flex; }
+.post-bar button:hover { background: var(--secondary); }
+.post-bar button.on { color: var(--brand); }
+.post-bar button.liked { color: var(--danger); }
+.post-bar .glyph { font-size: 17px; }
+
+
+.repost-wrap { position: relative; }
+.repost-wrap .repost-menu { position: absolute; bottom: calc(100% + 6px); right: 0; width: 260px; border-radius: 16px; padding: 6px; z-index: 5; display: flex; flex-direction: column; background: var(--glass-strong); }
+.repost-menu button { flex-direction: column; align-items: flex-start; background: none; box-shadow: none; padding: 10px 12px; border-radius: 12px; color: var(--text); gap: 2px; text-align: left; }
+.repost-menu button:hover { background: var(--secondary); }
+.repost-menu small { color: var(--muted); font-weight: 500; font-size: 12px; }
+.post:has(.repost-menu) { overflow: visible; }
+.comments { padding: 4px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+.comment-form { display: flex; gap: 10px; align-items: center; padding: 0 14px 12px; flex-wrap: wrap; }
+.comments .comment-form { padding: 0; }
+.comment-form input, .comment-form textarea { flex: 1; min-width: 0; border-radius: 22px; padding: 10px 14px; }
+.comment-form textarea { width: 100%; min-height: 70px; border-radius: 16px; flex-basis: 100%; }
+.comment-form .actions { display: flex; gap: 8px; margin-left: auto; }
+.comment { display: flex; gap: 10px; align-items: flex-start; }
+.comment .bubble-box { flex: 1; min-width: 0; background: var(--secondary); border-radius: 4px 16px 16px 16px; padding: 8px 12px; }
+.comment-head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; }
+.comment-head .name { color: var(--text); font-weight: 700; }
+.comment-head .time { color: var(--muted); font-size: 12px; flex: 1; }
+.comment-head .link { padding: 0; font-size: 12px; }
+.comment p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
+
+/* Sort by: Top / Recent, above a feed. */
+.feed-sort { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 13px; color: var(--muted); }
+.feed-sort button { background: none; box-shadow: none; padding: 4px 10px; border-radius: 10px; font-size: 13px; color: var(--muted); }
+.feed-sort button.on { color: var(--text); font-weight: 800; background: var(--secondary); }
+
+/* A profile's Activity: Posts · Comments · Images. */
+.activity-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.activity-chips button { border-radius: 18px; padding: 7px 16px; font-size: 14px; background: none; border: 1px solid var(--divider); box-shadow: none; color: var(--text); }
+.activity-chips button.on { background: var(--social-b); border-color: var(--social-b); color: #fff; }
+.activity-comment { padding: 14px; display: flex; flex-direction: column; gap: 10px; border-radius: var(--radius); }
+.activity-comment .said { font-size: 13px; color: var(--muted); }
+.activity-comment .said strong { color: var(--text); }

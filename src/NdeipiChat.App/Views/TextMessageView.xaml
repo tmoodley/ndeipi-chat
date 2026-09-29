@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!-- Theirs frosted with its tail corner bottom-left; yours brand blue, tail bottom-right (as on the web). -->
 <views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                   xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                   xmlns:views="clr-namespace:NdeipiChat.App.Views"
@@ -6,17 +7,28 @@
                   x:Class="NdeipiChat.App.Views.TextMessageView"
                   x:DataType="ext:TextMessageViewModel">
     <views:MessageRow.Bubble>
-        <Border StrokeThickness="0"
-                StrokeShape="RoundRectangle 6"
-                Padding="12,9"
-                MaximumWidthRequest="270"
-                BackgroundColor="{StaticResource BubbleTheirs}">
+        <Border StrokeThickness="1"
+                Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
+                StrokeShape="RoundRectangle 20,20,6,20"
+                Padding="15,10"
+                MaximumWidthRequest="280"
+                BackgroundColor="{AppThemeBinding Light={StaticResource BubbleTheirsLight}, Dark={StaticResource BubbleTheirsDark}}"
+                Shadow="{StaticResource SoftShadow}">
             <Border.Triggers>
                 <DataTrigger TargetType="Border" Binding="{Binding IsMine}" Value="True">
                     <Setter Property="BackgroundColor" Value="{StaticResource BubbleMine}" />
+                    <Setter Property="Stroke" Value="Transparent" />
+                    <Setter Property="StrokeShape" Value="RoundRectangle 20,20,20,6" />
+                    <Setter Property="Shadow" Value="{StaticResource BrandShadow}" />
                 </DataTrigger>
             </Border.Triggers>
-            <Label Text="{Binding Text}" FontSize="16" LineBreakMode="WordWrap" />
+            <Label Text="{Binding Text}" FontSize="16" LineBreakMode="WordWrap" LineHeight="1.2">
+                <Label.Triggers>
+                    <DataTrigger TargetType="Label" Binding="{Binding IsMine}" Value="True">
+                        <Setter Property="TextColor" Value="White" />
+                    </DataTrigger>
+                </Label.Triggers>
+            </Label>
         </Border>
     </views:MessageRow.Bubble>
 </views:MessageRow>

@@ -449,11 +449,18 @@ public sealed partial class CowDetailViewModel(LivestockApi api, INavigator navi
         await RefreshAsync();
     }
 
+    /// <summary>The page's pull-to-refresh; cleared when done, or the page would stop taking taps.</summary>
+    [ObservableProperty]
+    public partial bool IsRefreshing { get; set; }
+
     [RelayCommand]
     async Task RefreshAsync()
     {
         if (_cowId is null)
+        {
+            IsRefreshing = false;
             return;
+        }
         try
         {
             Cow = await api.GetCowAsync(_cowId);
@@ -466,6 +473,10 @@ public sealed partial class CowDetailViewModel(LivestockApi api, INavigator navi
         catch (ApiException ex)
         {
             ErrorMessage = ex.Message;
+        }
+        finally
+        {
+            IsRefreshing = false;
         }
     }
 

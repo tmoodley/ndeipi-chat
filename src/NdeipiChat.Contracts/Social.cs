@@ -15,6 +15,14 @@ public static class SocialContract
 
     public const int MinPhotoShortSide = 200;
 
+    public const int MaxCommentLength = 1000;
+
+    /// <summary>A post's comments are returned up to this many, oldest first.</summary>
+    public const int MaxComments = 200;
+
+    /// <summary>How far back the Top sort looks.</summary>
+    public const int TopWindowDays = 30;
+
     /// <summary>Public, no sign-in: a photo, at <see cref="PhotoSizes"/>.</summary>
     public static string MediaPath(Guid mediaId, string size) => $"media/posts/{mediaId:N}/{size}";
 
@@ -55,6 +63,10 @@ public sealed record PostNftDto(
     string? TxHash,
     string? Error);
 
+/// <param name="RepostOf">
+/// Set when this post is a repost: the original it shares, with the reposter's own thoughts (if
+/// any) in <see cref="Caption"/>. Null too if the original has since become unavailable.
+/// </param>
 public sealed record PostDto(
     Guid Id,
     UserDto Author,
@@ -64,7 +76,32 @@ public sealed record PostDto(
     int LikeCount,
     bool LikedByMe,
     PostNftDto? Nft,
-    GroupRefDto? Group = null);
+    GroupRefDto? Group = null,
+    int CommentCount = 0,
+    int RepostCount = 0,
+    bool RepostedByMe = false,
+    PostDto? RepostOf = null,
+    bool IsRepost = false);
+
+public sealed record CommentDto(Guid Id, Guid PostId, UserDto Author, string Text, DateTimeOffset CreatedAt, bool CanDelete);
+
+public sealed record AddCommentRequest(string Text);
+
+/// <param name="Caption">Your own thoughts on top, as LinkedIn's "repost with your thoughts"; optional.</param>
+public sealed record RepostRequest(string? Caption);
+
+/// <summary>A comment someone made, with the post it's on: their profile's Activity, under Comments.</summary>
+public sealed record CommentActivityDto(CommentDto Comment, PostDto Post);
+
+/// <summary>How the feed is ordered.</summary>
+public static class FeedSorts
+{
+    /// <summary>Newest first (the default).</summary>
+    public const string Recent = "recent";
+
+    /// <summary>The most liked, commented on and reposted over the last <see cref="SocialContract.TopWindowDays"/> days.</summary>
+    public const string Top = "top";
+}
 
 /// <param name="MintingEnabled">Whether the server has an NFT contract set up; if not, the mint option is hidden.</param>
 public sealed record FeedPageDto(IReadOnlyList<PostDto> Posts, bool HasMore, bool MintingEnabled, string? NftChain);
