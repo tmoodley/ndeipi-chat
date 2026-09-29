@@ -315,6 +315,33 @@ soft colour backdrop, with blue as the brand colour.
 
 The phone app's own native screens (XAML) aren't part of this theme yet.
 
+## Desktop apps (Windows and Mac)
+
+`src/NdeipiChat.Desktop` is the desktop app, **Ndeipi.exe** on Windows and **Ndeipi.app** on the
+Mac. It's a native window around the web app, so it has the full new design: Social, Events, Gigs
+and the rest.
+
+- **Sign-in** happens in the system browser, so Google and saved passwords work. The app then hands
+  its session to the web app with a one-time code, as the phone app does for sub-apps.
+  - **Windows:** the browser returns to `http://127.0.0.1:47832/auth`, a listener on the user's own
+    PC. That address is in `MobileAuth:RedirectUris`, so **the API must be deployed with it** before
+    Windows sign-in works.
+  - **Mac:** the browser returns to `ndeipichat://auth`, like the phone app.
+- **Links** to other sites open in the default browser. Signing out in the app signs the desktop
+  app out too.
+- **Windows build:** on Windows, with `dotnet workload install maui-windows`, run the command below.
+  It makes a folder with `Ndeipi.exe` and everything it needs (no installer, no .NET install). Zip
+  the folder to share it. It needs the WebView2 runtime, which Windows 10 and 11 already have.
+
+  ```bash
+  dotnet publish src/NdeipiChat.Desktop -f net10.0-windows10.0.19041.0 -c Release -p:SelfContained=true -o dist/Ndeipi-Windows-x64
+  ```
+- **Mac build:** needs macOS. The **Desktop apps** workflow (`.github/workflows/desktop.yml`) builds
+  both versions on GitHub and attaches `Ndeipi-Windows-x64` and `Ndeipi-Mac.zip` to the run. It
+  runs for pull requests that touch the desktop app, for pushes to `main`, and on demand.
+  - The Mac build is unsigned. The first time, right-click `Ndeipi.app` and choose **Open**.
+  - To sign and notarize it, add a Developer ID certificate as described in the workflow.
+
 ## Running the app
 
 1. `dotnet workload install maui`.
