@@ -38,9 +38,10 @@ public sealed class AppCoordinator(AuthService auth, ChatSession session, Livest
         {
             await session.StartAsync();
         }
-        catch (ApiException ex) when (ex.StatusCode is null)
+        catch (ApiException ex) when (ex.StatusCode is null or >= HttpStatusCode.InternalServerError)
         {
-            // Offline: open the app anyway; the connection keeps retrying in the background.
+            // Offline, or the server's having trouble: open the app anyway; the connection keeps
+            // retrying in the background.
         }
         _ = SendWaitingCapturesAsync();
         await navigator.ShowMainAsync();
