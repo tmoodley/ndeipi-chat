@@ -23,7 +23,7 @@
                     <button class="sc-stat" @onclick='() => _tab = "timeline"'><b>@g.PostCount</b><span>Posts</span></button>
                     <div class="sc-stat"><b>@(g.IsPrivate ? "🔒" : "🌍")</b><span>@(g.IsPrivate ? "Private" : "Public")</span></div>
                 </div>
-                <div>
+                <div class="sc-center">
                     <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="128" Class="icon-hex" />
                     <div class="sc-identity">
                         <div class="name">@g.Name</div>
