@@ -75,9 +75,10 @@ public sealed class LoopbackAuthenticator : IBrowserAuthenticator
         }
         catch (SocketException)
         {
-            throw new InvalidOperationException("Another sign-in is already waiting. Finish it in your browser, or restart Ndeipi.");
+            throw new InvalidOperationException("Another Ndeipi window is already signing in. Close the other Ndeipi windows, then try again.");
         }
 
+        var expectedState = ParseQuery(url.Query).GetValueOrDefault("state");
         try
         {
             await Launcher.Default.OpenAsync(url);
@@ -92,13 +93,15 @@ public sealed class LoopbackAuthenticator : IBrowserAuthenticator
                     continue;
                 }
 
-                var query = new Uri(new Uri("http://127.0.0.1"), target).Query.TrimStart('?')
-                    .Split('&', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => p.Split('=', 2))
-                    .ToDictionary(p => Uri.UnescapeDataString(p[0]), p => p.Length > 1 ? Uri.UnescapeDataString(p[1].Replace('+', ' ')) : "");
-                await RespondAsync(stream, "200 OK",
-                    "<!doctype html><meta charset=utf-8><title>Ndeipi</title><body style=\"font-family:system-ui;text-align:center;padding:64px;color:#16181D;background:#EEF1F8\">" +
-                    "<h1>You're signed in</h1><p>You can close this tab and go back to Ndeipi.</p></body>", ct);
+                var query = ParseQuery(new Uri(new Uri("http://127.0.0.1"), target).Query);
+                // A tab left open from an earlier attempt can finish too; only this attempt's state counts.
+                if (expectedState is not null && query.GetValueOrDefault("state") != expectedState)
+                {
+                    await RespondAsync(stream, "200 OK", Page("That was an earlier sign-in",
+                        "Close this tab and finish signing in in the newest Ndeipi tab."), ct);
+                    continue;
+                }
+                await RespondAsync(stream, "200 OK", Page("You're signed in", "You can close this tab and go back to Ndeipi."), ct);
                 return query;
             }
         }
@@ -107,6 +110,16 @@ public sealed class LoopbackAuthenticator : IBrowserAuthenticator
             listener.Stop();
         }
     }
+
+    static Dictionary<string, string> ParseQuery(string query) => query.TrimStart('?')
+        .Split('&', StringSplitOptions.RemoveEmptyEntries)
+        .Select(p => p.Split('=', 2))
+        .GroupBy(p => Uri.UnescapeDataString(p[0]))
+        .ToDictionary(g => g.Key, g => g.First() is { Length: > 1 } p ? Uri.UnescapeDataString(p[1].Replace('+', ' ')) : "");
+
+    static string Page(string title, string text) =>
+        "<!doctype html><meta charset=utf-8><title>Ndeipi</title><body style=\"font-family:system-ui;text-align:center;padding:64px;color:#16181D;background:#EEF1F8\">" +
+        $"<h1>{title}</h1><p>{text}</p></body>";
 
     static async Task<string?> ReadRequestTargetAsync(NetworkStream stream, CancellationToken ct)
     {
