@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NdeipiChat.Api.Auth;
 using NdeipiChat.Api.Chat;
@@ -51,24 +52,117 @@ public sealed class SocialGraphService(ChatDbContext db, TimeProvider clock)
             photos.Select(m => new PostMediaDto(m.Id, m.Width, m.Height, new Uri(site, SocialContract.MediaPath(m.Id, PhotoSizes.Thumb)).ToString())).ToList(),
             gig is null ? null : new GigProfileBriefDto(
                 gig.Headline, gig.Skills.Split(',', StringSplitOptions.RemoveEmptyEntries),
-                gig.RatingCount == 0 ? null : Math.Round((double)gig.RatingSum / gig.RatingCount, 1), gig.RatingCount, gig.CompletedGigs, gig.IsAvailable));
+                gig.RatingCount == 0 ? null : Math.Round((double)gig.RatingSum / gig.RatingCount, 1), gig.RatingCount, gig.CompletedGigs, gig.IsAvailable),
+            user.CoverUrl,
+            DetailsOf(user),
+            Completion(user),
+            user.CustomAvatar);
     }
 
     public async Task SaveProfileAsync(User me, SaveSocialProfileRequest request, CancellationToken ct)
     {
         me.Bio = Optional(request.Bio, SocialGraphContract.MaxBio, "Your bio");
         me.City = Optional(request.City, 80, "City");
-        var website = Optional(request.Website, 200, "Website");
-        if (website is not null)
-        {
-            if (!website.Contains("://"))
-                website = "https://" + website;
-            if (!Uri.TryCreate(website, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
-                throw new ChatRejectedException("Enter a web address such as example.com.");
-        }
-        me.Website = website;
+        me.Website = WebAddress(request.Website, "Website");
         await db.SaveChangesAsync(ct);
     }
+
+    public static ProfileDetailsDto DetailsOf(User user)
+    {
+        if (user.ProfileJson is null)
+            return ProfileDetailsDto.Empty;
+        try
+        {
+            return ContractJson.Read<ProfileDetailsDto>(user.ProfileJson) ?? ProfileDetailsDto.Empty;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return ProfileDetailsDto.Empty;
+        }
+    }
+
+    /// <summary>Checks and tidies the details (trimmed, limited, links made absolute) and saves them.</summary>
+    public async Task SaveDetailsAsync(User me, ProfileDetailsDto details, CancellationToken ct)
+    {
+        var skills = (details.Skills ?? []).Select(s => s?.Trim() ?? "").Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        if (skills.Count > ProfileLimits.MaxSkills || skills.Any(s => s.Length > 40))
+            throw new ChatRejectedException($"Add up to {ProfileLimits.MaxSkills} skills of up to 40 characters each.");
+
+        var interests = (details.Interests ?? []).Where(i => !string.IsNullOrWhiteSpace(i.Title) || !string.IsNullOrWhiteSpace(i.Text))
+            .Select(i => new InterestDto(Required(i.Title, 60, "Each interest needs a heading"), Required(i.Text, 400, "Each interest needs some text")))
+            .ToList();
+        if (interests.Count > ProfileLimits.MaxInterests)
+            throw new ChatRejectedException($"Add up to {ProfileLimits.MaxInterests} interests.");
+
+        List<TimelineEntryDto> Timeline(IReadOnlyList<TimelineEntryDto>? entries, string what)
+        {
+            var list = (entries ?? []).Where(e => !string.IsNullOrWhiteSpace(e.Title))
+                .Select(e => new TimelineEntryDto(
+                    Required(e.Title, 100, $"Each {what} entry needs a title"),
+                    Optional(e.Place, 100, "The place"),
+                    Optional(e.Period, 40, "The dates"),
+                    Optional(e.Description, 600, "The description")))
+                .ToList();
+            return list.Count <= ProfileLimits.MaxTimeline ? list : throw new ChatRejectedException($"Add up to {ProfileLimits.MaxTimeline} {what} entries.");
+        }
+
+        var links = (details.Links ?? []).Where(l => !string.IsNullOrWhiteSpace(l.Url))
+            .Select(l => new SocialLinkDto(
+                SocialLinkKinds.All.Contains(l.Kind?.Trim().ToLowerInvariant()) ? l.Kind!.Trim().ToLowerInvariant() : "website",
+                WebAddress(l.Url, "Each link")!))
+            .ToList();
+        if (links.Count > ProfileLimits.MaxLinks)
+            throw new ChatRejectedException($"Add up to {ProfileLimits.MaxLinks} links.");
+
+        var clean = new ProfileDetailsDto(
+            Optional(details.Occupation, 80, "Occupation"),
+            Optional(details.Country, 60, "Country"),
+            skills, interests, Timeline(details.Jobs, "job"), Timeline(details.Education, "education"), links);
+        me.ProfileJson = ContractJson.Write(clean);
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>How complete a profile is, out of 100: a nudge to fill it in.</summary>
+    public static int Completion(User user)
+    {
+        var d = DetailsOf(user);
+        bool[] parts =
+        [
+            user.AvatarUrl is not null, user.CoverUrl is not null, user.Bio is not null, user.City is not null,
+            d.Occupation is not null, d.Country is not null, d.Skills.Count > 0, d.Interests.Count > 0,
+            d.Jobs.Count > 0 || d.Education.Count > 0, d.Links.Count > 0 || user.Website is not null
+        ];
+        return parts.Count(p => p) * 100 / parts.Length;
+    }
+
+    /// <summary>A photo uploaded as their avatar; null goes back to the sign-in account's.</summary>
+    public async Task SetAvatarAsync(User me, string? url, CancellationToken ct)
+    {
+        (me.CustomAvatar, me.AvatarUrl) = url is null ? (false, me.ClerkAvatarUrl) : (true, url);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SetCoverAsync(User me, string? url, CancellationToken ct)
+    {
+        me.CoverUrl = url;
+        await db.SaveChangesAsync(ct);
+    }
+
+    static string? WebAddress(string? value, string what)
+    {
+        var text = Optional(value, 200, what);
+        if (text is null)
+            return null;
+        if (!text.Contains("://"))
+            text = "https://" + text;
+        return Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https"
+            ? text
+            : throw new ChatRejectedException($"{what}: enter a web address such as example.com.");
+    }
+
+    static string Required(string? value, int max, string what) =>
+        Optional(value, max, what) ?? throw new ChatRejectedException($"{what}.");
 
     Task<bool> IsShamwariAsync(Guid me, Guid other, CancellationToken ct) =>
         db.Shamwaris.AnyAsync(l => l.Accepted && ((l.RequesterId == me && l.AddresseeId == other) || (l.RequesterId == other && l.AddresseeId == me)), ct);
@@ -176,7 +270,40 @@ public sealed class SocialGraphService(ChatDbContext db, TimeProvider clock)
             row.Group.IsPrivate && row.MyRole is null ? "" : row.Group.Rules,
             ChatMapper.ToDto(row.Group.Owner),
             row.Group.CreatedAt,
-            row.Group.IsPrivate && row.MyRole is null ? [] : await CardsAsync(me.Id, recent, ct));
+            row.Group.IsPrivate && row.MyRole is null ? [] : await CardsAsync(me.Id, recent, ct),
+            row.Group.Email,
+            row.Group.Website);
+    }
+
+    /// <summary>The group's avatar or cover (<paramref name="cover"/>); null removes it. Owner only.</summary>
+    public async Task<GroupDetailDto?> SetGroupImageAsync(User me, Guid id, bool cover, string? url, CancellationToken ct)
+    {
+        var group = await db.SocialGroups.FirstOrDefaultAsync(g => g.Id == id && g.OwnerId == me.Id, ct);
+        if (group is null)
+            return null;
+        if (cover)
+            group.CoverUrl = url;
+        else
+            group.AvatarUrl = url;
+        await db.SaveChangesAsync(ct);
+        return await GroupAsync(me, id, ct);
+    }
+
+    /// <summary>
+    /// Deletes a group, its memberships and its posts (a private group's posts mustn't become
+    /// public by losing their group). Returns the deleted posts' photos, for the caller to remove.
+    /// </summary>
+    public async Task<List<Guid>?> DeleteGroupAsync(User me, Guid id, CancellationToken ct)
+    {
+        if (!await db.SocialGroups.AnyAsync(g => g.Id == id && g.OwnerId == me.Id, ct))
+            return null;
+        var media = await db.PostMedia.Where(m => db.Posts.Any(p => p.Id == m.PostId && p.GroupId == id)).Select(m => m.Id).ToListAsync(ct);
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Posts.Where(p => p.GroupId == id).ExecuteDeleteAsync(ct);
+        await db.GroupMembers.Where(m => m.GroupId == id).ExecuteDeleteAsync(ct);
+        await db.SocialGroups.Where(g => g.Id == id).ExecuteDeleteAsync(ct);
+        await tx.CommitAsync(ct);
+        return media;
     }
 
     public async Task<GroupDetailDto> CreateGroupAsync(User me, SaveGroupRequest request, CancellationToken ct)
@@ -212,6 +339,10 @@ public sealed class SocialGraphService(ChatDbContext db, TimeProvider clock)
         var tone = request.Tone?.Trim().ToLowerInvariant();
         group.Tone = tone is not null && SocialGraphContract.GroupTones.Contains(tone) ? tone : "blue";
         group.IsPrivate = request.IsPrivate;
+        group.Tagline = Optional(request.Tagline, 120, "The tagline");
+        var email = Optional(request.Email, 320, "The email");
+        group.Email = email is null || (email.Contains('@') && !email.Contains(' ')) ? email?.ToLowerInvariant() : throw new ChatRejectedException("Enter an email address such as info@example.com.");
+        group.Website = WebAddress(request.Website, "The website");
     }
 
     /// <summary>Joins a public group. Private groups are joined by an owner adding you.</summary>
@@ -286,12 +417,12 @@ public sealed class SocialGraphService(ChatDbContext db, TimeProvider clock)
 
     static GroupSummaryDto ToSummary(GroupRow r) => new(
         r.Group.Id, r.Group.Name, r.Group.Description, r.Group.Icon, r.Group.Tone, r.Group.IsPrivate,
-        r.Members, r.Posts, r.MyRole is not null, r.MyRole);
+        r.Members, r.Posts, r.MyRole is not null, r.MyRole, r.Group.Tagline, r.Group.AvatarUrl, r.Group.CoverUrl);
 
     GroupSummaryDto ToSummary(SocialGroup g) => new(
         g.Id, g.Name, g.Description, g.Icon, g.Tone, g.IsPrivate,
         db.GroupMembers.Count(m => m.GroupId == g.Id), db.Posts.Count(p => p.GroupId == g.Id),
-        g.Members.Count > 0, g.Members.FirstOrDefault()?.Role);
+        g.Members.Count > 0, g.Members.FirstOrDefault()?.Role, g.Tagline, g.AvatarUrl, g.CoverUrl);
 
     static string? Optional(string? value, int max, string what)
     {
@@ -305,6 +436,32 @@ public sealed class SocialGraphService(ChatDbContext db, TimeProvider clock)
 public static class SocialGraphModule
 {
     public static IServiceCollection AddSocialGraph(this IServiceCollection services) => services.AddScoped<SocialGraphService>();
+
+    /// <summary>Smallest side accepted for an avatar or cover, in pixels.</summary>
+    public const int MinImageSide = 120;
+
+    /// <summary>
+    /// Reads the form's "image", re-encodes it like a post photo (dropping EXIF and any location), and
+    /// returns its public address at <paramref name="size"/>.
+    /// </summary>
+    static async Task<string> SaveImageAsync(HttpContext http, PostMediaStore store, PostService posts, string size)
+    {
+        if (!http.Request.HasFormContentType)
+            throw new ChatRejectedException("Send the image as multipart/form-data.");
+        var form = await http.Request.ReadFormAsync(http.RequestAborted);
+        var file = form.Files.GetFile("image") ?? throw new ChatRejectedException("Choose an image.");
+        if (file.Length > ProfileLimits.MaxImageBytes)
+            throw new ChatRejectedException($"Images are limited to {ProfileLimits.MaxImageBytes / (1024 * 1024)} MB.");
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer, http.RequestAborted);
+        using var bitmap = Livestock.CattleImages.DecodeUpright(buffer.ToArray())
+            ?? throw new ChatRejectedException("That isn't an image we can read. Use JPEG, PNG or WebP.");
+        if (Math.Min(bitmap.Width, bitmap.Height) < MinImageSide)
+            throw new ChatRejectedException($"That image is too small. Use one at least {MinImageSide} pixels on each side.");
+        var id = Guid.NewGuid();
+        await store.SaveAsync(id, bitmap, http.RequestAborted);
+        return new Uri(posts.SiteFor(http.Request), SocialContract.MediaPath(id, size)).ToString();
+    }
 
     public static void MapSocialGraph(this IEndpointRouteBuilder app)
     {
@@ -321,6 +478,58 @@ public static class SocialGraphModule
             var me = await users.GetAsync(http.User, http.RequestAborted);
             await social.SaveProfileAsync(me, request, http.RequestAborted);
             return Results.Ok(await social.ProfileAsync(me, me.Id, posts.SiteFor(http.Request), http.RequestAborted));
+        });
+
+        api.MapPut("/profile/details", async (ProfileDetailsDto request, HttpContext http, CurrentUserService users, SocialGraphService social, PostService posts) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            await social.SaveDetailsAsync(me, request, http.RequestAborted);
+            return Results.Ok(await social.ProfileAsync(me, me.Id, posts.SiteFor(http.Request), http.RequestAborted));
+        });
+
+        // Avatar and cover: multipart/form-data with one "image"; DELETE goes back to none (or the sign-in account's photo).
+        foreach (var (part, cover) in new[] { ("avatar", false), ("cover", true) })
+        {
+            api.MapPost($"/profile/{part}", async (HttpContext http, CurrentUserService users, SocialGraphService social, PostService posts, PostMediaStore store) =>
+            {
+                var me = await users.GetAsync(http.User, http.RequestAborted);
+                var url = await SaveImageAsync(http, store, posts, cover ? PhotoSizes.Feed : PhotoSizes.Thumb);
+                if (cover)
+                    await social.SetCoverAsync(me, url, http.RequestAborted);
+                else
+                    await social.SetAvatarAsync(me, url, http.RequestAborted);
+                return Results.Ok(await social.ProfileAsync(me, me.Id, posts.SiteFor(http.Request), http.RequestAborted));
+            }).WithMetadata(new RequestSizeLimitAttribute(ProfileLimits.MaxImageBytes + 1024 * 1024));
+
+            api.MapDelete($"/profile/{part}", async (HttpContext http, CurrentUserService users, SocialGraphService social, PostService posts) =>
+            {
+                var me = await users.GetAsync(http.User, http.RequestAborted);
+                if (cover)
+                    await social.SetCoverAsync(me, null, http.RequestAborted);
+                else
+                    await social.SetAvatarAsync(me, null, http.RequestAborted);
+                return Results.Ok(await social.ProfileAsync(me, me.Id, posts.SiteFor(http.Request), http.RequestAborted));
+            });
+
+            api.MapPost($"/groups/{{id:guid}}/{part}", async (Guid id, HttpContext http, CurrentUserService users, SocialGraphService social, PostService posts, PostMediaStore store) =>
+            {
+                var me = await users.GetAsync(http.User, http.RequestAborted);
+                var url = await SaveImageAsync(http, store, posts, cover ? PhotoSizes.Feed : PhotoSizes.Thumb);
+                return await social.SetGroupImageAsync(me, id, cover, url, http.RequestAborted) is { } g ? Results.Ok(g) : Results.NotFound();
+            }).WithMetadata(new RequestSizeLimitAttribute(ProfileLimits.MaxImageBytes + 1024 * 1024));
+
+            api.MapDelete($"/groups/{{id:guid}}/{part}", async (Guid id, HttpContext http, CurrentUserService users, SocialGraphService social) =>
+                await social.SetGroupImageAsync(await users.GetAsync(http.User, http.RequestAborted), id, cover, null, http.RequestAborted) is { } g ? Results.Ok(g) : Results.NotFound());
+        }
+
+        api.MapDelete("/groups/{id:guid}", async (Guid id, HttpContext http, CurrentUserService users, SocialGraphService social, PostMediaStore store) =>
+        {
+            var media = await social.DeleteGroupAsync(await users.GetAsync(http.User, http.RequestAborted), id, http.RequestAborted);
+            if (media is null)
+                return Results.NotFound();
+            foreach (var m in media)
+                store.Delete(m);
+            return Results.NoContent();
         });
 
         api.MapPost("/follows/{userId:guid}", async (Guid userId, HttpContext http, CurrentUserService users, SocialGraphService social) =>

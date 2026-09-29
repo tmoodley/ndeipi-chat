@@ -110,6 +110,16 @@ public sealed class ChatApi(HttpClient http)
 
     public Task<T> SendJsonAsync<T>(HttpMethod method, string path, object? body = null, CancellationToken ct = default) => SendAsync<T>(method, path, body, ct);
 
+    /// <summary>Uploads one image as multipart/form-data field "image" (avatars, covers).</summary>
+    public Task<T> UploadImageAsync<T>(string path, byte[] image, CancellationToken ct = default)
+    {
+        var form = new MultipartFormDataContent();
+        var part = new ByteArrayContent(image);
+        part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(image is [0x89, 0x50, ..] ? "image/png" : "image/jpeg");
+        form.Add(part, "image", image is [0x89, 0x50, ..] ? "image.png" : "image.jpg");
+        return SendContentAsync<T>(HttpMethod.Post, path, form, ct);
+    }
+
     Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
 
     Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct) =>

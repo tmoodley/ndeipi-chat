@@ -1008,3 +1008,118 @@ textarea { resize: vertical; min-height: 90px; }
     html.kb-open .content.in-chat .composer { margin-bottom: 6px; }
     html.kb-open .content.in-chat .messenger { padding-top: 0; }
 }
+
+/* ---------- Editors: profile and group settings, after the reference "Account Hub" ---------- */
+
+/* Covers and avatars can be photos now. */
+.sc-cover.has-image, .strip.has-image { background-size: cover; background-position: center; }
+.sc-cover.has-image::after { background: linear-gradient(transparent 55%, rgba(0, 0, 0, .25)); }
+
+/* A two-pane window: a preview and sections on the left, the section's form on the right. */
+.modal-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(12, 16, 32, .45); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 24px; animation: fade .2s ease; }
+.modal { position: relative; width: min(1000px, 100%); max-height: calc(100vh - 48px); display: grid; grid-template-columns: 290px minmax(0, 1fr); border-radius: 26px; overflow: hidden; background: var(--glass-strong); border: 1px solid var(--glass-border); box-shadow: var(--shadow-strong); animation: rise .25s cubic-bezier(.2, .8, .2, 1); }
+.modal-close { position: absolute; top: -14px; right: -14px; width: 42px; height: 42px; padding: 0; border-radius: 14px; background: var(--social-a); color: #fff; font-size: 18px; z-index: 2; box-shadow: 0 8px 18px rgba(119, 80, 248, .4); }
+.modal-side { border-right: 1px solid var(--divider); display: flex; flex-direction: column; overflow-y: auto; }
+.modal-side .preview-cover { height: 96px; }
+.modal-side .preview-who { display: flex; flex-direction: column; align-items: center; margin-top: -44px; padding: 0 16px 16px; text-align: center; border-bottom: 1px solid var(--divider); }
+.modal-side .preview-who strong { margin-top: 8px; font-size: 16px; }
+.modal-side .preview-who small { color: var(--muted); font-size: 12px; }
+.modal-nav { display: flex; flex-direction: column; padding: 14px 18px; gap: 2px; border-bottom: 1px solid var(--divider); }
+.modal-nav button { justify-content: flex-start; background: none; box-shadow: none; padding: 9px 12px; border-radius: 12px; color: var(--text); font-size: 14px; }
+.modal-nav button:hover { background: var(--secondary); }
+.modal-nav button.on { color: var(--social-a); background: rgba(119, 80, 248, .1); }
+.modal-nav button.danger { color: var(--danger); }
+.modal-buttons { display: flex; flex-direction: column; gap: 10px; padding: 18px; margin-top: auto; }
+.modal-buttons button { height: 46px; border-radius: 14px; }
+.modal-body { padding: 26px 28px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.modal-body h3 { margin: 0 0 4px; font-size: 18px; }
+@media (max-width: 760px) {
+    .modal-scrim { padding: 0; align-items: stretch; }
+    .modal { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); max-height: none; height: 100%; border-radius: 0; }
+    .modal-close { top: 10px; right: 10px; }
+    .modal-side { border-right: 0; border-bottom: 1px solid var(--divider); overflow: visible; }
+    .modal-side .preview-cover, .modal-side .preview-who { display: none; }
+    .modal-nav { flex-direction: row; overflow-x: auto; padding: 10px 56px 10px 12px; border-bottom: 0; scrollbar-width: none; }
+    .modal-nav button { flex-shrink: 0; }
+    .modal-buttons { flex-direction: row; padding: 0 12px 10px; margin-top: 0; }
+    .modal-buttons button { flex: 1; height: 42px; }
+    .modal-body { padding: 18px 16px 28px; }
+}
+
+/* Fields with their label sitting on the border. */
+.fl { position: relative; display: block; }
+.fl > span { position: absolute; top: -8px; left: 14px; padding: 0 6px; font-size: 11px; font-weight: 700; color: var(--muted); background: var(--glass-strong); border-radius: 6px; z-index: 1; }
+.fl > input, .fl > textarea, .fl > select { padding-top: 14px; }
+.fl-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 600px) { .fl-row { grid-template-columns: 1fr; } }
+
+/* A repeating block (an interest, a job) with its remove button. */
+.repeat { position: relative; border: 1px dashed var(--divider); border-radius: 16px; padding: 18px 14px 14px; display: flex; flex-direction: column; gap: 14px; }
+.repeat .remove { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; padding: 0; border-radius: 10px; background: var(--secondary); color: var(--muted); box-shadow: none; font-size: 13px; }
+.add-row { align-self: flex-start; background: none; box-shadow: none; color: var(--social-a); padding: 4px 2px; }
+
+/* Image pickers for avatar and cover. */
+.image-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 600px) { .image-pick { grid-template-columns: 1fr; } }
+.image-slot { border: 2px dashed var(--divider); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.image-slot .cover-preview { width: 100%; height: 90px; border-radius: 12px; background-size: cover; background-position: center; }
+.image-slot .actions-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* Skills as removable chips. */
+.skill-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.skill-chip { display: inline-flex; align-items: center; gap: 6px; background: var(--social-a); color: #fff; border-radius: 12px; padding: 5px 6px 5px 12px; font-size: 13px; font-weight: 700; }
+.skill-chip button { width: 20px; height: 20px; padding: 0; border-radius: 7px; background: rgba(255, 255, 255, .25); color: #fff; font-size: 11px; box-shadow: none; }
+
+/* Manage groups: the "create" card with a dashed hexagon, and the owner's cards. */
+.create-card { border-radius: 22px; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 0 0 18px; overflow: hidden; }
+.create-card .strip { height: 86px; width: 100%; border-bottom: 1px dashed var(--divider); }
+.create-card .dash-hex { width: 92px; height: 101px; margin-top: -46px; clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%); background: var(--divider); display: flex; align-items: center; justify-content: center; position: relative; }
+.create-card .dash-hex::after { content: ""; position: absolute; inset: 3px; clip-path: inherit; background: var(--glass-strong); }
+.create-card .dash-hex span { position: relative; z-index: 1; font-size: 28px; color: var(--social-a); }
+.create-card .who { margin-top: 12px; font-weight: 800; }
+.create-card .bio { font-size: 12px; color: var(--muted); padding: 2px 18px 14px; }
+.create-card button, .person-card .pair .manage { width: calc(100% - 36px); height: 44px; border-radius: 12px; }
+.person-card .role { font-size: 12px; color: var(--muted); }
+
+/* Jobs and education on a line with dots. */
+.timeline { display: flex; flex-direction: column; gap: 18px; position: relative; padding-left: 24px; }
+.timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--divider); }
+.timeline .entry { position: relative; }
+.timeline .entry::before { content: ""; position: absolute; left: -24px; top: 3px; width: 10px; height: 10px; border-radius: 50%; border: 3px solid var(--social-b); background: var(--page); }
+.timeline .entry strong { display: block; font-size: 15px; }
+.timeline .entry .when { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.timeline .entry p { margin: 6px 0 0; line-height: 1.55; font-size: 14px; }
+.interest h4 { margin: 0 0 4px; font-size: 14px; }
+.interest p { margin: 0 0 12px; line-height: 1.55; font-size: 14px; }
+
+/* Profile completion as a ring. */
+.completion-ring { --pct: 0; width: 140px; height: 140px; border-radius: 50%; margin: 6px auto; background: conic-gradient(var(--social-b) calc(var(--pct) * 1%), var(--secondary) 0); display: flex; align-items: center; justify-content: center; }
+.completion-ring::after { content: attr(data-label); width: 112px; height: 112px; border-radius: 50%; background: var(--glass-strong); display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 800; }
+
+/* Links to other networks as coloured squares. */
+.link-icons { display: flex; flex-wrap: wrap; gap: 8px; }
+.link-icons a { width: 38px; height: 38px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; color: #fff; font-size: 13px; font-weight: 800; box-shadow: var(--shadow); }
+.li-facebook { background: #3763D2; }
+.li-x { background: #111; }
+.li-instagram { background: linear-gradient(135deg, #F58529, #DD2A7B 55%, #8134AF); }
+.li-tiktok { background: #0F0F0F; }
+.li-youtube { background: #FD434F; }
+.li-linkedin { background: #0A66C2; }
+.li-whatsapp { background: #25D366; }
+.li-website { background: var(--social-a); }
+.sc-hero .link-icons { justify-content: flex-end; margin-top: 10px; }
+@media (max-width: 900px) { .sc-hero .link-icons { justify-content: center; } }
+
+/* ---------- Wallet ---------- */
+.wallet-page .wallet-card { min-height: 210px; }
+.wallet-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.wallet-steps li { display: flex; align-items: center; gap: 12px; opacity: .55; }
+.wallet-steps li.current, .wallet-steps li.done { opacity: 1; }
+.wallet-steps .dot { width: 36px; height: 36px; flex-shrink: 0; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; background: var(--secondary); color: var(--muted); }
+.wallet-steps li.current .dot { background: var(--brand); color: #fff; box-shadow: 0 6px 16px rgba(61, 123, 247, .35); }
+.wallet-steps li.done .dot { background: var(--social-b); color: #fff; }
+.wallet-steps .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.wallet-steps small { color: var(--muted); font-size: 12px; }
+.wallet-add { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-top: 6px; }
+.wallet-add button { height: 44px; }
+@media (max-width: 600px) { .wallet-add { grid-template-columns: 1fr; } }

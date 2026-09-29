@@ -31,6 +31,19 @@ public sealed class User
     public string? City { get; set; }
     public string? Website { get; set; }
 
+    /// <summary>
+    /// <see cref="AvatarUrl"/> is a photo uploaded on Social rather than the sign-in account's,
+    /// which stays in <see cref="ClerkAvatarUrl"/> for when they remove theirs.
+    /// </summary>
+    public bool CustomAvatar { get; set; }
+    public string? ClerkAvatarUrl { get; set; }
+
+    /// <summary>The banner across the top of their profile.</summary>
+    public string? CoverUrl { get; set; }
+
+    /// <summary>The rest of the profile (occupation, interests, jobs, skills, links), as JSON: ProfileDetailsDto.</summary>
+    public string? ProfileJson { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset ProfileSyncedAt { get; set; }
 
@@ -474,6 +487,11 @@ public sealed class SocialGroup
     public string Rules { get; set; } = "";
     public string Icon { get; set; } = "👥";
     public string Tone { get; set; } = "blue";
+    public string? Tagline { get; set; }
+    public string? Email { get; set; }
+    public string? Website { get; set; }
+    public string? AvatarUrl { get; set; }
+    public string? CoverUrl { get; set; }
     public bool IsPrivate { get; set; }
     public Guid OwnerId { get; set; }
     public User Owner { get; set; } = null!;

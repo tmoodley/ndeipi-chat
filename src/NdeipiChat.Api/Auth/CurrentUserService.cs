@@ -55,7 +55,10 @@ public sealed class CurrentUserService(
             user.Email = profile.PrimaryEmail;
             user.EmailVerified = profile.PrimaryEmailVerified;
             user.Phone = ShamwariContact.NormalizePhone(profile.VerifiedPhone);
-            user.AvatarUrl = profile.ImageUrl;
+            // A photo the user uploaded on their Social profile wins over the sign-in account's.
+            user.ClerkAvatarUrl = profile.ImageUrl;
+            if (!user.CustomAvatar)
+                user.AvatarUrl = profile.ImageUrl;
             user.Roles = string.Join(",", profile.Roles);
             user.ProfileSyncedAt = now;
         }

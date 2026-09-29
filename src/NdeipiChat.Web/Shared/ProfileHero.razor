@@ -1,6 +1,7 @@
-@* A profile's header: cover banner, hexagon avatar over it, stats on one side, actions on the other. *@
+@* A profile's header: cover banner (a photo, or their colour), hexagon avatar over it, stats on one
+   side, actions and their other networks on the other. *@
 <section class="sc-hero glass">
-    <div class="sc-cover @SocialActions.ToneFor(Profile.User.Id)"></div>
+    <div class="sc-cover @(Profile.CoverUrl is null ? SocialActions.ToneFor(Profile.User.Id) : "has-image")" style="@(Profile.CoverUrl is { } cover ? $"background-image: url('{cover}')" : "")"></div>
     <div class="sc-hero-body">
         <div class="sc-stats">
             <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("timeline")'><b>@Profile.PostCount</b><span>Posts</span></button>
@@ -16,7 +17,10 @@
                 <div class="sub">@SubLine</div>
             </div>
         </div>
-        <div class="sc-actions">@Actions</div>
+        <div class="sc-actions">
+            @Actions
+            <LinkIcons Links="@(Profile.Details?.Links ?? [])" />
+        </div>
     </div>
 </section>
 
@@ -25,7 +29,9 @@
     [Parameter] public RenderFragment? Actions { get; set; }
     [Parameter] public EventCallback<string> StatClicked { get; set; }
 
-    string SubLine => Profile.Website is { } w
-        ? new Uri(w).Host
-        : Profile.City ?? (Profile.User.Username is { } u ? "@" + u : "Ndeipi");
+    string SubLine => Profile.Details?.Occupation is { } job
+        ? Profile.City is { } city ? $"{job} · {city}" : job
+        : Profile.Website is { } w && Uri.TryCreate(w, UriKind.Absolute, out var site)
+            ? site.Host
+            : Profile.City ?? (Profile.User.Username is { } u ? "@" + u : "Ndeipi");
 }

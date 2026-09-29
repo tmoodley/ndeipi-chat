@@ -5,7 +5,15 @@
     <dl class="facts">
         <dt>Created</dt><dd>@Group.CreatedAt.ToLocalTime().ToString("d MMMM yyyy")</dd>
         <dt>Type</dt><dd>@(Group.Group.IsPrivate ? "Private" : "Public")</dd>
-        <dt>Owner</dt><dd><a href="u/@Group.Owner.Id">@Group.Owner.DisplayName</a></dd>
+        <dt>Organizer</dt><dd><a href="u/@Group.Owner.Id">@Group.Owner.DisplayName</a></dd>
+        @if (Group.Email is { } email)
+        {
+            <dt>Email</dt><dd><a href="mailto:@email">@email</a></dd>
+        }
+        @if (Group.Website is { } web && Uri.TryCreate(web, UriKind.Absolute, out var site))
+        {
+            <dt>Web</dt><dd><a href="@web" target="_blank" rel="noopener">@site.Host</a></dd>
+        }
     </dl>
 </section>
 

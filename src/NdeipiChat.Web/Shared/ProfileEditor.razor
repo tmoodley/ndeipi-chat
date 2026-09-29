@@ -1,0 +1,286 @@
+@* Editing your profile, in one window: what you're about, your photos, interests, work and study,
+   skills and links. Photos save as soon as they're chosen; the rest on Save changes. *@
+@inject ChatApi Api
+@inject IJSRuntime JS
+
+<div class="modal-scrim" @onclick="CloseAsync">
+    <div class="modal" @onclick:stopPropagation="true" role="dialog" aria-label="Edit your profile">
+        <button class="modal-close" title="Close" @onclick="CloseAsync">✕</button>
+
+        <aside class="modal-side">
+            <div class="preview-cover @(Profile.CoverUrl is null ? SocialActions.ToneFor(Profile.User.Id) : "has-image")" style="@CoverStyle(Profile.CoverUrl)"></div>
+            <div class="preview-who">
+                <HexAvatar Url="@Profile.User.AvatarUrl" Initials="@Display.Initials(Profile.User.DisplayName)" Tone="@SocialActions.ToneFor(Profile.User.Id)" Size="88" />
+                <strong>@Profile.User.DisplayName</strong>
+                <small>@(_occupation ?? "Your profile") · @Profile.Completion% complete</small>
+            </div>
+            <nav class="modal-nav">
+                @foreach (var (key, label) in Sections)
+                {
+                    <button class="@(_section == key ? "on" : "")" @onclick="() => _section = key">@label</button>
+                }
+            </nav>
+            <div class="modal-buttons">
+                <button class="btn-a" disabled="@_busy" @onclick="SaveAsync">@(_busy ? "Saving…" : "Save changes")</button>
+                <button class="secondary" disabled="@_busy" @onclick="Discard">Discard all</button>
+            </div>
+        </aside>
+
+        <section class="modal-body">
+            @if (_message is not null)
+            {
+                <div class="notice" style="@(_ok ? "background: rgba(31, 169, 113, .14); color: var(--success)" : "")">@_message</div>
+            }
+
+            @switch (_section)
+            {
+                case "info":
+                    <h3>Profile info</h3>
+                    <label class="fl"><span>About you</span><textarea @bind="_bio" rows="4" maxlength="@SocialGraphContract.MaxBio" placeholder="A few lines about you"></textarea></label>
+                    <div class="fl-row">
+                        <label class="fl"><span>Occupation</span><input @bind="_occupation" maxlength="80" placeholder="e.g. Photographer" /></label>
+                        <label class="fl"><span>City</span><input @bind="_city" maxlength="80" placeholder="e.g. Harare" /></label>
+                    </div>
+                    <div class="fl-row">
+                        <label class="fl"><span>Country</span><input @bind="_country" maxlength="60" placeholder="e.g. Zimbabwe" /></label>
+                        <label class="fl"><span>Website</span><input @bind="_website" maxlength="200" placeholder="example.com" /></label>
+                    </div>
+                    <p class="muted small" style="margin: 0">Your name comes from your sign-in account. Your Gigs work profile (skills you're hired for, your rating) is set in Gigs.</p>
+                    break;
+
+                case "images":
+                    <h3>Avatar and cover</h3>
+                    <div class="image-pick">
+                        <div class="image-slot">
+                            <HexAvatar Url="@Profile.User.AvatarUrl" Initials="@Display.Initials(Profile.User.DisplayName)" Tone="@SocialActions.ToneFor(Profile.User.Id)" Size="96" />
+                            <strong>Avatar</strong>
+                            <span class="muted small">A square photo works best.</span>
+                            <div class="actions-row">
+                                <label class="button btn-a file-button" style="height: 40px">@(_uploading == "avatar" ? "Uploading…" : "Upload")<InputFile OnChange='e => UploadAsync(e, "avatar")' accept="image/*" disabled="@(_uploading is not null)" /></label>
+                                @if (Profile.HasCustomAvatar)
+                                {
+                                    <button class="secondary" style="height: 40px" disabled="@(_uploading is not null)" @onclick='() => RemoveAsync("avatar")'>Use my account's photo</button>
+                                }
+                            </div>
+                        </div>
+                        <div class="image-slot">
+                            <div class="cover-preview @(Profile.CoverUrl is null ? SocialActions.ToneFor(Profile.User.Id) : "")" style="@CoverStyle(Profile.CoverUrl)"></div>
+                            <strong>Cover</strong>
+                            <span class="muted small">The banner across the top of your profile. Wide photos work best.</span>
+                            <div class="actions-row">
+                                <label class="button btn-a file-button" style="height: 40px">@(_uploading == "cover" ? "Uploading…" : "Upload")<InputFile OnChange='e => UploadAsync(e, "cover")' accept="image/*" disabled="@(_uploading is not null)" /></label>
+                                @if (Profile.CoverUrl is not null)
+                                {
+                                    <button class="secondary" style="height: 40px" disabled="@(_uploading is not null)" @onclick='() => RemoveAsync("cover")'>Remove</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                    break;
+
+                case "interests":
+                    <h3>Interests</h3>
+                    <p class="muted small" style="margin: 0">What you're into: a heading and a line of favourites, e.g. "Music" and "Oliver Mtukudzi, Jah Prayzah".</p>
+                    @foreach (var item in _interests)
+                    {
+                        <div class="repeat" @key="item">
+                            <button class="remove" title="Remove" @onclick="() => _interests.Remove(item)">✕</button>
+                            <label class="fl"><span>Heading</span><input @bind="item.Title" maxlength="60" placeholder="e.g. Favourite music" /></label>
+                            <label class="fl"><span>Favourites</span><textarea @bind="item.Text" rows="2" maxlength="400"></textarea></label>
+                        </div>
+                    }
+                    @if (_interests.Count < ProfileLimits.MaxInterests)
+                    {
+                        <button class="add-row" @onclick="() => _interests.Add(new Interest())">+ Add an interest</button>
+                    }
+                    break;
+
+                case "work":
+                    <h3>Jobs and education</h3>
+                    @foreach (var (list, what) in new[] { (_jobs, "job"), (_education, "school or course") })
+                    {
+                        <h4 style="margin: 6px 0 0">@(list == _jobs ? "Jobs" : "Education")</h4>
+                        @foreach (var item in list)
+                        {
+                            <div class="repeat" @key="item">
+                                <button class="remove" title="Remove" @onclick="() => list.Remove(item)">✕</button>
+                                <div class="fl-row">
+                                    <label class="fl"><span>@(list == _jobs ? "Role" : "Qualification")</span><input @bind="item.Title" maxlength="100" /></label>
+                                    <label class="fl"><span>@(list == _jobs ? "Company" : "School")</span><input @bind="item.Place" maxlength="100" /></label>
+                                </div>
+                                <label class="fl"><span>When</span><input @bind="item.Period" maxlength="40" placeholder="e.g. 2019 - now" /></label>
+                                <label class="fl"><span>What you did</span><textarea @bind="item.Description" rows="2" maxlength="600"></textarea></label>
+                            </div>
+                        }
+                        @if (list.Count < ProfileLimits.MaxTimeline)
+                        {
+                            <button class="add-row" @onclick="() => list.Add(new Entry())">+ Add a @what</button>
+                        }
+                    }
+                    break;
+
+                case "skills":
+                    <h3>Skills</h3>
+                    <div class="skill-chips">
+                        @foreach (var skill in _skills)
+                        {
+                            <span class="skill-chip" @key="skill">@skill<button title="Remove" @onclick="() => _skills.Remove(skill)">✕</button></span>
+                        }
+                        @if (_skills.Count == 0)
+                        {
+                            <span class="muted small">No skills yet.</span>
+                        }
+                    </div>
+                    <form class="inline-form" @onsubmit="AddSkill">
+                        <input @bind="_newSkill" maxlength="40" placeholder="e.g. Photography, Welding, C#" />
+                        <button type="submit" class="btn-a" disabled="@(string.IsNullOrWhiteSpace(_newSkill) || _skills.Count >= ProfileLimits.MaxSkills)">Add</button>
+                    </form>
+                    break;
+
+                case "links":
+                    <h3>Social networks</h3>
+                    @foreach (var link in _links)
+                    {
+                        <div class="inline-form" @key="link">
+                            <select class="narrow" @bind="link.Kind">
+                                @foreach (var kind in SocialLinkKinds.All)
+                                {
+                                    <option value="@kind">@LinkIcons.Label(kind)</option>
+                                }
+                            </select>
+                            <input @bind="link.Url" maxlength="200" placeholder="Link" />
+                            <button class="secondary" title="Remove" @onclick="() => _links.Remove(link)">✕</button>
+                        </div>
+                    }
+                    @if (_links.Count < ProfileLimits.MaxLinks)
+                    {
+                        <button class="add-row" @onclick='() => _links.Add(new Link { Kind = "instagram" })'>+ Add a link</button>
+                    }
+                    break;
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SocialProfileDto Profile { get; set; } = null!;
+    [Parameter] public string Section { get; set; } = "info";
+    [Parameter] public EventCallback<SocialProfileDto> Saved { get; set; }
+    [Parameter] public EventCallback Closed { get; set; }
+
+    static readonly (string Key, string Label)[] Sections =
+        [("info", "Profile info"), ("images", "Avatar and cover"), ("interests", "Interests"), ("work", "Jobs and education"), ("skills", "Skills"), ("links", "Social networks")];
+
+    sealed class Interest { public string Title { get; set; } = ""; public string Text { get; set; } = ""; }
+    sealed class Entry { public string Title { get; set; } = ""; public string? Place { get; set; } public string? Period { get; set; } public string? Description { get; set; } }
+    sealed class Link { public string Kind { get; set; } = "website"; public string Url { get; set; } = ""; }
+
+    string _section = "info";
+    string? _bio, _city, _website, _occupation, _country, _newSkill, _message, _uploading;
+    List<string> _skills = [];
+    List<Interest> _interests = [];
+    List<Entry> _jobs = [], _education = [];
+    List<Link> _links = [];
+    bool _busy, _ok;
+    bool _loaded;
+
+    protected override void OnParametersSet()
+    {
+        if (_loaded)
+            return;
+        _loaded = true;
+        _section = Section;
+        Discard();
+    }
+
+    static string CoverStyle(string? url) => url is null ? "" : $"background-image: url('{url}')";
+
+    void Discard()
+    {
+        var d = Profile.Details ?? ProfileDetailsDto.Empty;
+        (_bio, _city, _website, _occupation, _country) = (Profile.Bio, Profile.City, Profile.Website, d.Occupation, d.Country);
+        _skills = [.. d.Skills];
+        _interests = d.Interests.Select(i => new Interest { Title = i.Title, Text = i.Text }).ToList();
+        _jobs = d.Jobs.Select(ToEntry).ToList();
+        _education = d.Education.Select(ToEntry).ToList();
+        _links = d.Links.Select(l => new Link { Kind = l.Kind, Url = l.Url }).ToList();
+        _message = null;
+    }
+
+    static Entry ToEntry(TimelineEntryDto e) => new() { Title = e.Title, Place = e.Place, Period = e.Period, Description = e.Description };
+
+    void AddSkill()
+    {
+        var skill = _newSkill?.Trim();
+        if (!string.IsNullOrEmpty(skill) && !_skills.Contains(skill, StringComparer.OrdinalIgnoreCase))
+            _skills.Add(skill);
+        _newSkill = null;
+    }
+
+    async Task SaveAsync()
+    {
+        (_busy, _message) = (true, null);
+        try
+        {
+            await Api.SendJsonAsync<SocialProfileDto>(HttpMethod.Put, $"{SocialActions.Base}/profile", new SaveSocialProfileRequest(_bio, _city, _website));
+            var saved = await Api.SendJsonAsync<SocialProfileDto>(HttpMethod.Put, $"{SocialActions.Base}/profile/details", new ProfileDetailsDto(
+                _occupation, _country, _skills,
+                _interests.Select(i => new InterestDto(i.Title, i.Text)).ToList(),
+                _jobs.Select(ToDto).ToList(), _education.Select(ToDto).ToList(),
+                _links.Select(l => new SocialLinkDto(l.Kind, l.Url)).ToList()));
+            (_message, _ok) = ($"Saved. Your profile is {saved.Completion}% complete.", true);
+            await Saved.InvokeAsync(saved);
+        }
+        catch (ApiException ex)
+        {
+            (_message, _ok) = (ex.Message, false);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    static TimelineEntryDto ToDto(Entry e) => new(e.Title, e.Place, e.Period, e.Description);
+
+    async Task UploadAsync(InputFileChangeEventArgs e, string part)
+    {
+        (_uploading, _message) = (part, null);
+        try
+        {
+            using var original = new MemoryStream();
+            await e.File.OpenReadStream(40 * 1024 * 1024).CopyToAsync(original);
+            var image = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", original.ToArray(), part == "cover" ? 2048 : 800, 0.9);
+            var saved = await Api.UploadImageAsync<SocialProfileDto>($"{SocialActions.Base}/profile/{part}", image);
+            (_message, _ok) = (part == "cover" ? "Cover updated." : "Avatar updated.", true);
+            await Saved.InvokeAsync(saved);
+        }
+        catch (Exception ex) when (ex is ApiException or IOException or JSException)
+        {
+            (_message, _ok) = (ex is ApiException ? ex.Message : "Couldn't read that image. Try a JPEG or PNG.", false);
+        }
+        finally
+        {
+            _uploading = null;
+        }
+    }
+
+    async Task RemoveAsync(string part)
+    {
+        _uploading = part;
+        try
+        {
+            await Saved.InvokeAsync(await Api.SendJsonAsync<SocialProfileDto>(HttpMethod.Delete, $"{SocialActions.Base}/profile/{part}"));
+        }
+        catch (ApiException ex)
+        {
+            (_message, _ok) = (ex.Message, false);
+        }
+        finally
+        {
+            _uploading = null;
+        }
+    }
+
+    Task CloseAsync() => Closed.InvokeAsync();
+}

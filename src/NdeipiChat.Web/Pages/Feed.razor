@@ -42,7 +42,7 @@
                     @if (_me is { } about)
                     {
                         <section class="widget glass">
-                            <div class="widget-head"><h3>About me</h3><a href="u/@about.User.Id?tab=about">Edit</a></div>
+                            <div class="widget-head"><h3>About me</h3><a href="u/@about.User.Id?tab=about&edit=info">Edit</a></div>
                             <p style="margin: 0">@(about.Bio ?? "Say a little about yourself on your profile.")</p>
                             <dl class="facts">
                                 <dt>Joined</dt><dd>@about.JoinedAt.ToLocalTime().ToString("d MMMM yyyy")</dd>
@@ -62,7 +62,7 @@
                         @foreach (var g in _myGroups.Take(6))
                         {
                             <a class="mini-row" href="groups/@g.Id" @key="g.Id">
-                                <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="44" Class="icon-hex" />
+                                <HexAvatar Url="@g.AvatarUrl" Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="44" Class="icon-hex" />
                                 <span class="grow"><strong>@g.Name</strong><small>@g.MemberCount members</small></span>
                             </a>
                         }
@@ -113,45 +113,37 @@
 
         case "groups":
             <div class="sc-section-head">
-                <div><div class="kicker">Browse groups</div><div class="big">Groups<em>@_groups.Count</em></div></div>
-                <div class="links"><button @onclick="() => _creating = !_creating">@(_creating ? "Cancel" : "Create group +")</button></div>
+                <div><div class="kicker">Account hub</div><div class="big">Manage groups<em>@_myGroups.Count</em></div></div>
+            </div>
+            <div class="card-grid">
+                <article class="create-card glass">
+                    <div class="strip"></div>
+                    <button class="dash-hex" style="padding: 0; box-shadow: none; background: var(--divider); width: 92px; height: 101px; border-radius: 0" title="Create a group" @onclick="() => OpenEditorAsync(null)"><span>＋</span></button>
+                    <div class="who">Create a new group</div>
+                    <div class="bio">Share your interests with others and start a community. Add a cover, rules and members.</div>
+                    <button class="btn-a" @onclick="() => OpenEditorAsync(null)">Start creating!</button>
+                </article>
+                @foreach (var g in _myGroups)
+                {
+                    <GroupCard @key="g.Id" Group="g" Manage="OpenEditorAsync" />
+                }
+            </div>
+
+            <div class="sc-section-head" style="margin-top: 12px">
+                <div><div class="kicker">Browse groups</div><div class="big">Discover<em>@Discover.Count</em></div></div>
             </div>
             <div class="sc-filter glass">
                 <input type="search" placeholder="Search groups" @bind="_groupQuery" @bind:event="oninput" @bind:after="LoadGroupsAsync" />
-                <div class="seg">
-                    <button class="@(_mineOnly ? "on" : "")" @onclick="() => SetMineAsync(true)">My groups</button>
-                    <button class="@(_mineOnly ? "" : "on")" @onclick="() => SetMineAsync(false)">Discover</button>
-                </div>
             </div>
-            @if (_creating)
-            {
-                <form class="widget glass" @onsubmit="CreateGroupAsync">
-                    <div class="widget-head"><h3>New group</h3></div>
-                    <div class="inline-form">
-                        <input class="narrow" style="max-width: 80px; text-align: center; font-size: 22px" @bind="_newIcon" maxlength="4" title="Icon (an emoji)" />
-                        <input @bind="_newName" placeholder="Group name" maxlength="@SocialGraphContract.MaxGroupName" required />
-                    </div>
-                    <textarea @bind="_newDescription" placeholder="What's it about?" maxlength="@SocialGraphContract.MaxGroupDescription"></textarea>
-                    <textarea @bind="_newRules" placeholder="Rules (optional), one per line" maxlength="@SocialGraphContract.MaxGroupRules"></textarea>
-                    <div class="chips">
-                        @foreach (var tone in SocialGraphContract.GroupTones)
-                        {
-                            <button type="button" class="tile-icon tone-@tone" style="width: 30px; height: 30px; border-radius: 10px; outline: @(_newTone == tone ? "3px solid var(--text)" : "none")" title="@tone" @onclick="() => _newTone = tone"></button>
-                        }
-                    </div>
-                    <label class="drawer-row" style="padding: 0"><input type="checkbox" class="toggle" @bind="_newPrivate" /><span class="grow">Private: only members see posts, and you add them</span></label>
-                    <button type="submit" class="btn-a wide" disabled="@_busy">Create group</button>
-                </form>
-            }
             <div class="card-grid">
-                @foreach (var g in _groups)
+                @foreach (var g in Discover)
                 {
                     <GroupCard @key="g.Id" Group="g" Join="JoinAsync" Joining="_busy" />
                 }
             </div>
-            @if (_groups.Count == 0)
+            @if (Discover.Count == 0)
             {
-                <div class="empty"><p>@(_mineOnly ? "You're not in any groups yet. Discover some, or create one." : "No groups found.")</p></div>
+                <div class="empty"><p>@(_groupQuery.Length > 0 ? "No groups found." : "You're in every group there is. Start another!")</p></div>
             }
             break;
 
@@ -201,6 +193,11 @@
             }
             break;
     }
+
+    @if (_editing)
+    {
+        <GroupEditor Group="_editGroup" Saved="OnGroupSaved" Closed="() => _editing = false" />
+    }
 </div>
 
 @code {
@@ -212,8 +209,10 @@
     List<PersonCardDto> _following = [], _suggested = [], _people = [];
     string _tab = "foryou", _groupQuery = "", _peopleQuery = "", _peopleMode = "suggested";
     string? _error;
-    bool _mineOnly = true, _creating, _busy, _newPrivate;
-    string _newName = "", _newDescription = "", _newRules = "", _newIcon = "👥", _newTone = "purple";
+    bool _busy, _editing;
+    GroupDetailDto? _editGroup;
+
+    List<GroupSummaryDto> Discover => _groups.Where(g => !g.IsMember).ToList();
 
     string On(string tab) => _tab == tab ? "on" : "";
 
@@ -272,12 +271,29 @@
     }
 
     Task LoadGroupsAsync() => Run(async () =>
-        _groups = await Api.GetJsonAsync<List<GroupSummaryDto>>($"{SocialActions.Base}/groups?mine={(_mineOnly && _groupQuery.Length == 0 ? "true" : "false")}&q={Uri.EscapeDataString(_groupQuery)}"));
+        _groups = await Api.GetJsonAsync<List<GroupSummaryDto>>($"{SocialActions.Base}/groups?mine=false&q={Uri.EscapeDataString(_groupQuery)}"));
 
-    async Task SetMineAsync(bool mine)
+    /// <summary>Opens the group window: on a group you run, or on a new one.</summary>
+    async Task OpenEditorAsync(GroupSummaryDto? group)
     {
-        _mineOnly = mine;
-        await LoadGroupsAsync();
+        _editGroup = null;
+        if (group is not null)
+        {
+            await Run(async () => _editGroup = await Api.GetJsonAsync<GroupDetailDto>($"{SocialActions.Base}/groups/{group.Id}"));
+            if (_editGroup is null)
+                return;
+        }
+        _editing = true;
+    }
+
+    void OnGroupSaved(GroupDetailDto saved)
+    {
+        _editGroup = saved;
+        var i = _myGroups.FindIndex(g => g.Id == saved.Group.Id);
+        if (i >= 0)
+            _myGroups[i] = saved.Group;
+        else
+            _myGroups.Insert(0, saved.Group);
     }
 
     async Task SetPeopleModeAsync(string mode)
@@ -309,13 +325,6 @@
         var joined = await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups/{group.Id}/join");
         _groups[_groups.IndexOf(group)] = joined.Group;
         _myGroups.Add(joined.Group);
-    });
-
-    async Task CreateGroupAsync() => await Run(async () =>
-    {
-        var created = await Api.SendJsonAsync<GroupDetailDto>(HttpMethod.Post, $"{SocialActions.Base}/groups",
-            new SaveGroupRequest(_newName, _newDescription, _newRules, _newIcon, _newTone, _newPrivate));
-        Navigation.NavigateTo($"groups/{created.Group.Id}");
     });
 
     async Task Run(Func<Task> work)

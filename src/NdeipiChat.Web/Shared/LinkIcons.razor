@@ -1,0 +1,38 @@
+@* Links to someone's other networks, as coloured squares. *@
+@if (Links.Count > 0)
+{
+    <div class="link-icons">
+        @foreach (var link in Links)
+        {
+            <a class="li-@link.Kind" href="@link.Url" target="_blank" rel="noopener" title="@Label(link.Kind)">@Glyph(link.Kind)</a>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<SocialLinkDto> Links { get; set; } = [];
+
+    public static string Label(string kind) => kind switch
+    {
+        "facebook" => "Facebook",
+        "x" => "X",
+        "instagram" => "Instagram",
+        "tiktok" => "TikTok",
+        "youtube" => "YouTube",
+        "linkedin" => "LinkedIn",
+        "whatsapp" => "WhatsApp",
+        _ => "Website"
+    };
+
+    static string Glyph(string kind) => kind switch
+    {
+        "facebook" => "f",
+        "x" => "𝕏",
+        "instagram" => "◎",
+        "tiktok" => "♪",
+        "youtube" => "▶",
+        "linkedin" => "in",
+        "whatsapp" => "✆",
+        _ => "🌐"
+    };
+}

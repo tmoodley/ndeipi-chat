@@ -21,7 +21,7 @@
             <Actions>
                 @if (p.IsMe)
                 {
-                    <button class="btn-a" @onclick='() => _tab = "about"'>Edit profile</button>
+                    <button class="btn-a" @onclick='() => Edit("info")'>Edit profile</button>
                     <a class="button btn-b" href="feed/new">New post</a>
                 }
                 else
@@ -118,7 +118,7 @@
                             @foreach (var g in p.Groups.Take(6))
                             {
                                 <a class="mini-row" href="groups/@g.Id" @key="g.Id">
-                                    <HexAvatar Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="44" Class="icon-hex" />
+                                    <HexAvatar Url="@g.AvatarUrl" Icon="@g.Icon" Tone="@("tone-" + g.Tone)" Size="44" Class="icon-hex" />
                                     <span class="grow"><strong>@g.Name</strong><small>@g.MemberCount members</small></span>
                                 </a>
                             }
@@ -128,23 +128,11 @@
                 break;
 
             case "about":
-                <div class="sc-grid two">
-                    <div class="sc-col"><AboutWidget Profile="p" /></div>
-                    <div class="sc-col">
-                        @if (p.IsMe)
-                        {
-                            <form class="widget glass" @onsubmit="SaveAsync">
-                                <div class="widget-head"><h3>Edit your profile</h3></div>
-                                <label class="field"><span class="label">About you</span><textarea @bind="_bio" maxlength="@SocialGraphContract.MaxBio" placeholder="What you do, what you're into"></textarea></label>
-                                <div class="inline-form">
-                                    <label class="field" style="flex: 1"><span class="label">City</span><input @bind="_city" maxlength="80" /></label>
-                                    <label class="field" style="flex: 1"><span class="label">Website</span><input @bind="_website" maxlength="200" placeholder="example.com" /></label>
-                                </div>
-                                <button type="submit" class="btn-a wide" disabled="@_busy">Save</button>
-                                <p class="muted small" style="margin: 0">Your name and photo come from your account. Your work profile is in Gigs.</p>
-                            </form>
-                        }
-                        else
+                var d = p.Details ?? ProfileDetailsDto.Empty;
+                <div class="sc-grid">
+                    <div class="sc-col side">
+                        <AboutWidget Profile="p" Edit='() => Edit("info")' />
+                        @if (!p.IsMe)
                         {
                             <section class="widget glass">
                                 <div class="widget-head"><h3>Connections</h3></div>
@@ -155,6 +143,78 @@
                                 </dl>
                             </section>
                         }
+                    </div>
+
+                    <div class="sc-col">
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Interests</h3>@if (p.IsMe) {<button @onclick='() => Edit("interests")'>Edit</button>}</div>
+                            @if (d.Interests.Count == 0)
+                            {
+                                <p class="muted small" style="margin: 0">@(p.IsMe ? "Add what you're into: music, sport, books, food." : "Nothing here yet.")</p>
+                            }
+                            <div class="fl-row">
+                                @foreach (var interest in d.Interests)
+                                {
+                                    <div class="interest"><h4>@interest.Title</h4><p>@interest.Text</p></div>
+                                }
+                            </div>
+                        </section>
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Jobs and education</h3>@if (p.IsMe) {<button @onclick='() => Edit("work")'>Edit</button>}</div>
+                            @if (d.Jobs.Count + d.Education.Count == 0)
+                            {
+                                <p class="muted small" style="margin: 0">@(p.IsMe ? "Add where you've worked and studied." : "Nothing here yet.")</p>
+                            }
+                            <div class="fl-row">
+                                @foreach (var (title, list) in new[] { ("Jobs", d.Jobs), ("Education", d.Education) })
+                                {
+                                    if (list.Count == 0)
+                                        continue;
+                                    <div>
+                                        <h4 style="margin: 0 0 12px">@title</h4>
+                                        <div class="timeline">
+                                            @foreach (var e in list)
+                                            {
+                                                <div class="entry">
+                                                    @if (e.Period is { } when) {<span class="when">@when</span>}
+                                                    <strong>@e.Title</strong>
+                                                    @if (e.Place is { } place) {<span class="muted small">@place</span>}
+                                                    @if (e.Description is { } text) {<p>@text</p>}
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </section>
+                    </div>
+
+                    <div class="sc-col side">
+                        @if (p.IsMe)
+                        {
+                            <section class="widget glass">
+                                <div class="widget-head"><h3>Profile completion</h3></div>
+                                <div class="completion-ring" style="--pct: @p.Completion" data-label="@($"{p.Completion}%")"></div>
+                                <p class="muted small" style="margin: 0; text-align: center">@(p.Completion == 100 ? "All done. Nice!" : "Fill in your profile so people know who they're talking to.")</p>
+                                @if (p.Completion < 100)
+                                {
+                                    <button class="btn-a wide" @onclick='() => Edit("info")'>Complete my profile</button>
+                                }
+                            </section>
+                        }
+                        <section class="widget glass">
+                            <div class="widget-head"><h3>Skills<em>@d.Skills.Count</em></h3>@if (p.IsMe) {<button @onclick='() => Edit("skills")'>Edit</button>}</div>
+                            @if (d.Skills.Count == 0)
+                            {
+                                <p class="muted small" style="margin: 0">@(p.IsMe ? "What are you good at?" : "None listed.")</p>
+                            }
+                            <div class="chips">
+                                @foreach (var skill in d.Skills)
+                                {
+                                    <span class="chip-tag">@skill</span>
+                                }
+                            </div>
+                        </section>
                     </div>
                 </div>
                 break;
@@ -201,6 +261,11 @@
                 }
                 break;
         }
+
+        @if (_editing is { } section)
+        {
+            <ProfileEditor Profile="p" Section="@section" Saved="OnSaved" Closed="() => _editing = null" />
+        }
     }
 </div>
 
@@ -208,11 +273,14 @@
     [Parameter] public Guid Id { get; set; }
     [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
 
+    /// <summary>Opens the editor on arrival, on this section ("1" for the first).</summary>
+    [SupplyParameterFromQuery(Name = "edit")] public string? EditSection { get; set; }
+
     SocialProfileDto? _profile;
     FeedViewModel _feed = null!;
     List<PersonCardDto> _people = [];
     string _tab = "timeline";
-    string? _error, _bio, _city, _website;
+    string? _error, _editing;
     bool _busy, _shamwariAsked;
 
     string On(string tab) => _tab == tab ? "on" : "";
@@ -223,11 +291,9 @@
         _feed.AuthorId = Id;
         _tab = Tab ?? "timeline";
         _profile = null;
-        await Run(async () =>
-        {
-            _profile = await Api.GetJsonAsync<SocialProfileDto>($"{SocialActions.Base}/profiles/{Id}");
-            (_bio, _city, _website) = (_profile.Bio, _profile.City, _profile.Website);
-        });
+        await Run(async () => _profile = await Api.GetJsonAsync<SocialProfileDto>($"{SocialActions.Base}/profiles/{Id}"));
+        if (_profile is { IsMe: true } && EditSection is { } section)
+            Edit(section is "info" or "images" or "interests" or "work" or "skills" or "links" ? section : "info");
         await _feed.RefreshCommand.ExecuteAsync(null);
         if (_tab is "followers" or "following")
             await ShowPeopleAsync(_tab);
@@ -260,11 +326,9 @@
         _shamwariAsked = true;
     });
 
-    async Task SaveAsync() => await Run(async () =>
-    {
-        _profile = await Api.SendJsonAsync<SocialProfileDto>(HttpMethod.Put, $"{SocialActions.Base}/profile", new SaveSocialProfileRequest(_bio, _city, _website));
-        _tab = "timeline";
-    });
+    void Edit(string section) => _editing = section;
+
+    void OnSaved(SocialProfileDto saved) => _profile = saved;
 
     async Task JoinAsync(GroupSummaryDto group) => await Run(async () =>
     {
