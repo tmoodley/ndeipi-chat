@@ -1,0 +1,174 @@
+@* Taking payment (FR-PAY-01): cash, card on the shop's own terminal, and vouchers, split any way,
+   with change from cash. Sent with the cart's idempotency key (FR-PAY-02), so a retry can't
+   charge twice. With no connection, a cash sale is kept on the till to upload later (FR-OFF-01). *@
+
+<div class="pos-sheet-back" @onclick="Close">
+    <div class="pos-sheet" @onclick:stopPropagation="true">
+        @if (_approving)
+        {
+            <PinPad Title="Manager approval" Subtitle="@Quote.ApprovalReason" Busy="_busy" Error="@_error" OnPin="ApproveAsync" OnCancel="() => _approving = false" />
+        }
+        else
+        {
+            <div class="pos-row" style="justify-content: space-between">
+                <h3 style="margin: 0">Charge</h3>
+                <span class="pos-money" style="font-size: 26px; font-weight: 800">@App.Money(Quote.Total)</span>
+            </div>
+            @if (!App.Online)
+            {
+                <div class="pos-note" style="margin-top: 10px">Offline: cash only. The sale uploads when the till is back online.</div>
+            }
+
+            @foreach (var tender in _tenders)
+            {
+                <div class="pos-row" style="padding: 8px 0; border-bottom: 1px solid var(--divider)" @key="tender">
+                    <span class="grow">@PosTenders.Label(tender.Tender)@(tender.Reference is { } r ? $" · {r}" : "")</span>
+                    <span class="pos-money">@App.Money(tender.Amount)</span>
+                    <button class="link" @onclick="() => _tenders.Remove(tender)">✕</button>
+                </div>
+            }
+
+            <div class="pos-row" style="justify-content: space-between; margin: 12px 0">
+                <strong>@(Remaining > 0 ? "Still to pay" : "Change")</strong>
+                <strong class="pos-money" style="font-size: 20px; color: @(Remaining > 0 ? "var(--text)" : "var(--success)")">@App.Money(Math.Abs(Remaining))</strong>
+            </div>
+
+            @if (Remaining > 0)
+            {
+                <div class="pos-row" style="gap: 6px; margin-bottom: 10px">
+                    @foreach (var tender in PosTenders.All.Where(t => App.Online || t == PosTenders.Cash))
+                    {
+                        <button class="@(_tender == tender ? "primary" : "secondary") small" @key="tender" @onclick="() => _tender = tender">@PosTenders.Label(tender)</button>
+                    }
+                </div>
+                @if (_tender == PosTenders.Cash)
+                {
+                    <div class="pos-row" style="gap: 6px; flex-wrap: wrap; margin-bottom: 10px">
+                        @foreach (var amount in QuickCash())
+                        {
+                            <button class="secondary" @key="amount" @onclick="() => AddTender(PosTenders.Cash, amount, null)">@App.Money(amount)</button>
+                        }
+                    </div>
+                }
+                <div class="pos-fields">
+                    <label class="pos-field">Amount<input inputmode="decimal" @bind="_amount" placeholder="@Remaining.ToString("0.00", CultureInfo.InvariantCulture)" /></label>
+                    @if (_tender != PosTenders.Cash)
+                    {
+                        <label class="pos-field">@(_tender == PosTenders.Card ? "Terminal approval code" : "Voucher code")<input @bind="_reference" maxlength="64" /></label>
+                    }
+                </div>
+                <button class="secondary" style="margin-top: 8px" @onclick="AddTyped">Add @PosTenders.Label(_tender).ToLowerInvariant()</button>
+                @if (_tender == PosTenders.Card)
+                {
+                    <p class="pos-muted">Take the card on your payment terminal first. Ndeipi never sees the card's number.</p>
+                }
+            }
+
+            @if (_error is not null)
+            {
+                <p class="pos-error">@_error</p>
+            }
+            <div class="pos-actions">
+                <button class="secondary" @onclick="Close">Back</button>
+                <button class="primary pos-big" style="flex: 1" disabled="@(_busy || Remaining > 0 || _tenders.Count == 0)" @onclick="CompleteAsync">
+                    @(_busy ? "Recording…" : "Complete sale")
+                </button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public PosQuoteDto Quote { get; set; } = null!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<PosSaleDto> OnPaid { get; set; }
+
+    readonly List<TenderRequest> _tenders = [];
+    string _tender = PosTenders.Cash;
+    string? _amount, _reference, _error, _approvalPin;
+    bool _busy, _approving;
+
+    decimal Remaining => Quote.Total - _tenders.Sum(t => t.Amount);
+
+    /// <summary>The exact amount, then the next round notes above it.</summary>
+    IEnumerable<decimal> QuickCash()
+    {
+        var due = Remaining;
+        yield return due;
+        foreach (var note in new[] { 1m, 5m, 10m, 20m, 50m, 100m })
+        {
+            var rounded = Math.Ceiling(due / note) * note;
+            if (rounded > due && rounded <= due + 100)
+                yield return rounded;
+        }
+    }
+
+    void AddTyped()
+    {
+        var amount = PosFormat.Parse(_amount) ?? Remaining;
+        AddTender(_tender, amount, _reference);
+    }
+
+    void AddTender(string tender, decimal amount, string? reference)
+    {
+        _error = null;
+        amount = PosPricing.Money(amount);
+        if (amount <= 0)
+            return;
+        if (tender != PosTenders.Cash && amount > Remaining)
+        {
+            _error = $"{PosTenders.Label(tender)} can't be more than what's left to pay.";
+            return;
+        }
+        _tenders.Add(new TenderRequest(tender, amount, string.IsNullOrWhiteSpace(reference) ? null : reference.Trim()));
+        (_amount, _reference) = (null, null);
+    }
+
+    async Task CompleteAsync()
+    {
+        if (Quote.NeedsApproval && _approvalPin is null)
+        {
+            _approving = true;
+            return;
+        }
+        (_busy, _error) = (true, null);
+        var request = App.Checkout(_tenders, _approvalPin);
+        try
+        {
+            var sale = await App.Api.TillAsync<PosSaleDto>(HttpMethod.Post, "/sales", request);
+            await OnPaid.InvokeAsync(sale!);
+        }
+        catch (PosException ex) when (ex.Offline)
+        {
+            if (_tenders.Any(t => t.Tender != PosTenders.Cash))
+                _error = "No connection: card and voucher payments need one. Take cash, or try again.";
+            else if (Quote.NeedsApproval)
+                _error = "No connection: an approved discount needs one. Remove the discount, or try again.";
+            else
+                await OnPaid.InvokeAsync(await App.QueueAsync(request, Quote, _tenders));
+        }
+        catch (PosException ex) when (ex.Locked)
+        {
+            await App.HandleAsync(ex);
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+            // A wrong PIN: ask again rather than resend it.
+            _approvalPin = null;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task ApproveAsync(string pin)
+    {
+        (_approvalPin, _approving) = (pin, false);
+        await CompleteAsync();
+    }
+
+    Task Close() => OnClose.InvokeAsync();
+}

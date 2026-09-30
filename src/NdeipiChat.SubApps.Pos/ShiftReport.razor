@@ -1,0 +1,55 @@
+@* A shift's figures: the X report while open, the Z report once closed (FR-AUTH-03). Printable. *@
+
+<div class="pos-card">
+    <div class="pos-row" style="justify-content: space-between">
+        <h3 style="margin: 0">@Title</h3>
+        <button class="link" @onclick="PrintAsync">🖨 Print</button>
+    </div>
+    <div class="pos-receipt" style="max-width: none; margin-top: 10px">
+        <div class="center"><strong>@Title</strong></div>
+        <div>@Shift.CashierName · opened @PosFormat.Time(Shift.OpenedAt)@(Shift.ClosedAt is { } closed ? $" · closed {PosFormat.Time(closed)}" : "")</div>
+        <hr />
+        <div class="line"><span>Sales</span><span>@Shift.Totals.Sales</span></div>
+        <div class="line"><span>Gross</span><span>@N(Shift.Totals.Gross)</span></div>
+        <div class="line"><span>Discounts</span><span>−@N(Shift.Totals.Discounts)</span></div>
+        <div class="line"><span>Tax</span><span>@N(Shift.Totals.Tax)</span></div>
+        <div class="line"><strong>Net takings</strong><strong>@N(Shift.Totals.Net)</strong></div>
+        <hr />
+        @foreach (var (tender, amount) in Shift.Totals.ByTender)
+        {
+            <div class="line"><span>@PosTenders.Label(tender)</span><span>@N(amount)</span></div>
+        }
+        <div class="line"><span>Voids</span><span>@Shift.Totals.Voids</span></div>
+        <div class="line"><span>Refunds (@Shift.Totals.Refunds)</span><span>−@N(Shift.Totals.Refunded)</span></div>
+        <hr />
+        <div class="line"><span>Opening float</span><span>@N(Shift.OpeningFloat)</span></div>
+        <div class="line"><span>Cash drops</span><span>−@N(Shift.Totals.Drops)</span></div>
+        <div class="line"><span>Paid in</span><span>@N(Shift.Totals.PaidIn)</span></div>
+        <div class="line"><span>No-sale opens</span><span>@Shift.Totals.NoSales</span></div>
+        <div class="line"><strong>Expected cash</strong><strong>@N(Shift.Totals.ExpectedCash)</strong></div>
+        @if (Shift.CountedCash is { } counted)
+        {
+            <div class="line"><span>Counted</span><span>@N(counted)</span></div>
+            <div class="line"><strong>Variance</strong><strong>@(Shift.Totals.Variance is { } v ? (v >= 0 ? "+" : "") + N(v) : "")</strong></div>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public PosShiftDto Shift { get; set; } = null!;
+    [Parameter] public string Title { get; set; } = "Shift";
+
+    static string N(decimal amount) => amount.ToString("0.00", CultureInfo.InvariantCulture);
+
+    async Task PrintAsync()
+    {
+        try
+        {
+            await (await App.Module).InvokeVoidAsync("printReceipt");
+        }
+        catch (JSException)
+        {
+        }
+    }
+}

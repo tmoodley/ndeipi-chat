@@ -30,8 +30,8 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
         var manifest = await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
 
         // Built-in apps, then Events, Gigs and Inventory, which appsettings.json adds as runtime-loaded sub-apps.
-        Assert.Equal([BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Shamwaris, BuiltInApps.Herd, BuiltInApps.Wallet, EventsContract.AppId, GigsContract.AppId, InventoryContract.AppId], manifest.Apps.Select(a => a.Id));
-        Assert.Equal([true, true, true, true, false, false, false, false], manifest.Apps.Select(a => a.Pinned));
+        Assert.Equal([BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Shamwaris, BuiltInApps.Herd, BuiltInApps.Wallet, EventsContract.AppId, GigsContract.AppId, PosContract.AppId, InventoryContract.AppId], manifest.Apps.Select(a => a.Id));
+        Assert.Equal([true, true, true, true, false, false, false, false, false], manifest.Apps.Select(a => a.Pinned));
         var herd = manifest.Apps.Single(a => a.Id == BuiltInApps.Herd);
         Assert.Equal(("Herd", "herd", "1.0.0", (string?)null, (string?)null), (herd.Title, herd.Route, herd.Version, herd.BundleUri, herd.Sha256));
         Assert.Contains("livestock", herd.Scopes);

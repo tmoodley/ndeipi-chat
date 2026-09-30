@@ -1,0 +1,61 @@
+@* Starting out: a business, its first store, and how it charges tax. The person becomes its
+   Merchant Admin, and sets a till PIN next. *@
+
+<div class="pos-card" style="max-width: 560px; margin: 0 auto">
+    <h3 style="margin-top: 0">Set up your business</h3>
+    <p class="pos-muted" style="margin-top: 0">You'll be its Merchant Admin: you can add staff, stores and products afterwards.</p>
+    <div class="pos-fields">
+        <label class="pos-field">Business name<input @bind="_name" maxlength="120" placeholder="e.g. Kudzi's Corner Shop" /></label>
+        <label class="pos-field">First store<input @bind="_store" maxlength="120" placeholder="e.g. Main Street" /></label>
+        <label class="pos-field">Currency<input @bind="_currency" maxlength="8" placeholder="USD" /></label>
+        <label class="pos-field">Tax rate %<input @bind="_rate" inputmode="decimal" placeholder="15" /></label>
+    </div>
+    <label class="pos-row" style="margin-top: 12px">
+        <input type="checkbox" @bind="_inclusive" />
+        <span class="grow">Prices include tax (VAT). Untick if tax is added at the till.</span>
+    </label>
+    @if (_error is not null)
+    {
+        <p class="pos-error">@_error</p>
+    }
+    <div class="pos-actions">
+        <button class="primary pos-big" disabled="@_busy" @onclick="CreateAsync">@(_busy ? "Setting up…" : "Create business")</button>
+        @if (App.Merchants.Count > 0)
+        {
+            <button class="link" @onclick="() => App.Go(PosView.Pick)">Cancel</button>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    string _name = "", _store = "", _currency = "USD", _rate = "15";
+    bool _inclusive = true, _busy;
+    string? _error;
+
+    async Task CreateAsync()
+    {
+        if (PosFormat.Parse(_rate) is not { } rate)
+        {
+            _error = "Enter a tax rate, e.g. 15.";
+            return;
+        }
+        (_busy, _error) = (true, null);
+        try
+        {
+            await App.Api.SendAsync<PosMerchantDto>(HttpMethod.Post, $"{PosApi.Base}/merchants", new CreateMerchantRequest(_name, _currency, _inclusive, _store, rate));
+            await App.LoadMerchantsAsync();
+            // Straight to choosing a PIN: the till needs one.
+            App.Go(PosView.Account);
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

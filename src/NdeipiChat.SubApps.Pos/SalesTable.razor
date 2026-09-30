@@ -1,0 +1,36 @@
+@* A list of sales: receipt, time, cashier, status and total; tap one to open it. *@
+
+@if (Sales.Count == 0)
+{
+    <p class="pos-muted">No sales.</p>
+}
+else
+{
+    <table class="pos-table">
+        <tr><th>Receipt</th><th>Time</th><th>Cashier</th><th class="num">Total</th></tr>
+        @foreach (var sale in Sales)
+        {
+            <tr class="click" @key="sale.Id" @onclick="() => OnOpen.InvokeAsync(sale)">
+                <td>
+                    @sale.ReceiptNumber
+                    @if (sale.Status != PosSaleStatuses.Completed)
+                    {
+                        <span class="pos-badge void">@sale.Status</span>
+                    }
+                    @if (sale.Offline)
+                    {
+                        <span class="pos-badge">offline</span>
+                    }
+                </td>
+                <td>@PosFormat.Time(sale.OccurredAt)</td>
+                <td>@sale.CashierName</td>
+                <td class="num">@PosFormat.Money(sale.Total, sale.Currency)</td>
+            </tr>
+        }
+    </table>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<PosSaleDto> Sales { get; set; } = [];
+    [Parameter] public EventCallback<PosSaleDto> OnOpen { get; set; }
+}

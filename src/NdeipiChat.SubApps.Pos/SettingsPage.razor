@@ -1,0 +1,87 @@
+@* The business's settings (Merchant Admin): name, currency, tax inclusive or not, the discount
+   limit before a manager's PIN, and how soon the till locks; its stores and their tax rates. *@
+
+<div class="pos-grid2">
+    <div class="pos-card">
+        <h3 style="margin-top: 0">Business</h3>
+        <div class="pos-fields">
+            <label class="pos-field">Name<input @bind="_name" maxlength="120" /></label>
+            <label class="pos-field">Currency<input @bind="_currency" maxlength="8" /></label>
+            <label class="pos-field">Discount limit % (more needs a manager)<input inputmode="decimal" @bind="_limit" /></label>
+            <label class="pos-field">Lock the till after (seconds)<input inputmode="numeric" @bind="_lock" /></label>
+        </div>
+        <label class="pos-row" style="margin-top: 10px"><input type="checkbox" @bind="_inclusive" /> <span>Prices include tax (VAT)</span></label>
+        <div class="pos-actions"><button class="primary" disabled="@_busy" @onclick="SaveMerchantAsync">Save</button></div>
+    </div>
+
+    <div class="pos-card">
+        <h3 style="margin-top: 0">Stores</h3>
+        @foreach (var store in _stores)
+        {
+            <div class="pos-fields" style="margin-bottom: 8px" @key="store">
+                <input @bind="store.Name" maxlength="120" placeholder="Name" />
+                <input @bind="store.Address" maxlength="300" placeholder="Address" />
+                <input inputmode="decimal" @bind="store.TaxRate" placeholder="Tax %" />
+                <button class="secondary small" @onclick="() => SaveStoreAsync(store)">@(store.Id is null ? "Add store" : "Save")</button>
+            </div>
+        }
+        <button class="link" @onclick="AddStoreRow">＋ Another store</button>
+    </div>
+</div>
+@if (_message is not null)
+{
+    <p class="@(_ok ? "pos-badge ok" : "pos-error")">@_message</p>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    sealed class StoreForm { public Guid? Id { get; set; } public string Name { get; set; } = ""; public string? Address { get; set; } public string TaxRate { get; set; } = "0"; }
+
+    string _name = "", _currency = "", _limit = "", _lock = "";
+    bool _inclusive, _busy, _ok;
+    string? _message;
+    List<StoreForm> _stores = [];
+
+    protected override void OnInitialized()
+    {
+        var m = App.Merchant!;
+        (_name, _currency, _inclusive) = (m.Name, m.Currency, m.TaxInclusive);
+        _limit = m.DiscountLimitPercent.ToString("0.##", CultureInfo.InvariantCulture);
+        _lock = m.LockSeconds.ToString(CultureInfo.InvariantCulture);
+        _stores = m.Stores.Select(s => new StoreForm { Id = s.Id, Name = s.Name, Address = s.Address, TaxRate = s.TaxRatePercent.ToString("0.##", CultureInfo.InvariantCulture) }).ToList();
+    }
+
+    void AddStoreRow() => _stores.Add(new StoreForm { TaxRate = App.Store?.TaxRatePercent.ToString("0.##", CultureInfo.InvariantCulture) ?? "0" });
+
+    Task SaveMerchantAsync() => RunAsync(() => App.Api.SendAsync<PosMerchantDto>(HttpMethod.Put, $"{PosApi.Base}/merchants/{App.Merchant!.Id}",
+        new SaveMerchantRequest(_name, _currency, _inclusive, PosFormat.Parse(_limit) ?? 10, int.TryParse(_lock, out var seconds) ? seconds : PosContract.DefaultLockSeconds)));
+
+    Task SaveStoreAsync(StoreForm store) => RunAsync(async () =>
+    {
+        var request = new SaveStoreRequest(store.Name, store.Address, PosFormat.Parse(store.TaxRate) ?? 0);
+        if (store.Id is { } id)
+            await App.Api.SendAsync<PosStoreDto>(HttpMethod.Put, $"{PosApi.Base}/stores/{id}", request);
+        else
+            store.Id = (await App.Api.SendAsync<PosStoreDto>(HttpMethod.Post, $"{PosApi.Base}/merchants/{App.Merchant!.Id}/stores", request))!.Id;
+    });
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _message) = (true, null);
+        try
+        {
+            await work();
+            (_ok, _message) = (true, "Saved.");
+            await App.LoadMerchantsAsync();
+        }
+        catch (PosException ex)
+        {
+            (_ok, _message) = (false, ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

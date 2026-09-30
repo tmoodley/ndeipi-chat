@@ -23,6 +23,7 @@
     <ProjectReference Include="..\NdeipiChat.SubApps.Inventory\NdeipiChat.SubApps.Inventory.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.Events\NdeipiChat.SubApps.Events.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.Gigs\NdeipiChat.SubApps.Gigs.csproj" />
+    <ProjectReference Include="..\NdeipiChat.SubApps.Pos\NdeipiChat.SubApps.Pos.csproj" />
   </ItemGroup>
 
   <!-- Sub-apps (SRS SR-02): published with the site but not downloaded until first opened. The
@@ -35,6 +36,8 @@
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.Events" />
     <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.Gigs.wasm" />
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.Gigs" />
+    <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.Pos.wasm" />
+    <TrimmerRootAssembly Include="NdeipiChat.SubApps.Pos" />
   </ItemGroup>
 
 </Project>

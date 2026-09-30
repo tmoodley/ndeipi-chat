@@ -1,0 +1,60 @@
+@* Your own till PIN for this business: 4 to 6 digits, unique among its staff. *@
+
+<div class="pos-card" style="max-width: 420px; margin: 0 auto">
+    <h3 style="margin-top: 0">@(App.Merchant?.MyPinSet == true ? "Change your PIN" : "Choose your till PIN")</h3>
+    <p class="pos-muted" style="margin-top: 0">
+        You'll enter it to unlock the till@(App.Merchant is { } m && PosRoles.CanManage(m.MyRole) ? " and to approve discounts, voids and refunds" : "").
+        Keep it to yourself: sales and approvals are recorded against it.
+    </p>
+    <div class="pos-fields">
+        <label class="pos-field">New PIN<input type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" @bind="_pin" /></label>
+        <label class="pos-field">Again<input type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" @bind="_again" /></label>
+    </div>
+    @if (_error is not null)
+    {
+        <p class="pos-error">@_error</p>
+    }
+    @if (_saved)
+    {
+        <p class="pos-badge ok">PIN saved</p>
+    }
+    <div class="pos-actions">
+        <button class="primary pos-big" disabled="@_busy" @onclick="SaveAsync">Save PIN</button>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    string _pin = "", _again = "";
+    string? _error;
+    bool _busy, _saved;
+
+    async Task SaveAsync()
+    {
+        if (App.Merchant is null)
+            return;
+        if (_pin != _again)
+        {
+            _error = "The two PINs don't match.";
+            return;
+        }
+        (_busy, _error, _saved) = (true, null, false);
+        try
+        {
+            await App.Api.SendAsync<object>(HttpMethod.Put, $"{PosApi.Base}/merchants/{App.Merchant.Id}/pin", new SetPinRequest(_pin));
+            (_pin, _again, _saved) = ("", "", true);
+            await App.LoadMerchantsAsync();
+            if (App.Merchant is { } m && PosRoles.CanSell(m.MyRole) && App.Session is null)
+                App.Go(PosView.Locked);
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,217 @@
+@* The catalogue (FR-CAT-01/02): categories, and products with their codes, price, tax, variants
+   and modifiers. Managers and admins only. *@
+
+<div class="pos-grid2">
+    <div class="pos-card">
+        <div class="pos-row" style="margin-bottom: 10px">
+            <input class="grow" @bind="_search" @bind:event="oninput" placeholder="Search products" />
+            <button class="primary" @onclick="New">＋ Product</button>
+        </div>
+        <table class="pos-table">
+            <tr><th></th><th>Product</th><th>Code</th><th class="num">Price</th></tr>
+            @foreach (var product in Shown)
+            {
+                <tr class="click" @key="product.Id" @onclick="() => Edit(product)" style="@(product.IsActive ? "" : "opacity: .5")">
+                    <td style="font-size: 22px">@product.Icon</td>
+                    <td>@product.Name@(product.Variants.Count switch { 0 => "", 1 => " · 1 variant", var n => $" · {n} variants" })</td>
+                    <td class="pos-muted">@(product.Barcode ?? product.Sku)</td>
+                    <td class="num">@App.Money(product.Price)</td>
+                </tr>
+            }
+        </table>
+        @if (App.Catalog is { Products.Count: 0 })
+        {
+            <p class="pos-muted">No products yet: add your first.</p>
+        }
+    </div>
+
+    <div class="pos-card">
+        <h3 style="margin-top: 0">Categories</h3>
+        @foreach (var category in App.Catalog?.Categories ?? [])
+        {
+            <div class="pos-row" style="padding: 4px 0" @key="category.Id">
+                <span class="grow">@category.Icon @category.Name</span>
+                <button class="link" style="color: var(--danger)" @onclick="() => DeleteCategoryAsync(category)">Remove</button>
+            </div>
+        }
+        <form class="pos-row" style="margin-top: 8px" @onsubmit="AddCategoryAsync">
+            <input style="max-width: 64px; text-align: center" @bind="_categoryIcon" maxlength="4" placeholder="🍔" />
+            <input class="grow" @bind="_categoryName" maxlength="60" placeholder="New category" />
+            <button type="submit" class="secondary">Add</button>
+        </form>
+    </div>
+</div>
+
+@if (_editing is { } form)
+{
+    <div class="pos-sheet-back" @onclick="() => _editing = null">
+        <div class="pos-sheet" @onclick:stopPropagation="true">
+            <h3>@(form.Id is null ? "New product" : "Edit product")</h3>
+            <div class="pos-fields">
+                <label class="pos-field">Icon<input @bind="form.Icon" maxlength="4" /></label>
+                <label class="pos-field" style="grid-column: span 2">Name<input @bind="form.Name" maxlength="120" /></label>
+                <label class="pos-field">Price<input inputmode="decimal" @bind="form.Price" /></label>
+                <label class="pos-field">Category
+                    <select @bind="form.CategoryId">
+                        <option value="">None</option>
+                        @foreach (var category in App.Catalog?.Categories ?? [])
+                        {
+                            <option value="@category.Id">@category.Name</option>
+                        }
+                    </select>
+                </label>
+                <label class="pos-field">Barcode<input @bind="form.Barcode" maxlength="64" placeholder="Scan it here" /></label>
+                <label class="pos-field">SKU<input @bind="form.Sku" maxlength="64" /></label>
+                <label class="pos-field">Tax % (blank: the store's)<input inputmode="decimal" @bind="form.TaxRate" /></label>
+                <label class="pos-field">Warn when stock is at<input inputmode="numeric" @bind="form.SafetyStock" /></label>
+            </div>
+            <label class="pos-row" style="margin-top: 10px"><input type="checkbox" @bind="form.IsActive" /> <span>For sale</span></label>
+
+            <h4>Variants <span class="pos-muted">(e.g. sizes, each with its own price and codes)</span></h4>
+            @foreach (var variant in form.Variants)
+            {
+                <div class="pos-fields" style="margin-bottom: 6px" @key="variant">
+                    <input @bind="variant.Name" placeholder="Name, e.g. Large" maxlength="60" />
+                    <input inputmode="decimal" @bind="variant.Price" placeholder="Price" />
+                    <input @bind="variant.Barcode" placeholder="Barcode" maxlength="64" />
+                    <button class="link" style="color: var(--danger)" @onclick="() => form.Variants.Remove(variant)">Remove</button>
+                </div>
+            }
+            <button class="link" @onclick="() => form.Variants.Add(new VariantForm())">＋ Variant</button>
+
+            <h4>Modifiers <span class="pos-muted">(add-ons, e.g. "Extra cheese")</span></h4>
+            @foreach (var modifier in form.Modifiers)
+            {
+                <div class="pos-fields" style="margin-bottom: 6px" @key="modifier">
+                    <input @bind="modifier.Name" placeholder="Name" maxlength="60" />
+                    <input inputmode="decimal" @bind="modifier.Price" placeholder="Price (0 if free)" />
+                    <button class="link" style="color: var(--danger)" @onclick="() => form.Modifiers.Remove(modifier)">Remove</button>
+                </div>
+            }
+            <button class="link" @onclick="() => form.Modifiers.Add(new ModifierForm())">＋ Modifier</button>
+
+            @if (_error is not null)
+            {
+                <p class="pos-error">@_error</p>
+            }
+            <div class="pos-actions">
+                <button class="secondary" @onclick="() => _editing = null">Cancel</button>
+                <button class="primary" disabled="@_busy" @onclick="SaveAsync">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    sealed class ProductForm
+    {
+        public Guid? Id { get; set; }
+        public string Icon { get; set; } = "📦";
+        public string Name { get; set; } = "";
+        public string Price { get; set; } = "";
+        public string CategoryId { get; set; } = "";
+        public string? Barcode { get; set; }
+        public string? Sku { get; set; }
+        public string? TaxRate { get; set; }
+        public string SafetyStock { get; set; } = "0";
+        public bool IsActive { get; set; } = true;
+        public List<VariantForm> Variants { get; set; } = [];
+        public List<ModifierForm> Modifiers { get; set; } = [];
+    }
+
+    sealed class VariantForm { public string Name { get; set; } = ""; public string Price { get; set; } = ""; public string? Barcode { get; set; } public string? Sku { get; set; } }
+    sealed class ModifierForm { public string Name { get; set; } = ""; public string Price { get; set; } = ""; }
+
+    string _search = "", _categoryName = "", _categoryIcon = "";
+    string? _error;
+    bool _busy;
+    ProductForm? _editing;
+
+    IEnumerable<PosProductDto> Shown => (App.Catalog?.Products ?? [])
+        .Where(p => _search.Length == 0 || p.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || p.Barcode == _search || p.Sku == _search);
+
+    static string N(decimal value) => value.ToString("0.##", CultureInfo.InvariantCulture);
+
+    void New() => (_editing, _error) = (new ProductForm(), null);
+
+    void Edit(PosProductDto p) => (_editing, _error) = (new ProductForm
+    {
+        Id = p.Id,
+        Icon = p.Icon,
+        Name = p.Name,
+        Price = N(p.Price),
+        CategoryId = p.CategoryId?.ToString() ?? "",
+        Barcode = p.Barcode,
+        Sku = p.Sku,
+        TaxRate = p.TaxRatePercent is { } rate ? N(rate) : null,
+        SafetyStock = p.SafetyStock.ToString(CultureInfo.InvariantCulture),
+        IsActive = p.IsActive,
+        Variants = p.Variants.Select(v => new VariantForm { Name = v.Name, Price = N(v.Price), Barcode = v.Barcode, Sku = v.Sku }).ToList(),
+        Modifiers = p.Modifiers.Select(m => new ModifierForm { Name = m.Name, Price = N(m.Price) }).ToList()
+    }, null);
+
+    async Task SaveAsync()
+    {
+        if (_editing is not { } form)
+            return;
+        if (PosFormat.Parse(form.Price) is not { } price)
+        {
+            _error = "Enter a price.";
+            return;
+        }
+        var request = new SaveProductRequest(
+            Guid.TryParse(form.CategoryId, out var category) ? category : null,
+            form.Name, form.Icon, form.Sku, form.Barcode, price,
+            string.IsNullOrWhiteSpace(form.TaxRate) ? null : PosFormat.Parse(form.TaxRate),
+            form.IsActive,
+            int.TryParse(form.SafetyStock, out var safety) ? safety : 0,
+            form.Variants.Select(v => new PosVariantDto(v.Name, PosFormat.Parse(v.Price) ?? price, v.Sku, v.Barcode)).ToList(),
+            form.Modifiers.Select(m => new PosModifierDto(m.Name, PosFormat.Parse(m.Price) ?? 0)).ToList());
+        (_busy, _error) = (true, null);
+        try
+        {
+            var path = $"{PosApi.Base}/merchants/{App.Merchant!.Id}/products" + (form.Id is { } id ? $"/{id}" : "");
+            await App.Api.SendAsync<PosProductDto>(form.Id is null ? HttpMethod.Post : HttpMethod.Put, path, request);
+            _editing = null;
+            await App.LoadCatalogAsync();
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task AddCategoryAsync()
+    {
+        try
+        {
+            await App.Api.SendAsync<PosCategoryDto>(HttpMethod.Post, $"{PosApi.Base}/merchants/{App.Merchant!.Id}/categories",
+                new SaveCategoryRequest(_categoryName, _categoryIcon, null, App.Catalog?.Categories.Count ?? 0));
+            (_categoryName, _categoryIcon) = ("", "");
+            await App.LoadCatalogAsync();
+        }
+        catch (PosException ex)
+        {
+            App.Error = ex.Message;
+        }
+    }
+
+    async Task DeleteCategoryAsync(PosCategoryDto category)
+    {
+        try
+        {
+            await App.Api.SendAsync<object>(HttpMethod.Delete, $"{PosApi.Base}/categories/{category.Id}", null);
+            await App.LoadCatalogAsync();
+        }
+        catch (PosException ex)
+        {
+            App.Error = ex.Message;
+        }
+    }
+}

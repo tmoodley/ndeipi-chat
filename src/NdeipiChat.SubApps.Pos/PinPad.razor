@@ -1,0 +1,88 @@
+@* A PIN pad: unlocking the till (FR-AUTH-01) and a manager's approval (FR-CAT-04, voids and
+   refunds). Digits by tap or keyboard; the PIN shows as dots. *@
+
+<style>
+    .pin { text-align: center; }
+    .pin h3 { margin: 0; }
+    .pin .dots { display: flex; justify-content: center; gap: 12px; margin: 16px 0; min-height: 18px; }
+    .pin .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--divider); }
+    .pin .dot.on { background: var(--brand); }
+    .pin .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; max-width: 300px; margin: 0 auto; }
+    .pin .keys button { height: 62px; font-size: 24px; font-weight: 700; border-radius: 18px; }
+    .pin input.hidden { position: absolute; opacity: 0; width: 1px; height: 1px; }
+</style>
+
+<div class="pin pos-card">
+    <h3>@Title</h3>
+    @if (Subtitle is not null)
+    {
+        <div class="pos-muted">@Subtitle</div>
+    }
+    <div class="dots">
+        @for (var i = 0; i < Math.Max(PosContract.MinPinLength, _pin.Length); i++)
+        {
+            <span class="dot @(i < _pin.Length ? "on" : "")"></span>
+        }
+    </div>
+    @if (Error is not null)
+    {
+        <p class="pos-error">@Error</p>
+    }
+    <input class="hidden" @ref="_keyboard" inputmode="none" autocomplete="off" @onkeydown="OnKeyAsync" aria-label="PIN" />
+    <div class="keys">
+        @foreach (var digit in "123456789")
+        {
+            <button class="secondary" disabled="@Busy" @onclick="() => Type(digit)">@digit</button>
+        }
+        <button class="secondary" disabled="@Busy" @onclick="Clear">C</button>
+        <button class="secondary" disabled="@Busy" @onclick="() => Type('0')">0</button>
+        <button class="primary" disabled="@(Busy || _pin.Length < PosContract.MinPinLength)" @onclick="SubmitAsync">@(Busy ? "…" : "OK")</button>
+    </div>
+    @if (OnCancel.HasDelegate)
+    {
+        <button class="link" style="margin-top: 12px" @onclick="() => OnCancel.InvokeAsync()">Cancel</button>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "Enter your PIN";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback<string> OnPin { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    string _pin = "";
+    ElementReference _keyboard;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await _keyboard.FocusAsync();
+    }
+
+    void Type(char digit)
+    {
+        if (_pin.Length < PosContract.MaxPinLength)
+            _pin += digit;
+    }
+
+    void Clear() => _pin = "";
+
+    async Task OnKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key.Length == 1 && char.IsAsciiDigit(e.Key[0]))
+            Type(e.Key[0]);
+        else if (e.Key == "Backspace" && _pin.Length > 0)
+            _pin = _pin[..^1];
+        else if (e.Key == "Enter" && _pin.Length >= PosContract.MinPinLength)
+            await SubmitAsync();
+    }
+
+    async Task SubmitAsync()
+    {
+        var pin = _pin;
+        _pin = "";
+        await OnPin.InvokeAsync(pin);
+    }
+}

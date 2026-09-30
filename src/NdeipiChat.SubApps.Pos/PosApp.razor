@@ -1,0 +1,516 @@
+@* The POS sub-app (SRS "Ndeipi Super App — Point of Sale (POS) Module"). One screen holds the till:
+   the business and store, the PIN-unlocked till session, the catalogue (kept on the device to sell
+   offline), the cart, and sales waiting to upload. The back office is for managers, admins and
+   auditors, and works without the till unlocked. *@
+@attribute [SubAppRoot(PosContract.AppId)]
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<style>
+    .pos { --pos-gap: 12px; }
+    .pos-top { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; flex-wrap: wrap; }
+    .pos-top .grow { flex: 1; min-width: 0; }
+    .pos-top .store { font-weight: 800; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .pos-top .who { font-size: 13px; color: var(--muted); }
+    .pos-pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 14px; padding: 5px 10px; font-size: 12px; font-weight: 700; background: var(--secondary); }
+    .pos-pill.off { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .pos-pill.on { background: rgba(31, 169, 113, .14); color: var(--success); }
+    .pos-tabs { display: flex; gap: 6px; padding: 10px 14px 0; overflow-x: auto; scrollbar-width: none; }
+    .pos-tabs button { flex-shrink: 0; border-radius: 16px; padding: 8px 14px; font-size: 14px; }
+    .pos-tabs button.on { background: var(--brand); color: #fff; }
+    .pos-body { padding: 12px 14px 24px; }
+    .pos-card { background: var(--glass, var(--surface)); border: 1px solid var(--glass-border, transparent); border-radius: 18px; padding: 14px; box-shadow: var(--shadow, none); }
+    .pos-grid2 { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: var(--pos-gap); align-items: start; }
+    @@media (max-width: 860px) { .pos-grid2 { grid-template-columns: 1fr; } }
+    .pos-row { display: flex; align-items: center; gap: 10px; }
+    .pos-row .grow { flex: 1; min-width: 0; }
+    .pos-muted { color: var(--muted); font-size: 13px; }
+    .pos-error { color: var(--danger); font-size: 14px; margin: 6px 0; }
+    .pos-note { background: rgba(255, 196, 0, .16); color: #8A6100; border-radius: 12px; padding: 8px 12px; font-size: 14px; }
+    .pos-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+    .pos-field input, .pos-field select, .pos-field textarea { color: var(--text); font-weight: 500; font-size: 15px; }
+    .pos-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .pos-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .pos-big { height: 54px; font-size: 18px; border-radius: 16px; width: 100%; }
+    .pos-money { font-variant-numeric: tabular-nums; }
+    .pos-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .pos-table td, .pos-table th { padding: 8px 6px; border-bottom: 1px solid var(--divider); text-align: left; }
+    .pos-table td.num, .pos-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .pos-table tr.click { cursor: pointer; }
+    .pos-badge { display: inline-block; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 800; background: var(--secondary); }
+    .pos-badge.low { background: rgba(255, 196, 0, .22); color: #8A6100; }
+    .pos-badge.neg, .pos-badge.void { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .pos-badge.ok { background: rgba(31, 169, 113, .14); color: var(--success); }
+    .pos-sheet-back { position: fixed; inset: 0; background: rgba(12, 16, 32, .45); z-index: 60; display: flex; align-items: flex-end; justify-content: center; }
+    .pos-sheet { width: min(560px, 100%); max-height: 92vh; overflow-y: auto; background: var(--glass-strong, var(--page)); border-radius: 22px 22px 0 0; padding: 18px; }
+    @@media (min-width: 700px) { .pos-sheet-back { align-items: center; } .pos-sheet { border-radius: 22px; } }
+    .pos-sheet h3 { margin: 0 0 10px; }
+    .pos-receipt { font-family: ui-monospace, Consolas, monospace; font-size: 13px; background: #fff; color: #111; border-radius: 10px; padding: 14px; max-width: 360px; margin: 0 auto; }
+    .pos-receipt .line { display: flex; justify-content: space-between; gap: 8px; }
+    .pos-receipt .center { text-align: center; }
+    .pos-receipt hr { border: 0; border-top: 1px dashed #999; margin: 8px 0; }
+    @@media print {
+        body.pos-printing * { visibility: hidden !important; }
+        body.pos-printing .pos-receipt, body.pos-printing .pos-receipt * { visibility: visible !important; }
+        body.pos-printing .pos-receipt { position: fixed; left: 0; top: 0; width: 72mm; max-width: 72mm; padding: 0; border-radius: 0; }
+    }
+</style>
+
+<header class="bar">
+    <button class="bar-back link" title="Back" @onclick="Context.NavigateToLauncher">‹</button>
+    <h1>POS</h1>
+</header>
+
+<div class="pos">
+    @if (Merchant is { } m && Store is { } s && View is not PosView.Setup)
+    {
+        <div class="pos-top">
+            <div class="grow">
+                <div class="store">@m.Name · @s.Name</div>
+                <div class="who">@(Session is { } t ? $"{t.StaffName} · {PosRoles.Label(t.Role)}" : $"Locked · you're {PosRoles.Label(m.MyRole).ToLowerInvariant()}")</div>
+            </div>
+            <span class="pos-pill @(Online ? "on" : "off")">@(Online ? "● Online" : "● Offline")</span>
+            @if (Queue.Count > 0)
+            {
+                <button class="pos-pill" title="Sales waiting to upload" @onclick="SyncAsync">⤴ @Queue.Count to upload</button>
+            }
+            @if (Session is not null)
+            {
+                <button class="secondary small" @onclick="LockAsync">🔒 Lock</button>
+            }
+        </div>
+        <nav class="pos-tabs">
+            @if (PosRoles.CanSell(m.MyRole))
+            {
+                <button class="@(View is PosView.Register or PosView.Locked ? "on" : "")" @onclick="OpenTill">🛒 Till</button>
+                <button class="@(View is PosView.Shift ? "on" : "")" @onclick="() => Go(PosView.Shift)">🕘 Shift</button>
+            }
+            @if (PosRoles.CanManage(m.MyRole) || PosRoles.CanAudit(m.MyRole))
+            {
+                <button class="@(View is PosView.BackOffice ? "on" : "")" @onclick="() => Go(PosView.BackOffice)">📊 Back office</button>
+            }
+            <button class="@(View is PosView.Account ? "on" : "")" @onclick="() => Go(PosView.Account)">👤 My PIN</button>
+            @if (Merchants.Count > 1 || m.Stores.Count > 1)
+            {
+                <button @onclick="() => Go(PosView.Pick)">⇄ Switch</button>
+            }
+        </nav>
+    }
+
+    <div class="pos-body">
+        @if (Error is { } error)
+        {
+            <p class="pos-error">@error</p>
+        }
+        <CascadingValue Value="this" IsFixed="true">
+            @switch (View)
+            {
+                case PosView.Loading:
+                    <p class="pos-muted">Loading…</p>
+                    break;
+                case PosView.Setup:
+                    <SetupPage />
+                    break;
+                case PosView.Pick:
+                    <div class="pos-card">
+                        <h3 style="margin-top: 0">Where are you working?</h3>
+                        @foreach (var merchant in Merchants)
+                        {
+                            @foreach (var store in merchant.Stores)
+                            {
+                                <button class="pos-row secondary" style="width: 100%; justify-content: flex-start; margin-bottom: 8px; padding: 12px" @key="store.Id"
+                                        @onclick="() => ChooseAsync(merchant, store)">
+                                    <span class="grow" style="text-align: left"><strong>@merchant.Name</strong> · @store.Name<br /><span class="pos-muted">@PosRoles.Label(merchant.MyRole)</span></span>›
+                                </button>
+                            }
+                        }
+                        <button class="link" @onclick="() => Go(PosView.Setup)">＋ Start another business</button>
+                    </div>
+                    break;
+                case PosView.Locked:
+                    <div style="max-width: 360px; margin: 10px auto">
+                        @if (Merchant is { MyPinSet: false })
+                        {
+                            <div class="pos-note" style="margin-bottom: 12px">Set your own till PIN under <strong>My PIN</strong> first.</div>
+                        }
+                        <PinPad Title="Enter your PIN" Subtitle="Unlock the till" Busy="Busy" Error="@PinError" OnPin="UnlockAsync" />
+                    </div>
+                    break;
+                case PosView.Register:
+                    <RegisterPage />
+                    break;
+                case PosView.Shift:
+                    <ShiftPanel />
+                    break;
+                case PosView.BackOffice:
+                    <BackOffice />
+                    break;
+                case PosView.Account:
+                    <AccountPage />
+                    break;
+            }
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    public PosApi Api { get; private set; } = null!;
+    public PosView View { get; private set; } = PosView.Loading;
+    public List<PosMerchantDto> Merchants { get; private set; } = [];
+    public PosMerchantDto? Merchant { get; private set; }
+    public PosStoreDto? Store { get; private set; }
+    public TillSessionDto? Session { get; private set; }
+    public PosCatalogDto? Catalog { get; private set; }
+    public bool Online { get; private set; } = true;
+    public bool Busy { get; set; }
+    public string? Error { get; set; }
+    string? PinError { get; set; }
+
+    /// <summary>The cart on the till; it survives the till locking (FR-AUTH-02).</summary>
+    public List<CartItem> Cart { get; } = [];
+    public string? CartDiscountKind { get; set; }
+    public decimal CartDiscountValue { get; set; }
+
+    /// <summary>This cart's idempotency key (FR-PAY-02): the same on every retry, new for the next sale.</summary>
+    public Guid SaleId { get; private set; } = Guid.NewGuid();
+
+    /// <summary>Offline cash sales waiting to upload, oldest first (FR-OFF-01/03).</summary>
+    public List<QueuedSale> Queue { get; private set; } = [];
+
+    /// <summary>The last sale made here, for its receipt.</summary>
+    public PosSaleDto? LastSale { get; set; }
+
+    DotNetObjectReference<PosApp>? _self;
+    Task<IJSObjectReference>? _module;
+    Timer? _syncTimer;
+
+    public Task<IJSObjectReference> Module => _module ??= JS.InvokeAsync<IJSObjectReference>("import", "./_content/NdeipiChat.SubApps.Pos/pos.js").AsTask();
+
+    public string Money(decimal amount) => PosFormat.Money(amount, Merchant?.Currency ?? "USD");
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new PosApi(Context.Api);
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            Online = await (await Module).InvokeAsync<bool>("watchConnection", _self);
+        }
+        catch (JSException)
+        {
+        }
+        await LoadMerchantsAsync();
+        // Uploads anything left over from offline, now and every half minute while there is.
+        _syncTimer = new Timer(_ => _ = InvokeAsync(SyncAsync), null, TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+    }
+
+    public async Task LoadMerchantsAsync()
+    {
+        try
+        {
+            Merchants = await Api.GetAsync<List<PosMerchantDto>>($"{PosApi.Base}/merchants") ?? [];
+        }
+        catch (PosException ex)
+        {
+            Error = ex.Message;
+            Merchants = [];
+        }
+        if (Merchants.Count == 0)
+        {
+            View = Error is null ? PosView.Setup : PosView.Loading;
+            return;
+        }
+        var stores = Merchants.SelectMany(m => m.Stores.Select(s => (m, s))).ToList();
+        if (Merchant is { } current && Merchants.FirstOrDefault(m => m.Id == current.Id) is { } refreshed)
+            await ChooseAsync(refreshed, refreshed.Stores.FirstOrDefault(s => s.Id == Store?.Id) ?? refreshed.Stores[0]);
+        else if (stores.Count == 1)
+            await ChooseAsync(stores[0].m, stores[0].s);
+        else
+            View = PosView.Pick;
+    }
+
+    async Task ChooseAsync(PosMerchantDto merchant, PosStoreDto store)
+    {
+        if (Store?.Id != store.Id)
+        {
+            await LockLocallyAsync();
+            Cart.Clear();
+            Catalog = null;
+        }
+        (Merchant, Store, Error) = (merchant, store, null);
+        Queue = await LoadQueueAsync();
+        await LoadCatalogAsync();
+        View = PosRoles.CanSell(merchant.MyRole) ? (Session is null ? PosView.Locked : PosView.Register) : PosView.BackOffice;
+        StateHasChanged();
+        _ = SyncAsync();
+    }
+
+    /// <summary>The catalogue with this store's stock; the device keeps a copy to sell from offline.</summary>
+    public async Task LoadCatalogAsync()
+    {
+        if (Store is null)
+            return;
+        var key = $"catalog:{Store.Id:N}";
+        try
+        {
+            Catalog = await Api.GetAsync<PosCatalogDto>($"{PosApi.Base}/stores/{Store.Id}/catalog");
+            if (Catalog is not null && Context.Device is { } device)
+                await device.SetValueAsync(key, ContractJson.Write(Catalog));
+        }
+        catch (PosException ex) when (ex.Offline)
+        {
+            Online = false;
+            if (Context.Device is { } device && await device.GetValueAsync(key) is { } saved)
+                Catalog = ContractJson.Read<PosCatalogDto>(saved);
+        }
+    }
+
+    public void Go(PosView view)
+    {
+        (View, Error) = (view, null);
+        StateHasChanged();
+    }
+
+    void OpenTill() => Go(Session is null ? PosView.Locked : PosView.Register);
+
+    // ---- Unlocking and locking (FR-AUTH-01/02) ----
+
+    async Task UnlockAsync(string pin)
+    {
+        if (Store is null)
+            return;
+        (Busy, PinError) = (true, null);
+        try
+        {
+            var terminal = await (await Module).InvokeAsync<string>("terminalName");
+            Session = await Api.SendAsync<TillSessionDto>(HttpMethod.Post, $"{PosApi.Base}/stores/{Store.Id}/till", new UnlockTillRequest(pin, terminal));
+            Api.TillToken = Session!.Token;
+            await (await Module).InvokeVoidAsync("watchIdle", _self, Merchant?.LockSeconds ?? PosContract.DefaultLockSeconds);
+            View = Session.Shift is null ? PosView.Shift : PosView.Register;
+            _ = SyncAsync();
+        }
+        catch (PosException ex)
+        {
+            PinError = ex.Offline ? "No connection: the till needs to be online to unlock." : ex.Message;
+        }
+        finally
+        {
+            Busy = false;
+        }
+    }
+
+    /// <summary>From pos.js after the idle time, or the Lock button. The cart stays; the till asks for a PIN.</summary>
+    [JSInvokable]
+    public async Task Lock()
+    {
+        await LockAsync();
+        StateHasChanged();
+    }
+
+    public async Task LockAsync()
+    {
+        if (Session is null)
+            return;
+        try
+        {
+            await Api.TillAsync<object>(HttpMethod.Delete, "");
+        }
+        catch (PosException)
+        {
+            // Offline: the session still runs out on its own.
+        }
+        await LockLocallyAsync();
+        if (View is PosView.Register or PosView.Shift)
+            View = PosView.Locked;
+    }
+
+    async Task LockLocallyAsync()
+    {
+        (Session, Api.TillToken) = (null, null);
+        try
+        {
+            await (await Module).InvokeVoidAsync("stopIdle");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    /// <summary>A till call came back "locked" (the session ran out elsewhere): ask for the PIN.</summary>
+    public async Task HandleAsync(PosException ex)
+    {
+        if (ex.Locked)
+        {
+            await LockLocallyAsync();
+            (View, PinError) = (PosView.Locked, "The till locked. Enter your PIN.");
+        }
+        else
+        {
+            if (ex.Offline)
+                Online = false;
+            Error = ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    public void SetShift(PosShiftDto? shift)
+    {
+        if (Session is { } session)
+            Session = session with { Shift = shift };
+        StateHasChanged();
+    }
+
+    // ---- The cart ----
+
+    /// <summary>Adds a product (or variant, with modifiers), joining a matching undiscounted line.</summary>
+    public void Add(PosProductDto product, string variant = "", List<string>? modifiers = null, decimal quantity = 1)
+    {
+        modifiers ??= [];
+        var same = Cart.FirstOrDefault(c => c.Product.Id == product.Id && c.Variant == variant && c.Modifiers.SequenceEqual(modifiers) && c.DiscountKind is null);
+        if (same is not null)
+            same.Quantity += quantity;
+        else
+            Cart.Add(new CartItem { Product = product, Variant = variant, Modifiers = modifiers, Quantity = quantity });
+        Error = null;
+        StateHasChanged();
+    }
+
+    /// <summary>The cart priced by the shared rules (<see cref="PosPricing"/>): what the server will charge.</summary>
+    public (PosQuoteDto? Quote, string? Problem) Quote()
+    {
+        if (Cart.Count == 0 || Merchant is null || Store is null)
+            return (null, null);
+        try
+        {
+            return (PosPricing.Quote(Cart.Select(c => (c.Product, c.ToRequest())).ToList(), CartDiscountKind, CartDiscountValue,
+                Merchant.TaxInclusive, Store.TaxRatePercent, Merchant.DiscountLimitPercent), null);
+        }
+        catch (PosPricingException ex)
+        {
+            return (null, ex.Message);
+        }
+    }
+
+    public CheckoutRequest Checkout(IReadOnlyList<TenderRequest> tenders, string? approvalPin) =>
+        new(SaleId, Cart.Select(c => c.ToRequest()).ToList(), CartDiscountKind, CartDiscountValue, tenders, null, false, approvalPin);
+
+    /// <summary>The sale is done (or queued): an empty cart, and a new idempotency key for the next.</summary>
+    public void Finished(PosSaleDto sale)
+    {
+        LastSale = sale;
+        Cart.Clear();
+        (CartDiscountKind, CartDiscountValue, SaleId) = (null, 0, Guid.NewGuid());
+        StateHasChanged();
+        _ = LoadCatalogAsync();
+    }
+
+    // ---- Offline (FR-OFF-01/03) ----
+
+    /// <summary>From pos.js when the browser goes on or offline.</summary>
+    [JSInvokable]
+    public async Task Connection(bool online)
+    {
+        Online = online;
+        StateHasChanged();
+        if (online)
+            await SyncAsync();
+    }
+
+    /// <summary>Keeps a cash sale made offline, under the till session it was rung up in, and gives a provisional receipt.</summary>
+    public async Task<PosSaleDto> QueueAsync(CheckoutRequest request, PosQuoteDto quote, IReadOnlyList<TenderRequest> tenders)
+    {
+        var offline = request with { OccurredAt = DateTimeOffset.UtcNow, Offline = true };
+        Queue.Add(new QueuedSale(Session!.Token, offline, null));
+        await SaveQueueAsync();
+        // The header shows how many are waiting.
+        StateHasChanged();
+        var cash = tenders.Sum(t => t.Amount);
+        return new PosSaleDto(Guid.Empty, offline.ClientSaleId, $"OFFLINE-{Queue.Count}", Store!.Id, Store.Name, Merchant!.Name, Merchant.Currency, Merchant.TaxInclusive,
+            Session.StaffName, PosSaleStatuses.Completed, offline.OccurredAt!.Value, true, quote.Lines, quote.Subtotal, quote.Discount, quote.Tax, quote.Total,
+            tenders.Select(t => new PosPaymentDto(t.Tender, t.Amount, 0, t.Reference)).ToList(), Math.Max(0, cash - quote.Total), null);
+    }
+
+    bool _syncing;
+
+    /// <summary>Uploads waiting sales in the order they were made. One the server refuses is kept, with why, for a manager.</summary>
+    public async Task SyncAsync()
+    {
+        if (_syncing || Queue.Count == 0 || Store is null)
+            return;
+        _syncing = true;
+        try
+        {
+            foreach (var queued in Queue.ToList())
+            {
+                if (queued.Problem is not null)
+                    continue;
+                var token = Api.TillToken;
+                try
+                {
+                    Api.TillToken = queued.Token;
+                    await Api.TillAsync<PosSaleDto>(HttpMethod.Post, "/sales", queued.Request);
+                    Queue.Remove(queued);
+                    Online = true;
+                }
+                catch (PosException ex) when (ex.Offline)
+                {
+                    Online = false;
+                    break;
+                }
+                catch (PosException ex)
+                {
+                    Queue[Queue.IndexOf(queued)] = queued with { Problem = ex.Message };
+                }
+                finally
+                {
+                    Api.TillToken = token;
+                }
+            }
+            await SaveQueueAsync();
+        }
+        finally
+        {
+            _syncing = false;
+            StateHasChanged();
+        }
+    }
+
+    public async Task DiscardQueuedAsync(QueuedSale sale)
+    {
+        Queue.Remove(sale);
+        await SaveQueueAsync();
+    }
+
+    async Task<List<QueuedSale>> LoadQueueAsync() =>
+        Store is not null && Context.Device is { } device && await device.GetValueAsync($"queue:{Store.Id:N}") is { } json
+            ? ContractJson.Read<List<QueuedSale>>(json) ?? []
+            : [];
+
+    async Task SaveQueueAsync()
+    {
+        if (Store is not null && Context.Device is { } device)
+            await device.SetValueAsync($"queue:{Store.Id:N}", Queue.Count == 0 ? null : ContractJson.Write(Queue));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _syncTimer?.Dispose();
+        try
+        {
+            if (_module is not null)
+            {
+                var module = await _module;
+                await module.InvokeVoidAsync("stopIdle");
+                await module.InvokeVoidAsync("unwatchConnection");
+                await module.InvokeVoidAsync("stopScan");
+                await module.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

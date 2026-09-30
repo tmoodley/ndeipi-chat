@@ -1,0 +1,265 @@
+@* The back office, by role (SRS §3): managers run the day, products and stock; admins also staff
+   and settings; auditors read sales and the audit trail. *@
+
+<nav class="pos-tabs" style="padding: 0 0 12px">
+    @foreach (var (key, label) in Tabs)
+    {
+        <button class="@(_tab == key ? "on" : "")" @key="key" @onclick="() => ShowAsync(key)">@label</button>
+    }
+</nav>
+
+@if (_error is not null)
+{
+    <p class="pos-error">@_error</p>
+}
+
+@switch (_tab)
+{
+    case "today":
+        @if (_dashboard is { } d)
+        {
+            <div class="pos-grid2">
+                <div class="pos-card">
+                    <h3 style="margin-top: 0">Today at @App.Store!.Name</h3>
+                    <div class="pos-fields">
+                        <div><div class="pos-muted">Sales</div><div style="font-size: 26px; font-weight: 800">@d.Today.Sales</div></div>
+                        <div><div class="pos-muted">Takings</div><div class="pos-money" style="font-size: 26px; font-weight: 800">@App.Money(d.Today.Net)</div></div>
+                        <div><div class="pos-muted">Tax</div><div class="pos-money" style="font-size: 20px; font-weight: 700">@App.Money(d.Today.Tax)</div></div>
+                        <div><div class="pos-muted">Refunds</div><div class="pos-money" style="font-size: 20px; font-weight: 700">@App.Money(d.Today.Refunded)</div></div>
+                    </div>
+                    <h3>Latest sales</h3>
+                    <SalesTable Sales="d.RecentSales" OnOpen="s => _sale = s" />
+                </div>
+                <div>
+                    <div class="pos-card" style="margin-bottom: 12px">
+                        <h3 style="margin-top: 0">Stock warnings</h3>
+                        @if (d.StockAlerts.Count == 0)
+                        {
+                            <p class="pos-muted">Nothing low.</p>
+                        }
+                        @foreach (var alert in d.StockAlerts)
+                        {
+                            <div class="pos-row" style="padding: 5px 0" @key="(alert.ProductId, alert.Variant)">
+                                <span class="grow">@alert.Name@(alert.Variant.Length > 0 ? $" ({alert.Variant})" : "")</span>
+                                <span class="pos-badge @(alert.IsNegative ? "neg" : "low")">@PosFormat.Quantity(alert.Quantity)@(alert.IsNegative ? " — check" : $" / {alert.SafetyStock}")</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="pos-card">
+                        <h3 style="margin-top: 0">Open shifts</h3>
+                        @if (d.OpenShifts.Count == 0)
+                        {
+                            <p class="pos-muted">None open.</p>
+                        }
+                        @foreach (var shift in d.OpenShifts)
+                        {
+                            <div class="pos-row" style="padding: 5px 0" @key="shift.Id">
+                                <span class="grow">@shift.CashierName · since @PosFormat.Time(shift.OpenedAt)</span>
+                                <span class="pos-money">@App.Money(shift.Totals.ExpectedCash) in drawer</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <p class="pos-muted">Loading…</p>
+        }
+        break;
+    case "products":
+        <ProductsPage />
+        break;
+    case "stock":
+        <StockPage />
+        break;
+    case "sales":
+        <div class="pos-card">
+            <div class="pos-row" style="margin-bottom: 10px">
+                <h3 class="grow" style="margin: 0">Sales</h3>
+                <input type="date" value="@_day.ToString("yyyy-MM-dd")" @onchange="DayChangedAsync" />
+            </div>
+            @if (_sales is { } sales)
+            {
+                <SalesTable Sales="sales" OnOpen="s => _sale = s" />
+                <p class="pos-muted">@sales.Count sales · @App.Money(sales.Where(s => s.Status == PosSaleStatuses.Completed).Sum(s => s.Total)) kept</p>
+            }
+        </div>
+        break;
+    case "staff":
+        <StaffPage />
+        break;
+    case "settings":
+        <SettingsPage />
+        break;
+    case "audit":
+        <div class="pos-card">
+            <div class="pos-row" style="margin-bottom: 10px">
+                <h3 class="grow" style="margin: 0">Audit trail</h3>
+                <button class="secondary small" @onclick="VerifyAsync">Verify chain</button>
+            </div>
+            @if (_check is { } check)
+            {
+                <p class="pos-badge @(check.Intact ? "ok" : "neg")" style="margin-bottom: 10px">
+                    @(check.Intact ? $"✓ All {check.Entries} entries check out." : $"✗ The chain breaks at entry {check.BrokenAt}: it was changed or removed.")
+                </p>
+            }
+            <p class="pos-muted">Voids, refunds, overrides, drawer opens, shifts, stock and staff changes. Each entry's fingerprint covers the one before, so none can be changed or removed unnoticed.</p>
+            <table class="pos-table">
+                <tr><th>#</th><th>When</th><th>What</th><th>Who</th><th>Details</th></tr>
+                @foreach (var entry in _audit)
+                {
+                    <tr @key="entry.Sequence">
+                        <td>@entry.Sequence</td>
+                        <td>@PosFormat.Time(entry.At)</td>
+                        <td><span class="pos-badge">@entry.Action</span></td>
+                        <td>@entry.StaffName<br /><span class="pos-muted">@entry.Terminal@(entry.StoreName is { } s ? $" · {s}" : "")</span></td>
+                        <td>@entry.Details<br /><span class="pos-muted" style="font-family: monospace; font-size: 11px">@entry.Hash[..16]…</span></td>
+                    </tr>
+                }
+            </table>
+        </div>
+        break;
+}
+
+@if (_sale is { } sale)
+{
+    <div class="pos-sheet-back" @onclick="() => _sale = null">
+        <div class="pos-sheet" @onclick:stopPropagation="true">
+            <ReceiptView Sale="sale" />
+            @if (sale.Status == PosSaleStatuses.Completed && App.Merchant is { } m && PosRoles.CanSell(m.MyRole))
+            {
+                @if (_reversing is null)
+                {
+                    <div class="pos-actions" style="justify-content: center">
+                        <button class="secondary" @onclick='() => _reversing = "void"'>Void</button>
+                        <button class="secondary" @onclick='() => _reversing = "refund"'>Refund</button>
+                    </div>
+                }
+                else if (App.Session is null)
+                {
+                    <p class="pos-note">Unlock the till with your PIN to @_reversing a sale.</p>
+                }
+                else
+                {
+                    <label class="pos-field" style="margin-top: 10px">Reason<input @bind="_reason" maxlength="300" placeholder="e.g. Rang up twice" /></label>
+                    <div style="margin-top: 10px">
+                        <PinPad Title="Manager approval" Subtitle="@($"To {_reversing} {sale.ReceiptNumber}")" Busy="_busy" Error="@_reverseError" OnPin="ReverseAsync" OnCancel="() => _reversing = null" />
+                    </div>
+                }
+            }
+            <div class="pos-actions"><button class="primary" @onclick="() => _sale = null">Close</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    string _tab = "today";
+    string? _error, _reversing, _reason, _reverseError;
+    bool _busy;
+    PosDashboardDto? _dashboard;
+    List<PosSaleDto>? _sales;
+    PosSaleDto? _sale;
+    DateOnly _day = DateOnly.FromDateTime(DateTime.UtcNow);
+    List<PosAuditDto> _audit = [];
+    PosAuditCheckDto? _check;
+
+    string Role => App.Merchant?.MyRole ?? "";
+
+    IEnumerable<(string Key, string Label)> Tabs
+    {
+        get
+        {
+            yield return ("today", "Today");
+            if (PosRoles.CanManage(Role))
+            {
+                yield return ("products", "Products");
+                yield return ("stock", "Stock");
+            }
+            yield return ("sales", "Sales");
+            if (PosRoles.CanManage(Role))
+                yield return ("staff", "Staff");
+            if (Role == PosRoles.Admin)
+                yield return ("settings", "Settings");
+            if (PosRoles.CanAudit(Role))
+                yield return ("audit", "Audit");
+        }
+    }
+
+    protected override Task OnInitializedAsync() => ShowAsync("today");
+
+    async Task ShowAsync(string tab)
+    {
+        (_tab, _error, _check) = (tab, null, null);
+        try
+        {
+            switch (tab)
+            {
+                case "today":
+                    _dashboard = await App.Api.GetAsync<PosDashboardDto>($"{PosApi.Base}/stores/{App.Store!.Id}/dashboard");
+                    break;
+                case "sales":
+                    await LoadSalesAsync();
+                    break;
+                case "audit":
+                    _audit = await App.Api.GetAsync<List<PosAuditDto>>($"{PosApi.Base}/merchants/{App.Merchant!.Id}/audit") ?? [];
+                    break;
+            }
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task LoadSalesAsync() =>
+        _sales = await App.Api.GetAsync<List<PosSaleDto>>($"{PosApi.Base}/stores/{App.Store!.Id}/sales?day={_day:yyyy-MM-dd}");
+
+    async Task DayChangedAsync(ChangeEventArgs e)
+    {
+        if (DateOnly.TryParse(e.Value as string, CultureInfo.InvariantCulture, out var day))
+        {
+            _day = day;
+            await ShowAsync("sales");
+        }
+    }
+
+    async Task VerifyAsync()
+    {
+        try
+        {
+            _check = await App.Api.GetAsync<PosAuditCheckDto>($"{PosApi.Base}/merchants/{App.Merchant!.Id}/audit/verify");
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task ReverseAsync(string pin)
+    {
+        if (_sale is null || _reversing is null)
+            return;
+        (_busy, _reverseError) = (true, null);
+        try
+        {
+            _sale = await App.Api.TillAsync<PosSaleDto>(HttpMethod.Post, $"/sales/{_sale.Id}/{_reversing}", new ReverseSaleRequest(_reason ?? "", pin));
+            (_reversing, _reason) = (null, null);
+            await ShowAsync(_tab);
+        }
+        catch (PosException ex) when (ex.Locked)
+        {
+            await App.HandleAsync(ex);
+        }
+        catch (PosException ex)
+        {
+            _reverseError = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

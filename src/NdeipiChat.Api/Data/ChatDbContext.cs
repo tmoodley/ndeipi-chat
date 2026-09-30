@@ -25,6 +25,19 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<PostMedia> PostMedia => Set<PostMedia>();
     public DbSet<PostLike> PostLikes => Set<PostLike>();
     public DbSet<PostComment> PostComments => Set<PostComment>();
+    public DbSet<PosMerchant> PosMerchants => Set<PosMerchant>();
+    public DbSet<PosStore> PosStores => Set<PosStore>();
+    public DbSet<PosStaff> PosStaff => Set<PosStaff>();
+    public DbSet<PosTillSession> PosTillSessions => Set<PosTillSession>();
+    public DbSet<PosCategory> PosCategories => Set<PosCategory>();
+    public DbSet<PosProduct> PosProducts => Set<PosProduct>();
+    public DbSet<PosStock> PosStock => Set<PosStock>();
+    public DbSet<PosShift> PosShifts => Set<PosShift>();
+    public DbSet<PosCashMovement> PosCashMovements => Set<PosCashMovement>();
+    public DbSet<PosSale> PosSales => Set<PosSale>();
+    public DbSet<PosSaleLine> PosSaleLines => Set<PosSaleLine>();
+    public DbSet<PosPayment> PosPayments => Set<PosPayment>();
+    public DbSet<PosAuditEntry> PosAudit => Set<PosAuditEntry>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<EventListing> Events => Set<EventListing>();
     public DbSet<TicketTier> TicketTiers => Set<TicketTier>();
@@ -224,6 +237,8 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         });
 
         model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());
+
+        NdeipiChat.Api.Pos.PosModel.Configure(model);
 
         model.Entity<PostComment>(e =>
         {
