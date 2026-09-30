@@ -1,0 +1,11 @@
+@* The progress meter: raised against the target, the number of gifts, and the time left. *@
+
+<div class="dn-meter" role="progressbar" aria-valuenow="@Format.Percent(Campaign)" aria-valuemin="0" aria-valuemax="100"><div style="width: @Format.Percent(Campaign)%"></div></div>
+<div class="dn-figures">
+    <span><strong>@Format.Money(Campaign.Raised, Campaign.Currency)</strong> of @Format.Money(Campaign.Target, Campaign.Currency)</span>
+    <span>@Campaign.Gifts @(Campaign.Gifts == 1 ? "gift" : "gifts")@(Format.EndsIn(Campaign.EndsAt) is { } left ? $" · {left}" : "")</span>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public CampaignDto Campaign { get; set; } = null!;
+}

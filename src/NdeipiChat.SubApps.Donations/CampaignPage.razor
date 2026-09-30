@@ -1,0 +1,338 @@
+@* A campaign: its story and progress, one-tap giving (FR-01), and the live feed of gifts (FR-04).
+   Its organizer can edit, publish or close it; an admin can verify it. *@
+@implements IAsyncDisposable
+
+@if (_detail is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var c = _detail.Campaign;
+    <div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px; margin: 0 auto; width: 100%">
+        <section class="dn-card" style="display: flex; flex-direction: column; gap: 12px">
+            <div class="dn-camp-head">
+                <span class="dn-icon" style="width: 58px; height: 58px; font-size: 30px">@c.Icon</span>
+                <div style="min-width: 0">
+                    <div class="dn-title" style="font-size: 20px">@c.Title</div>
+                    <div class="dn-sub">
+                        For @c.Beneficiary · by @c.OrganizerName
+                        @if (c.Verified)
+                        {
+                            <span class="dn-verified" title="Checked by Ndeipi">✓ Verified</span>
+                        }
+                    </div>
+                </div>
+            </div>
+            <Progress Campaign="c" />
+            @if (c.Status == CampaignStatuses.Draft)
+            {
+                <div class="notice">A draft: only you can see it until you publish it.</div>
+            }
+            else if (c.Status == CampaignStatuses.Closed || Format.EndsIn(c.EndsAt) == "Ended")
+            {
+                <div class="notice">This campaign has finished and isn't taking gifts.</div>
+            }
+            <p style="margin: 0">@c.Summary</p>
+            @if (c.Story is { } story)
+            {
+                <p class="dn-sub" style="margin: 0; white-space: pre-line">@story</p>
+            }
+
+            @if (_error is not null && !_confirming)
+            {
+                <p class="error" style="margin: 0">@_error</p>
+            }
+            @if (c.IsMine || _detail.CanVerify)
+            {
+                <div class="dn-actions">
+                    @if (c.IsMine && c.Status != CampaignStatuses.Closed)
+                    {
+                        <button class="secondary" @onclick="() => App.Go(new DonationsView.Edit(c.Id))">Edit</button>
+                    }
+                    @if (c.IsMine && c.Status == CampaignStatuses.Draft)
+                    {
+                        <button class="primary" disabled="@_busy" @onclick='() => ActAsync("publish")'>Publish</button>
+                    }
+                    @if (c.IsMine && c.Status == CampaignStatuses.Active)
+                    {
+                        <button class="secondary" style="color: var(--danger)" disabled="@_busy" @onclick='() => ActAsync("close")'>Close campaign</button>
+                    }
+                    @if (_detail.CanVerify)
+                    {
+                        <button class="secondary" disabled="@_busy" @onclick="() => VerifyAsync(!c.Verified)">@(c.Verified ? "Remove verified badge" : "✓ Mark verified")</button>
+                    }
+                </div>
+            }
+        </section>
+
+        @if (CanGive(c))
+        {
+            <section class="dn-card" style="display: flex; flex-direction: column; gap: 12px">
+                <strong>Give</strong>
+                <div class="dn-amounts">
+                    @foreach (var amount in DonationsContract.QuickAmounts)
+                    {
+                        <button class="@(_amount == amount && _custom.Length == 0 ? "on" : "")" @key="amount" @onclick="() => (_amount, _custom) = (amount, string.Empty)">@Format.Money(amount, c.Currency)</button>
+                    }
+                </div>
+                <label class="dn-field">Or another amount
+                    <input inputmode="decimal" placeholder="e.g. 7.50" @bind="_custom" @bind:event="oninput" />
+                </label>
+                <label class="dn-field">A message (optional)
+                    <input maxlength="@DonationsContract.MaxMessageLength" placeholder="Keep going!" @bind="_message" />
+                </label>
+                <label class="dn-row" style="font-size: 14px"><input type="checkbox" @bind="_anonymous" style="width: auto" /> <span>Give anonymously <span class="dn-sub">(your name isn't shown to anyone)</span></span></label>
+                <button class="primary dn-big" disabled="@(Amount is null)" @onclick="() => _confirming = true">
+                    @(Amount is { } a ? $"Give {Format.Money(a, c.Currency)}" : "Choose an amount")
+                </button>
+                <p class="dn-sub" style="margin: 0">No fees: the whole gift goes to the campaign, from your Ndeipi wallet. Earn @PointsFor ★ Believe Points.</p>
+            </section>
+        }
+
+        <section class="dn-card">
+            <strong>Recent gifts</strong>
+            @if (_detail.Recent.Count == 0)
+            {
+                <p class="dn-sub">No gifts yet. Be the first.</p>
+            }
+            else
+            {
+                <ul class="dn-feed">
+                    @foreach (var gift in _detail.Recent)
+                    {
+                        <li class="@(gift.Id == _newest ? "new" : "")" @key="gift.Id">
+                            <span class="dn-icon" style="width: 36px; height: 36px; font-size: 18px">@(gift.DonorName is null ? "🙈" : "💚")</span>
+                            <div class="who">
+                                <div>@(gift.DonorName ?? "Anonymous")</div>
+                                @if (gift.Message is { } m)
+                                {
+                                    <div class="dn-sub">“@m”</div>
+                                }
+                                <div class="dn-sub">@Format.Ago(gift.At)</div>
+                            </div>
+                            <span class="amt">@Format.Money(gift.Amount, c.Currency)</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </div>
+
+    @if (_confirming && Amount is { } give)
+    {
+        @* FR-01: one confirmation, then the wallet pays. *@
+        <div class="dn-sheet-back" @onclick="CloseSheet">
+            <div class="dn-sheet" @onclick:stopPropagation="true">
+                @if (_gift is null)
+                {
+                    <h3 style="margin: 0">Confirm your gift</h3>
+                    <div style="font-size: 38px; font-weight: 800; text-align: center">@Format.Money(give, c.Currency)</div>
+                    <div class="dn-sub" style="text-align: center">to @c.Title, for @c.Beneficiary@(_anonymous ? ", anonymously" : "")</div>
+                    @if (_error is not null)
+                    {
+                        <p class="error" style="margin: 0">@_error</p>
+                    }
+                    <button class="primary dn-big" disabled="@_busy" @onclick="GiveAsync">@(_busy ? "Sending…" : "Confirm and give")</button>
+                    <button class="secondary" @onclick="CloseSheet">Cancel</button>
+                    <p class="dn-sub" style="margin: 0; text-align: center">From your Ndeipi wallet. It can't be reversed once confirmed.</p>
+                }
+                else if (_gift.Status == DonationStatuses.Pending)
+                {
+                    <div class="dn-state">⏳</div>
+                    <p style="text-align: center; margin: 0">Sending your gift…</p>
+                    <p class="dn-sub" style="text-align: center; margin: 0">It counts as soon as the transfer is confirmed.</p>
+                }
+                else if (_gift.Status == DonationStatuses.Confirmed)
+                {
+                    <div class="dn-state ok">✓</div>
+                    <p style="text-align: center; margin: 0"><strong>Thank you!</strong> Your @Format.Money(_gift.Amount, _gift.Currency) is on its way to @_gift.Beneficiary.</p>
+                    <p style="text-align: center; margin: 0; font-weight: 700; color: #8A6100">+@_gift.Points ★ Believe Points</p>
+                    <button class="secondary" @onclick="() => App.Go(new DonationsView.Receipt(_gift.Id))">See receipt</button>
+                    <button class="primary" @onclick="CloseSheet">Done</button>
+                }
+                else
+                {
+                    <div class="dn-state bad">✕</div>
+                    <p style="text-align: center; margin: 0">@(_gift.Error ?? "The gift didn't go through.") Nothing was taken from your wallet.</p>
+                    <button class="primary" @onclick="CloseSheet">Close</button>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [CascadingParameter] public DonationsApp App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    CampaignDetailDto? _detail;
+    string? _error, _message;
+    string _custom = "";
+    decimal? _amount = DonationsContract.QuickAmounts[1];
+    bool _anonymous, _confirming, _busy;
+    DonationDto? _gift;
+    Guid? _newest;
+    IAsyncDisposable? _subscription;
+    CancellationTokenSource? _watching;
+
+    decimal? Amount => _custom.Trim().Length > 0
+        ? decimal.TryParse(_custom.Trim().TrimStart('$'), NumberStyles.Number, CultureInfo.InvariantCulture, out var a) && a > 0 ? Math.Round(a, 2) : null
+        : _amount;
+
+    string PointsFor => Amount is { } a ? Math.Floor(a * (App.Me?.PointsPerUnit ?? 0)).ToString("N0") : "";
+
+    static bool CanGive(CampaignDto c) => !c.IsMine && c.Status == CampaignStatuses.Active && Format.EndsIn(c.EndsAt) != "Ended";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        if (_detail is not null && App.Context.Realtime is { } realtime)
+        {
+            try
+            {
+                _subscription = await realtime.SubscribeAsync(DonationsContract.Topic(Id), OnUpdateAsync);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _detail = await App.Api.GetAsync<CampaignDetailDto>($"{DonationsApi.Base}/campaigns/{Id}");
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    // FR-04: a gift confirmed anywhere shows up here at once, and the bar moves.
+    Task OnUpdateAsync(JsonElement payload)
+    {
+        if (payload.Deserialize<CampaignUpdateDto>(ContractJson.Options) is not { } update || _detail is null)
+            return Task.CompletedTask;
+        var recent = _detail.Recent.Where(g => g.Id != update.Gift.Id).Prepend(update.Gift).Take(20).ToList();
+        _detail = _detail with { Campaign = _detail.Campaign with { Raised = update.Raised, Gifts = update.Gifts }, Recent = recent };
+        _newest = update.Gift.Id;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    async Task GiveAsync()
+    {
+        if (Amount is not { } amount)
+            return;
+        (_busy, _error) = (true, null);
+        try
+        {
+            _gift = await App.Api.SendAsync<DonationDto>(HttpMethod.Post, $"{DonationsApi.Base}/campaigns/{Id}/donations",
+                new DonateRequest(amount, _anonymous, string.IsNullOrWhiteSpace(_message) ? null : _message.Trim()));
+            if (_gift is { Status: DonationStatuses.Pending })
+                Watch(_gift.Id);
+            else if (_gift is { Status: DonationStatuses.Confirmed })
+                await ConfirmedAsync();
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Checks on the gift every two seconds until Bridge has answered.</summary>
+    void Watch(Guid id)
+    {
+        _watching?.Cancel();
+        var watching = _watching = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            while (!watching.IsCancellationRequested)
+            {
+                await Task.Delay(2000);
+                if (watching.IsCancellationRequested)
+                    return;
+                try
+                {
+                    var latest = await App.Api.GetAsync<DonationDto>($"{DonationsApi.Base}/donations/{id}");
+                    await InvokeAsync(async () =>
+                    {
+                        _gift = latest;
+                        if (latest.Status == DonationStatuses.Confirmed)
+                            await ConfirmedAsync();
+                        StateHasChanged();
+                    });
+                    if (latest.Status != DonationStatuses.Pending)
+                        return;
+                }
+                catch (DonationsException)
+                {
+                }
+            }
+        });
+    }
+
+    async Task ConfirmedAsync()
+    {
+        (_message, _custom, _anonymous) = (null, "", false);
+        await App.RefreshMeAsync();
+        await LoadAsync();
+    }
+
+    void CloseSheet()
+    {
+        _watching?.Cancel();
+        (_confirming, _gift, _error) = (false, null, null);
+    }
+
+    async Task ActAsync(string action)
+    {
+        _busy = true;
+        try
+        {
+            var updated = await App.Api.SendAsync<CampaignDto>(HttpMethod.Post, $"{DonationsApi.Base}/campaigns/{Id}/{action}", null);
+            if (updated is not null && _detail is not null)
+                _detail = _detail with { Campaign = updated };
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task VerifyAsync(bool verified)
+    {
+        _busy = true;
+        try
+        {
+            var updated = await App.Api.SendAsync<CampaignDto>(HttpMethod.Put, $"{DonationsApi.Base}/campaigns/{Id}/verified?verified={verified.ToString().ToLowerInvariant()}", null);
+            if (updated is not null && _detail is not null)
+                _detail = _detail with { Campaign = updated };
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _watching?.Cancel();
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+    }
+}

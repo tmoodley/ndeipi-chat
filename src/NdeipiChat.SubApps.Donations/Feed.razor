@@ -1,0 +1,75 @@
+@* FR-02: campaigns taking gifts, verified ones first, with progress bars that move as gifts are confirmed. *@
+@implements IAsyncDisposable
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+@if (_campaigns is null)
+{
+    <p class="muted">Loading campaigns…</p>
+}
+else if (_campaigns.Count == 0)
+{
+    <div class="empty"><p>No campaigns are raising money right now. Check back soon.</p></div>
+}
+else
+{
+    <div class="dn-list">
+        @foreach (var c in _campaigns)
+        {
+            <CampaignCard @key="c.Id" Campaign="c" OnOpen="() => App.Go(new DonationsView.Campaign(c.Id))" />
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public DonationsApp App { get; set; } = null!;
+
+    List<CampaignDto>? _campaigns;
+    string? _error;
+    readonly List<IAsyncDisposable> _subscriptions = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _campaigns = await App.Api.GetAsync<List<CampaignDto>>($"{DonationsApi.Base}/campaigns");
+        }
+        catch (DonationsException ex)
+        {
+            (_campaigns, _error) = ([], ex.Message);
+            return;
+        }
+
+        // Each card's bar follows its campaign live.
+        if (App.Context.Realtime is { } realtime)
+            foreach (var campaign in _campaigns)
+            {
+                try
+                {
+                    _subscriptions.Add(await realtime.SubscribeAsync(DonationsContract.Topic(campaign.Id), OnUpdateAsync));
+                }
+                catch (Exception)
+                {
+                    // Live updates are a nicety: the feed still shows the totals it loaded.
+                }
+            }
+    }
+
+    Task OnUpdateAsync(JsonElement payload)
+    {
+        if (payload.Deserialize<CampaignUpdateDto>(ContractJson.Options) is not { } update || _campaigns is null)
+            return Task.CompletedTask;
+        var i = _campaigns.FindIndex(c => c.Id == update.CampaignId);
+        if (i >= 0)
+            _campaigns[i] = _campaigns[i] with { Raised = update.Raised, Gifts = update.Gifts };
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        foreach (var subscription in _subscriptions)
+            await subscription.DisposeAsync();
+    }
+}

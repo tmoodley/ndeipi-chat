@@ -1,0 +1,175 @@
+@* The Donations sub-app (SRS "Donations Micro App Module"): a feed of campaigns with live progress,
+   one-tap giving from the wallet, Believe Points, receipts, and campaigns for organizers. The shell
+   loads this library the first time Donations is opened; everything it needs comes through SubAppContext. *@
+@attribute [SubAppRoot(DonationsContract.AppId)]
+
+<style>
+    /* In the phone app its own bar goes back already: one header, not two. */
+    .content.embedded header.dn-bar { display: none; }
+    .dn-top { display: flex; align-items: center; gap: 8px; padding: 10px 16px 0; }
+    .dn-top .grow { flex: 1; min-width: 0; }
+    .dn-points { display: inline-flex; align-items: center; gap: 6px; border-radius: 16px; padding: 6px 12px; font-size: 13px; font-weight: 700; background: rgba(255, 196, 0, .18); color: #8A6100; border: 0; cursor: pointer; }
+    .dn-tabs { display: flex; gap: 6px; }
+    .dn-tabs button { border-radius: 18px; padding: 8px 14px; font-size: 14px; background: var(--secondary); color: var(--text); }
+    .dn-tabs button.on { background: var(--brand); color: #fff; font-weight: 600; }
+    .dn-card { background: var(--glass, var(--surface)); border: 1px solid var(--glass-border, transparent); border-radius: 20px; padding: 16px; box-shadow: var(--shadow, none); }
+    .dn-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .dn-camp { cursor: pointer; display: flex; flex-direction: column; align-items: stretch; gap: 10px; text-align: left; width: 100%; font: inherit; color: var(--text); }
+    .dn-camp > * { width: 100%; }
+    .dn-camp-head { display: flex; gap: 12px; align-items: center; }
+    .dn-icon { width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; font-size: 24px; background: rgba(31, 169, 113, .14); flex: none; }
+    .dn-title { font-weight: 700; font-size: 16px; line-height: 1.25; }
+    .dn-sub { font-size: 13px; color: var(--muted); }
+    .dn-verified { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; color: var(--brand); background: var(--brand-soft); border-radius: 10px; padding: 2px 8px; }
+    .dn-meter { height: 10px; background: var(--secondary); border-radius: 6px; overflow: hidden; }
+    .dn-meter div { height: 100%; background: linear-gradient(90deg, #1FA971, #34C38F); border-radius: 6px; transition: width .6s ease; }
+    .dn-figures { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+    .dn-figures strong { color: var(--text); font-size: 17px; font-variant-numeric: tabular-nums; }
+    .dn-amounts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .dn-amounts button { height: 54px; border-radius: 16px; font-size: 18px; font-weight: 800; background: var(--secondary); color: var(--text); }
+    .dn-amounts button.on { background: var(--brand); color: #fff; }
+    .dn-big { height: 56px; font-size: 18px; border-radius: 18px; width: 100%; }
+    .dn-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+    .dn-feed li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--divider); }
+    .dn-feed li:last-child { border-bottom: 0; }
+    .dn-feed .who { flex: 1; min-width: 0; }
+    .dn-feed .amt { font-weight: 800; font-variant-numeric: tabular-nums; }
+    .dn-feed li.new { animation: dn-flash 1.4s ease; }
+    @@keyframes dn-flash { from { background: rgba(31, 169, 113, .18); } to { background: transparent; } }
+    .dn-sheet-back { position: fixed; inset: 0; background: rgba(12, 16, 32, .45); z-index: 1000; display: flex; align-items: flex-end; justify-content: center; }
+    .dn-sheet { width: min(480px, 100%); max-height: 92vh; overflow-y: auto; background: var(--page); box-shadow: var(--shadow-strong, none); border-radius: 22px 22px 0 0; padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+    @@media (min-width: 700px) { .dn-sheet-back { align-items: center; } .dn-sheet { border-radius: 22px; } }
+    .dn-state { width: 80px; height: 80px; margin: 6px auto; border-radius: 50%; display: grid; place-items: center; font-size: 36px; font-weight: 800; background: var(--secondary); }
+    .dn-state.ok { background: rgba(31, 169, 113, .16); color: var(--success); }
+    .dn-state.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .dn-receipt { font-family: ui-monospace, Consolas, monospace; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
+    .dn-receipt .line { display: flex; justify-content: space-between; gap: 12px; }
+    .dn-receipt .hash { word-break: break-all; font-size: 12px; color: var(--muted); }
+    .dn-badge { display: inline-block; border-radius: 10px; padding: 2px 8px; font-size: 11px; font-weight: 800; background: var(--secondary); }
+    .dn-badge.ok { background: rgba(31, 169, 113, .14); color: var(--success); }
+    .dn-badge.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .dn-badge.wait { background: rgba(255, 196, 0, .2); color: #8A6100; }
+    .dn-row { display: flex; gap: 10px; align-items: center; }
+    .dn-row .grow { flex: 1; min-width: 0; }
+    .dn-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dn-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+    .dn-field input, .dn-field textarea { color: var(--text); font-weight: 500; font-size: 15px; }
+</style>
+
+<header class="bar dn-bar">
+    <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+    <h1>@Title</h1>
+</header>
+
+@if (IsTopLevel)
+{
+    <div class="dn-top">
+        <nav class="dn-tabs grow">
+            <button class="@(_view is DonationsView.Feed ? "on" : "")" @onclick="() => Go(new DonationsView.Feed())">Give</button>
+            <button class="@(_view is DonationsView.Giving ? "on" : "")" @onclick="() => Go(new DonationsView.Giving())">My giving</button>
+            @if (Me?.IsOrganizer == true)
+            {
+                <button class="@(_view is DonationsView.Organize ? "on" : "")" @onclick="() => Go(new DonationsView.Organize())">Organize</button>
+            }
+        </nav>
+        @if (Me is { } me)
+        {
+            <button class="dn-points" title="@PointsContract.Name: earned by giving, and shared across Ndeipi" @onclick="() => Go(new DonationsView.Giving())">★ @me.Points.ToString("N0")</button>
+        }
+    </div>
+}
+
+<div class="page">
+    <CascadingValue Value="this" IsFixed="true">
+        @switch (_view)
+        {
+            case DonationsView.Feed:
+                <Feed />
+                break;
+            case DonationsView.Campaign c:
+                <CampaignPage @key="c.Id" Id="c.Id" />
+                break;
+            case DonationsView.Giving:
+                <Giving />
+                break;
+            case DonationsView.Receipt r:
+                <ReceiptPage @key="r.Id" Id="r.Id" />
+                break;
+            case DonationsView.Organize:
+                <Organize />
+                break;
+            case DonationsView.Edit e:
+                <EditCampaign @key="e.Id" Id="e.Id" />
+                break;
+        }
+    </CascadingValue>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    DonationsView _view = new DonationsView.Feed();
+    readonly Stack<DonationsView> _history = new();
+
+    public DonationsApi Api { get; private set; } = null!;
+
+    /// <summary>Whether they organize or verify, and their Believe Points.</summary>
+    public DonationsMeDto? Me { get; private set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new DonationsApi(Context.Api);
+        await RefreshMeAsync();
+    }
+
+    /// <summary>After a gift is confirmed: the points chip catches up.</summary>
+    public async Task RefreshMeAsync()
+    {
+        try
+        {
+            Me = await Api.GetAsync<DonationsMeDto>($"{DonationsApi.Base}/me");
+            StateHasChanged();
+        }
+        catch (DonationsException)
+        {
+        }
+    }
+
+    bool IsTopLevel => _view is DonationsView.Feed or DonationsView.Giving or DonationsView.Organize;
+
+    string Title => _view switch
+    {
+        DonationsView.Giving or DonationsView.Receipt => "My giving",
+        DonationsView.Organize or DonationsView.Edit => "Organize",
+        _ => "Donations"
+    };
+
+    /// <summary>Opens a page; top-level tabs start a fresh history.</summary>
+    public void Go(DonationsView view)
+    {
+        if (view is DonationsView.Feed or DonationsView.Giving or DonationsView.Organize)
+            _history.Clear();
+        else
+            _history.Push(_view);
+        _view = view;
+        StateHasChanged();
+    }
+
+    /// <summary>Replaces the current page, e.g. a new campaign's editor with the saved campaign's page.</summary>
+    public void Replace(DonationsView view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
+
+    public Task BackAsync()
+    {
+        if (_history.TryPop(out var previous))
+        {
+            _view = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return Context.NavigateToLauncher();
+    }
+}

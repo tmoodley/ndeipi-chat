@@ -1,0 +1,87 @@
+@* The giver's dashboard: Believe Points (FR-03), shared across Ndeipi, and every gift with its receipt (FR-04). *@
+
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 760px; margin: 0 auto; width: 100%">
+    <section class="dn-card" style="display: flex; flex-direction: column; gap: 6px">
+        <span class="dn-sub">@PointsContract.Name</span>
+        <span style="font-size: 36px; font-weight: 800; color: #8A6100">★ @(_points?.Balance.ToString("N0") ?? "…")</span>
+        <span class="dn-sub">Earned by giving. They're yours across Ndeipi, not just here.</span>
+        @if (_points is { Recent.Count: > 0 } p)
+        {
+            <ul class="dn-feed" style="margin-top: 6px">
+                @foreach (var entry in p.Recent.Take(5))
+                {
+                    <li @key="(entry.At, entry.Description)">
+                        <div class="who"><div>@entry.Description</div><div class="dn-sub">@Format.Ago(entry.At)</div></div>
+                        <span class="amt" style="color: #8A6100">+@entry.Points</span>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+
+    <section class="dn-card">
+        <strong>Your gifts</strong>
+        @if (_error is not null)
+        {
+            <p class="error">@_error</p>
+        }
+        @if (_gifts is null)
+        {
+            <p class="dn-sub">Loading…</p>
+        }
+        else if (_gifts.Count == 0)
+        {
+            <p class="dn-sub">You haven't given yet. <button class="link" @onclick="() => App.Go(new DonationsView.Feed())">Find a campaign</button></p>
+        }
+        else
+        {
+            <ul class="dn-feed">
+                @foreach (var gift in _gifts)
+                {
+                    <li style="cursor: pointer" @key="gift.Id" @onclick="() => App.Go(new DonationsView.Receipt(gift.Id))">
+                        <div class="who">
+                            <div>@gift.CampaignTitle</div>
+                            <div class="dn-sub">@Format.When(gift.CreatedAt)@(gift.Anonymous ? " · anonymous" : "")</div>
+                        </div>
+                        <div style="text-align: right">
+                            <div class="amt">@Format.Money(gift.Amount, gift.Currency)</div>
+                            @switch (gift.Status)
+                            {
+                                case DonationStatuses.Confirmed:
+                                    <span class="dn-badge ok">+@gift.Points ★</span>
+                                    break;
+                                case DonationStatuses.Pending:
+                                    <span class="dn-badge wait">sending</span>
+                                    break;
+                                default:
+                                    <span class="dn-badge bad">didn't go</span>
+                                    break;
+                            }
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </section>
+</div>
+
+@code {
+    [CascadingParameter] public DonationsApp App { get; set; } = null!;
+
+    PointsDto? _points;
+    List<DonationDto>? _gifts;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _gifts = await App.Api.GetAsync<List<DonationDto>>($"{DonationsApi.Base}/donations");
+            _points = await App.Api.GetAsync<PointsDto>(PointsContract.BasePath);
+        }
+        catch (DonationsException ex)
+        {
+            (_gifts, _error) = (_gifts ?? [], ex.Message);
+        }
+    }
+}

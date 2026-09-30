@@ -30,7 +30,7 @@ public sealed class LocalPreview
         app.StartServer();
         var site = new Uri($"http://localhost:{Port}/");
 
-        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole]);
+        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole]);
         var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test");
         var rudo = await app.CreateUserAsync("Rudo Moyo", "rudo@example.test");
 
@@ -110,6 +110,16 @@ public sealed class LocalPreview
         await me.PostAsync<PosProductDto>($"api/pos/merchants/{shop.Id}/products",
             new SaveProductRequest(null, "Burger", "🍔", "BURG", null, 8m, null, true, 0, null, null, TrackStock: false));
         await me.PostAsync<PosStockLevelDto>($"api/pos/stores/{shop.Stores[0].Id}/stock", new StockAdjustRequest(shirt.Id, null, 3, "Delivery"));
+
+        // Donations: a live campaign by me with a couple of gifts from Tendai (one anonymous); the
+        // stand-in Bridge settles them at once, so they count and earn points straight away.
+        var campaign = await me.PostAsync<CampaignDto>("api/donations/campaigns", new SaveCampaignRequest("School shoes for Mbare kids",
+            "Every child at the home starts term in proper shoes.", "Forty children, forty pairs of shoes. $25 buys one pair.", "Mbare Children's Home", "👟", 1000, DateTimeOffset.UtcNow.AddDays(21)));
+        await me.PostAsync<CampaignDto>($"api/donations/campaigns/{campaign.Id}/publish", new { });
+        await me.PostAsync<CampaignDto>("api/donations/campaigns", new SaveCampaignRequest("Borehole for Chivi",
+            "Clean water for a village of 300.", null, "Chivi Community Trust", "💧", 2500, null));
+        foreach (var (amount, anonymous, message) in new[] { (25m, false, "Go well!"), (10m, true, (string?)null) })
+            await tendai.PostAsync<DonationDto>($"api/donations/campaigns/{campaign.Id}/donations", new DonateRequest(amount, anonymous, message));
 
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };

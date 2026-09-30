@@ -39,6 +39,9 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<PosPayment> PosPayments => Set<PosPayment>();
     public DbSet<PosAuditEntry> PosAudit => Set<PosAuditEntry>();
     public DbSet<PosQrPayment> PosQrPayments => Set<PosQrPayment>();
+    public DbSet<DonationCampaign> DonationCampaigns => Set<DonationCampaign>();
+    public DbSet<Donation> Donations => Set<Donation>();
+    public DbSet<PointsEntry> Points => Set<PointsEntry>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<EventListing> Events => Set<EventListing>();
     public DbSet<TicketTier> TicketTiers => Set<TicketTier>();
@@ -240,6 +243,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         model.Entity<PostMedia>(e => e.HasIndex(m => new { m.PostId, m.Position }).IsUnique());
 
         NdeipiChat.Api.Pos.PosModel.Configure(model);
+        NdeipiChat.Api.Donations.DonationsModel.Configure(model);
 
         model.Entity<PostComment>(e =>
         {
