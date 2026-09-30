@@ -17,6 +17,9 @@ public sealed class SubAppRootAttribute(string appId) : Attribute
 /// for the Ndeipi API that already carries their sign-in (SRS SR-03-02). A sub-app never asks
 /// anyone to sign in, and never sees a token.
 /// </summary>
+/// <param name="AppId">The id the app was opened as, from its [SubAppRoot].</param>
+/// <param name="UserId">The signed-in user.</param>
+/// <param name="DisplayName">Their name as Ndeipi shows it.</param>
 /// <param name="Api">Relative paths go to the Ndeipi API, e.g. "api/inventory"; the shell adds and refreshes the token.</param>
 /// <param name="NavigateToLauncher">Takes the user back to the launcher.</param>
 /// <param name="Realtime">Live updates over the shell's own connection; null in a shell that has none.</param>

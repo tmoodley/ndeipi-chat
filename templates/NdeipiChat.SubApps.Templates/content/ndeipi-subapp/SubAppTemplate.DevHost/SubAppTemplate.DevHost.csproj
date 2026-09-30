@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <!-- Runs SubAppTemplate on its own, in a stand-in for the Ndeipi shell with a mock API
+       (Program.cs). It's for development only and never ships with the app. -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SubAppTemplate\SubAppTemplate.csproj" />
+<!--#if (inRepo) -->
+    <ProjectReference Include="..\NdeipiChat.SubApps.DevHost\NdeipiChat.SubApps.DevHost.csproj" />
+<!--#else -->
+    <PackageReference Include="NdeipiChat.SubApps.DevHost" Version="SDK_VERSION" />
+<!--#endif -->
+  </ItemGroup>
+
+</Project>

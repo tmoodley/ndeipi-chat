@@ -1,9 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk.Razor">
 
+  <Import Project="..\..\eng\SubAppsSdk.props" />
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The package keeps the assembly's name: the shell loads apps built against it as they are. -->
+    <PackageId>NdeipiChat.SubApps.Sdk</PackageId>
+    <Description>The contract between the Ndeipi shell and a micro-app: [SubAppRoot], SubAppContext, realtime topics and device keys.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
 

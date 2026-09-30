@@ -31,8 +31,11 @@ A sub-app never shows a sign-in of its own (SR-03-02).
 
 ## Adding one
 
-1. **Create the library:** `dotnet new razorclasslib -n NdeipiChat.SubApps.{Name}`. Reference
-   `NdeipiChat.SubApps.Sdk`, and `NdeipiChat.Contracts` if it shares DTOs with the API.
+1. **Create the library** from the template, at the repo root:
+   `dotnet new ndeipi-subapp -n NdeipiChat.SubApps.{Name} --in-repo -o src`. This gives the library,
+   with a sample root component, and a dev host that runs it with a mock API. Install the template
+   first; see "Start with the SDK" in the [micro-app guide](micro-apps.md). Reference
+   `NdeipiChat.Contracts` if the app shares DTOs with the API.
 2. **Give it a root component** with `@attribute [SubAppRoot("{id}")]` and a
    `[CascadingParameter] public SubAppContext Context { get; set; }`. Use the shell's styles (`bar`,
    `page`, `list`, `row`, `form`, `field` and the button classes) rather than scoped CSS.

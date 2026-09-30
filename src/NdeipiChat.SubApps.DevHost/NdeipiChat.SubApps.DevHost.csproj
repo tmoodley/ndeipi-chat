@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <Import Project="..\..\eng\SubAppsSdk.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <PackageId>NdeipiChat.SubApps.DevHost</PackageId>
+    <Description>Runs a Ndeipi micro-app on its own: a stand-in shell with a fake user, a mock API, in-memory realtime and device keys, phone and desktop widths, and light and dark themes.</Description>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NdeipiChat.SubApps.Sdk\NdeipiChat.SubApps.Sdk.csproj" />
+  </ItemGroup>
+
+  <!-- The shell's own stylesheet, so an app looks here exactly as it will in Ndeipi. Linked, not
+       copied, so it can't drift from the web shell. -->
+  <ItemGroup>
+    <Content Include="..\NdeipiChat.Web\wwwroot\css\app.css" Link="wwwroot\ndeipi-shell.css" />
+  </ItemGroup>
+
+</Project>

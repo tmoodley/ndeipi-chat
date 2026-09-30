@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SubAppTemplate/SubAppTemplate.csproj" />
+  <Project Path="SubAppTemplate.DevHost/SubAppTemplate.DevHost.csproj" />
+</Solution>

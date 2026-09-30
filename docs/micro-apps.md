@@ -132,16 +132,101 @@ browser.
 Hide your own header in embedded mode if the phone page already shows one (POS uses
 `.content.embedded header.pos-bar { display: none; }`).
 
+## Start with the SDK
+
+An engineer can build a micro-app without the Ndeipi repo, a database or a sign-in. The SDK is
+three packages:
+
+| Package | What it is |
+|---|---|
+| `NdeipiChat.SubApps.Sdk` | The contract: `[SubAppRoot]`, `SubAppContext`, `ISubAppRealtime`, `ISubAppDevice`. The package keeps the assembly's name, so the shell loads apps built against it as they are. |
+| `NdeipiChat.SubApps.DevHost` | Runs an app on its own, in a stand-in shell (see below). |
+| `NdeipiChat.SubApps.Templates` | `dotnet new ndeipi-subapp`: an app and its dev host, ready to run. |
+
+**Get the packages.** They aren't on nuget.org yet. Pack them from this repo into a folder that
+works as a NuGet feed:
+
+```powershell
+./eng/pack-subapps-sdk.ps1
+```
+
+Share `artifacts/packages` (or push it to a private feed). Then, on the developer's machine:
+
+```bash
+dotnet new install artifacts/packages/NdeipiChat.SubApps.Templates.0.1.0.nupkg
+```
+```bash
+dotnet nuget add source <path-or-url-of-the-feed> --name ndeipi
+```
+
+**Create and run an app.**
+
+```bash
+dotnet new ndeipi-subapp -n Bookings
+```
+```bash
+dotnet watch --project Bookings/Bookings.DevHost
+```
+
+The template's options:
+
+- `--app-id`: the id; defaults to the last part of the name, in lower case.
+- `--title`: the name people see.
+- `--sdk-version`: which SDK packages to reference.
+
+The generated app is a working sample: a list read from the API, an add form, a realtime topic that
+keeps every viewer in step, a draft kept with `Device`, and remove allowed only for the person who
+added the item.
+
+**The dev host.** It stands in for the shell, so the app runs the same code it will run in Ndeipi.
+
+- *A fake user*, switchable in the bar (`dev.Users`), so you can check what different people see.
+- *A mock API*. You answer the app's calls in the dev host's `Program.cs`, the way the API module
+  will:
+  ```csharp
+  dev.Api.MapGet("api/bookings/items", _ => items);
+  dev.Api.MapDelete("api/bookings/items/{id}", async request =>
+  {
+      var item = items.FirstOrDefault(i => i.Id.ToString() == request.Route("id"));
+      if (item is null) return DevResults.NotFound();
+      if (item.AddedById != request.User.Id) return DevResults.Forbidden("Only the person who added this can remove it.");
+      items.Remove(item);
+      await request.Realtime.PublishAsync("bookings:items", new ItemChanged(item, Removed: true));
+      return DevResults.NoContent();
+  });
+  ```
+  Responses use the API's JSON settings, and errors use its problem format, whose `title` is
+  written for the person using the app. A call with no mock gets a 404 that names the mock to add.
+- *Realtime topics in memory.* Mocks publish to them, and so can the Realtime panel, which lists the
+  topics the app follows. Unlike the API, the dev host lets the app follow any topic.
+- *`Device`* works the same way as the web shell's: Web Crypto keys and localStorage values, kept
+  separate per app and user.
+- *The bar*:
+  - phone, tablet or desktop width (the app runs in an iframe, so its phone CSS really applies);
+  - **Phone app**, which shows the app as the phone's WebView does, with no shell around it;
+  - light and dark theme;
+  - the query string the app is opened with;
+  - **Open alone**, for trying it on a real phone on the same network.
+- *Panels* for every API call (request and response bodies included), the realtime messages, and
+  crashes, including a realtime handler that throws.
+- `OfferRealtime = false` or `OfferDevice = false` checks that the app copes when a shell has neither.
+
+**Handing it over.** A finished app joins Ndeipi by the steps below. Its mocks become the API
+module, and its contract moves to `NdeipiChat.Contracts`.
+
 ## Build one
 
 Using a hypothetical *Bookings* app with id `bookings`. POS is the fullest example to copy;
 Inventory is the smallest.
 
-1. **Create the library.**
+1. **Create the library** with the template, from the repo root. `--in-repo` references the SDK
+   and dev host projects here instead of packages:
    ```bash
-   dotnet new razorclasslib -n NdeipiChat.SubApps.Bookings -o src/NdeipiChat.SubApps.Bookings
+   dotnet new ndeipi-subapp -n NdeipiChat.SubApps.Bookings --in-repo -o src
    ```
-   Reference `NdeipiChat.SubApps.Sdk` and `NdeipiChat.Contracts`.
+   That gives `src/NdeipiChat.SubApps.Bookings` and a dev host,
+   `src/NdeipiChat.SubApps.Bookings.DevHost`. Add a reference to `NdeipiChat.Contracts` when the
+   contract moves there.
 2. **Define the contract** in `NdeipiChat.Contracts/Bookings.cs`: `BookingsContract.AppId`,
    `BasePath`, and the request and response records.
 3. **Add the root component** with `@attribute [SubAppRoot("bookings")]` and the `SubAppContext`
@@ -209,7 +294,8 @@ and releases together. Treat micro-app code with the same review as shell code.
 - Agree the contract in `NdeipiChat.Contracts` first, then build client and server in parallel.
 - Enforce `Scopes` server-side, so an app can only reach its own routes and the platform APIs it
   declared.
-- Give each team a project template for the steps above.
+- Publish the SDK packages to a private feed (GitHub Packages or Azure Artifacts) with each release,
+  so teams don't need to pack them themselves.
 
 **External or independent teams (later):**
 
@@ -232,6 +318,9 @@ messages rather than a .NET type.
 | `src/NdeipiChat.Api/Launcher/SubAppBundles.cs` | Finds published bundles, hashes and signatures |
 | `src/NdeipiChat.Client.Core/PublisherKeys.cs` | Trusted publisher public keys |
 | `src/NdeipiChat.Api/Chat/ChatHub.cs` | `ITopicPolicy` and topic subscriptions |
+| `src/NdeipiChat.SubApps.DevHost/` | The dev host: `AddSubAppDevHost`, `DevApi` mocks, `DevRealtime`, and the bar and panels (`wwwroot/devhost.js`) |
+| `templates/NdeipiChat.SubApps.Templates/` | The `ndeipi-subapp` template |
+| `eng/SubAppsSdk.props`, `eng/pack-subapps-sdk.ps1` | The SDK packages' shared version and settings, and the script that packs them |
 | `tools/NdeipiChat.SubAppSigner` | Key generation and bundle signing |
 | `src/NdeipiChat.App/Pages/Pages.xaml.cs` | `WebSubAppPage`: the phone's WebView host |
 | `docs/sub-apps.md` | Step-by-step reference, including key rotation |
