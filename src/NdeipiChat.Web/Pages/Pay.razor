@@ -15,7 +15,8 @@
 
 <PageTitle>@(Code is null ? "Scan to pay" : "Pay") · Ndeipi</PageTitle>
 
-<header class="bar">
+@* In the phone app its own bar ("← Scan to pay") goes back already: one header, not two. *@
+<header class="bar pay-bar">
     <button class="bar-back link" title="Back" @onclick="Back">‹</button>
     <h1>@(Code is null ? "Scan to pay" : "Ndeipi Pay")</h1>
 </header>
@@ -30,8 +31,15 @@
             }
             else
             {
-                <video class="pay-video" @ref="_video" muted></video>
-                <p class="muted">Point the camera at the QR code on the shop's screen.</p>
+                <video class="pay-video" @ref="_video" muted playsinline></video>
+                @if (_needsTap)
+                {
+                    <button class="primary wide" @onclick="StartCameraAsync">📷 Turn on the camera</button>
+                }
+                else
+                {
+                    <p class="muted">Point the camera at the QR code on the shop's screen.</p>
+                }
             }
             <form class="pay-manual" @onsubmit="SubmitTypedAsync">
                 <input @bind="_typed" placeholder="Or paste the code or link" autocomplete="off" spellcheck="false" />
@@ -103,7 +111,7 @@
 
     PayRequestDto? _request;
     string? _error, _typed;
-    bool _busy, _cameraFailed, _scanning;
+    bool _busy, _cameraFailed, _scanning, _needsTap;
     ElementReference _video;
     IJSObjectReference? _scanner;
     DotNetObjectReference<Pay>? _self;
@@ -127,21 +135,31 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Code is null && !_scanning && !_cameraFailed)
+        if (Code is null && !_scanning && !_cameraFailed && !_needsTap)
+            await StartCameraAsync();
+    }
+
+    /// <summary>Starts the camera: on arriving, or from the button where the browser wants a tap first.</summary>
+    async Task StartCameraAsync()
+    {
+        _scanning = true;
+        _needsTap = false;
+        string result;
+        try
         {
-            _scanning = true;
-            try
-            {
-                _self ??= DotNetObjectReference.Create(this);
-                _scanner ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/qr-scan.js");
-                _cameraFailed = !await _scanner.InvokeAsync<bool>("start", _video, _self);
-            }
-            catch (JSException)
-            {
-                _cameraFailed = true;
-            }
-            if (_cameraFailed)
-                StateHasChanged();
+            _self ??= DotNetObjectReference.Create(this);
+            _scanner ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/qr-scan.js");
+            result = await _scanner.InvokeAsync<string>("start", _video, _self);
+        }
+        catch (JSException)
+        {
+            result = "none";
+        }
+        (_cameraFailed, _needsTap) = (result == "none", result == "tap");
+        if (result != "on")
+        {
+            _scanning = false;
+            StateHasChanged();
         }
     }
 
