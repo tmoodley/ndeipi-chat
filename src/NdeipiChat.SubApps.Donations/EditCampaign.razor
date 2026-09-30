@@ -1,0 +1,92 @@
+@* Starting or editing a campaign. New campaigns start as drafts; changing a verified campaign's
+   title or beneficiary takes its badge away until an admin checks it again. *@
+
+<form class="dn-card" style="max-width: 640px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px" @onsubmit="SaveAsync">
+    <h3 style="margin: 0">@(Id is null ? "New campaign" : "Edit campaign")</h3>
+    <div class="dn-row">
+        <label class="dn-field" style="width: 80px">Icon<input @bind="_form.Icon" maxlength="16" /></label>
+        <label class="dn-field grow">Title<input @bind="_form.Title" maxlength="@DonationsContract.MaxTitleLength" placeholder="e.g. School shoes for Mbare kids" /></label>
+    </div>
+    <label class="dn-field">Who it's for<input @bind="_form.Beneficiary" maxlength="120" placeholder="e.g. Mbare Children's Home" /></label>
+    <label class="dn-field">Summary<input @bind="_form.Summary" maxlength="@DonationsContract.MaxSummaryLength" placeholder="One or two sentences for the feed" /></label>
+    <label class="dn-field">The story (optional)<textarea rows="5" @bind="_form.Story" maxlength="@DonationsContract.MaxStoryLength" placeholder="What the money will do, and why it matters"></textarea></label>
+    <div class="dn-row">
+        <label class="dn-field grow">Target<input inputmode="decimal" @bind="_form.Target" placeholder="e.g. 500" /></label>
+        <label class="dn-field grow">Ends (optional)<input type="date" @bind="_form.EndsOn" /></label>
+    </div>
+    @if (_error is not null)
+    {
+        <p class="error" style="margin: 0">@_error</p>
+    }
+    <div class="dn-actions">
+        <button type="button" class="secondary" @onclick="App.BackAsync">Cancel</button>
+        <button type="submit" class="primary" disabled="@_busy">@(_busy ? "Saving…" : Id is null ? "Save draft" : "Save")</button>
+    </div>
+</form>
+
+@code {
+    [CascadingParameter] public DonationsApp App { get; set; } = null!;
+    [Parameter] public Guid? Id { get; set; }
+
+    sealed class Form
+    {
+        public string Icon { get; set; } = "💚";
+        public string Title { get; set; } = "";
+        public string Beneficiary { get; set; } = "";
+        public string Summary { get; set; } = "";
+        public string? Story { get; set; }
+        public string Target { get; set; } = "";
+        public DateTime? EndsOn { get; set; }
+    }
+
+    Form _form = new();
+    string? _error;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id is not { } id)
+            return;
+        try
+        {
+            var c = (await App.Api.GetAsync<CampaignDetailDto>($"{DonationsApi.Base}/campaigns/{id}")).Campaign;
+            _form = new Form
+            {
+                Icon = c.Icon, Title = c.Title, Beneficiary = c.Beneficiary, Summary = c.Summary, Story = c.Story,
+                Target = c.Target.ToString("0.##", CultureInfo.InvariantCulture), EndsOn = c.EndsAt?.ToLocalTime().Date
+            };
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task SaveAsync()
+    {
+        if (!decimal.TryParse(_form.Target.Trim().TrimStart('$'), NumberStyles.Number, CultureInfo.InvariantCulture, out var target))
+        {
+            _error = "Set a target, e.g. 500.";
+            return;
+        }
+        // An end date means the end of that day, where the organizer is.
+        DateTimeOffset? ends = _form.EndsOn is { } day ? new DateTimeOffset(day.Date.AddDays(1).AddSeconds(-1), TimeZoneInfo.Local.GetUtcOffset(day)) : null;
+        var request = new SaveCampaignRequest(_form.Title, _form.Summary, _form.Story, _form.Beneficiary, _form.Icon, target, ends);
+        (_busy, _error) = (true, null);
+        try
+        {
+            var saved = Id is { } id
+                ? await App.Api.SendAsync<CampaignDto>(HttpMethod.Put, $"{DonationsApi.Base}/campaigns/{id}", request)
+                : await App.Api.SendAsync<CampaignDto>(HttpMethod.Post, $"{DonationsApi.Base}/campaigns", request);
+            App.Replace(new DonationsView.Campaign(saved!.Id));
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

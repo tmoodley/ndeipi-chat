@@ -1,0 +1,53 @@
+@* An organizer's campaigns: drafts, live and closed, and a new one. *@
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+    <div class="dn-row">
+        <span class="grow dn-sub">Your campaigns. Publish a draft to put it in the feed; an admin can then verify it.</span>
+        <button class="primary" @onclick="() => App.Go(new DonationsView.Edit(null))">＋ New campaign</button>
+    </div>
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+    @if (_campaigns is null)
+    {
+        <p class="muted">Loading…</p>
+    }
+    else if (_campaigns.Count == 0)
+    {
+        <div class="empty"><p>No campaigns yet. Start one to raise money for a cause.</p></div>
+    }
+    else
+    {
+        <div class="dn-list">
+            @foreach (var c in _campaigns)
+            {
+                <div @key="c.Id" style="display: flex; flex-direction: column; gap: 6px">
+                    <CampaignCard Campaign="c" OnOpen="() => App.Go(new DonationsView.Campaign(c.Id))" />
+                    <span class="dn-badge @(c.Status == CampaignStatuses.Active ? "ok" : c.Status == CampaignStatuses.Draft ? "wait" : "")" style="align-self: flex-start">
+                        @(c.Status switch { CampaignStatuses.Active => "Live", CampaignStatuses.Draft => "Draft", _ => "Closed" })
+                    </span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public DonationsApp App { get; set; } = null!;
+
+    List<CampaignDto>? _campaigns;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _campaigns = await App.Api.GetAsync<List<CampaignDto>>($"{DonationsApi.Base}/campaigns/mine");
+        }
+        catch (DonationsException ex)
+        {
+            (_campaigns, _error) = ([], ex.Message);
+        }
+    }
+}

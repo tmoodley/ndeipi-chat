@@ -1,0 +1,24 @@
+@* A campaign in the feed (FR-02): title, who it's for, the verified badge, and raised against target. *@
+
+<button class="dn-card dn-camp" @onclick="OnOpen">
+    <div class="dn-camp-head">
+        <span class="dn-icon">@Campaign.Icon</span>
+        <div style="min-width: 0">
+            <div class="dn-title">@Campaign.Title</div>
+            <div class="dn-sub">
+                For @Campaign.Beneficiary
+                @if (Campaign.Verified)
+                {
+                    <span class="dn-verified" title="Checked by Ndeipi">✓ Verified</span>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="dn-sub">@Campaign.Summary</div>
+    <Progress Campaign="Campaign" />
+</button>
+
+@code {
+    [Parameter, EditorRequired] public CampaignDto Campaign { get; set; } = null!;
+    [Parameter] public EventCallback OnOpen { get; set; }
+}

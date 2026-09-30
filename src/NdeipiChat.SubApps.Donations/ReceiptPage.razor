@@ -1,0 +1,100 @@
+@* FR-04: a gift's receipt, with the transfer's reference, the time, the points it earned, and the
+   receipt's SHA-256 hash, which anyone can check against Ndeipi's record. *@
+
+@if (_gift is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var g = _gift;
+    <section class="dn-card" style="max-width: 520px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 12px">
+        <div class="dn-camp-head">
+            <span class="dn-icon">🧾</span>
+            <div>
+                <div class="dn-title">Gift receipt</div>
+                <div class="dn-sub">@g.CampaignTitle · for @g.Beneficiary</div>
+            </div>
+        </div>
+        <div style="font-size: 34px; font-weight: 800">@Format.Money(g.Amount, g.Currency)</div>
+        <div class="dn-receipt">
+            <div class="line"><span>Status</span><span>@(g.Status switch { DonationStatuses.Confirmed => "Confirmed", DonationStatuses.Pending => "Sending", _ => "Didn't go through" })</span></div>
+            <div class="line"><span>Given</span><span>@Format.When(g.CreatedAt)</span></div>
+            @if (g.ConfirmedAt is { } at)
+            {
+                <div class="line"><span>Confirmed</span><span>@Format.When(at)</span></div>
+            }
+            <div class="line"><span>Paid in</span><span>@g.Currency.ToUpperInvariant() · no fee</span></div>
+            <div class="line"><span>Shown as</span><span>@(g.Anonymous ? "Anonymous" : "Your name")</span></div>
+            @if (g.Message is { } m)
+            {
+                <div class="line"><span>Message</span><span>“@m”</span></div>
+            }
+            @if (g.Status == DonationStatuses.Confirmed)
+            {
+                <div class="line"><span>Believe Points</span><span>+@g.Points ★</span></div>
+            }
+            @if (g.TransferReference is { } reference)
+            {
+                <div class="line"><span>Transfer</span><span style="word-break: break-all; text-align: right">@reference</span></div>
+            }
+            @if (g.Error is { } error)
+            {
+                <div class="line"><span>Why</span><span>@error</span></div>
+            }
+        </div>
+        @if (g.ReceiptHash is { } hash)
+        {
+            <div class="dn-receipt">
+                <span>Receipt hash (SHA-256)</span>
+                <span class="hash">@hash</span>
+            </div>
+            <div class="dn-actions">
+                <button class="secondary" disabled="@_busy" @onclick="() => CheckAsync(hash)">Check it with Ndeipi</button>
+                @if (_check is { } check)
+                {
+                    <span class="dn-badge @(check.Valid ? "ok" : "bad")" style="align-self: center">@(check.Valid ? "✓ Matches Ndeipi's record" : "✕ No such receipt")</span>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public DonationsApp App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    DonationDto? _gift;
+    ReceiptCheckDto? _check;
+    string? _error;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _gift = await App.Api.GetAsync<DonationDto>($"{DonationsApi.Base}/donations/{Id}");
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task CheckAsync(string hash)
+    {
+        _busy = true;
+        try
+        {
+            _check = await App.Api.GetAsync<ReceiptCheckDto>($"{DonationsApi.Base}/receipts/{hash}");
+        }
+        catch (DonationsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

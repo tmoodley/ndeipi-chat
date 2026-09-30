@@ -761,3 +761,75 @@ public sealed class PosAuditEntry
     public required string PreviousHash { get; set; }
     public required string Hash { get; set; }
 }
+
+/// <summary>A fundraising campaign in Donations, run by an organizer.</summary>
+public sealed class DonationCampaign
+{
+    public Guid Id { get; set; }
+    public Guid OrganizerId { get; set; }
+    public User Organizer { get; set; } = null!;
+    public required string Title { get; set; }
+    public required string Summary { get; set; }
+    public string? Story { get; set; }
+
+    /// <summary>Who the money is for, e.g. "Mbare Children's Home".</summary>
+    public required string Beneficiary { get; set; }
+
+    public required string Icon { get; set; }
+    public decimal Target { get; set; }
+
+    /// <summary>The wallet currency gifts are paid in, e.g. "usdc".</summary>
+    public required string Currency { get; set; }
+
+    /// <summary>Confirmed gifts: kept up to date as each is confirmed, so the feed needn't add them up.</summary>
+    public decimal Raised { get; set; }
+    public int Gifts { get; set; }
+
+    public bool Verified { get; set; }
+    public Guid? VerifiedById { get; set; }
+    public DateTimeOffset? VerifiedAt { get; set; }
+    public required string Status { get; set; }
+    public DateTimeOffset? EndsAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>A gift to a campaign, paid from the giver's wallet to the organizer's by <see cref="BankTransferId"/>.</summary>
+public sealed class Donation
+{
+    public Guid Id { get; set; }
+    public Guid CampaignId { get; set; }
+    public Guid DonorId { get; set; }
+    public decimal Amount { get; set; }
+    public required string Currency { get; set; }
+    public bool Anonymous { get; set; }
+    public string? Message { get; set; }
+    public required string Status { get; set; }
+    public string? Error { get; set; }
+    public Guid BankTransferId { get; set; }
+
+    /// <summary>Believe Points it earned, once confirmed.</summary>
+    public int Points { get; set; }
+
+    /// <summary>SHA-256 of its receipt (DonationReceipt), fixed when it's confirmed.</summary>
+    public string? ReceiptHash { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? ConfirmedAt { get; set; }
+}
+
+/// <summary>
+/// One award of Believe Points (or a deduction), shared across Ndeipi: a person's balance is the
+/// sum of theirs. Each is for one thing in one app (<see cref="Source"/> + <see cref="SourceId"/>),
+/// so the same thing can't be rewarded twice.
+/// </summary>
+public sealed class PointsEntry
+{
+    public long Id { get; set; }
+    public Guid UserId { get; set; }
+    public int Points { get; set; }
+    public required string Source { get; set; }
+    public required string SourceId { get; set; }
+    public required string Description { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
