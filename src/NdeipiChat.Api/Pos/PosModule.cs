@@ -1,4 +1,6 @@
 using NdeipiChat.Api.Auth;
+using NdeipiChat.Api.Banking;
+using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Data;
 using NdeipiChat.Api.Launcher;
 using NdeipiChat.Contracts;
@@ -15,8 +17,14 @@ public static class PosModule
     {
         services.AddMemoryCache();
         services.AddScoped<PosService>();
+        services.AddScoped<PosPayService>();
+        services.AddScoped<IBankTransferListener, PosQrPaymentListener>();
+        services.AddMessageKind<PosReceiptHandler>();
         return services;
     }
+
+    /// <summary>The Ndeipi site, for the pay links in QR codes: the one the till was loaded from.</summary>
+    static Uri SiteOf(HttpContext http) => new($"{http.Request.Scheme}://{http.Request.Host}{http.Request.PathBase}/");
 
     public static void MapPos(this IEndpointRouteBuilder app)
     {
@@ -161,6 +169,27 @@ public static class PosModule
             return await WithTillAsync(http, users, pos, async t =>
                 await pos.SendReceiptAsync(device, t, id, request.EmailOrPhone, http.RequestAborted) ? Results.NoContent() : Results.NotFound());
         });
+
+        // ---- Ndeipi Pay: the till's QR code ----
+
+        till.MapPost("/qr-payments", async (StartQrPaymentRequest request, HttpContext http, CurrentUserService users, PosService pos, PosPayService pay) =>
+            await WithTillAsync(http, users, pos, async t => Results.Ok(await pay.StartAsync(t, request, SiteOf(http), http.RequestAborted))));
+
+        till.MapGet("/qr-payments/{id:guid}", async (Guid id, HttpContext http, CurrentUserService users, PosService pos, PosPayService pay) =>
+            await WithTillAsync(http, users, pos, async t => Found(await pay.GetAsync(t, id, SiteOf(http), http.RequestAborted))));
+
+        till.MapDelete("/qr-payments/{id:guid}", async (Guid id, HttpContext http, CurrentUserService users, PosService pos, PosPayService pay) =>
+            await WithTillAsync(http, users, pos, async t => Found(await pay.CancelAsync(t, id, SiteOf(http), http.RequestAborted))));
+
+        // ---- Ndeipi Pay: the customer who scanned it. Anyone signed in to Ndeipi, not only POS staff. ----
+
+        var customer = app.MapGroup("/" + PosPay.BasePath).RequireAuthorization();
+
+        customer.MapGet("/{code}", async (string code, HttpContext http, CurrentUserService users, PosPayService pay) =>
+            Found(await pay.RequestAsync(await users.GetAsync(http.User, http.RequestAborted), code, http.RequestAborted)));
+
+        customer.MapPost("/{code}", async (string code, HttpContext http, CurrentUserService users, PosPayService pay) =>
+            Found(await pay.PayAsync(await users.GetAsync(http.User, http.RequestAborted), code, http.RequestAborted)));
     }
 
     static IResult Found<T>(T? value) where T : class => value is null ? Results.NotFound() : Results.Ok(value);

@@ -38,6 +38,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<PosSaleLine> PosSaleLines => Set<PosSaleLine>();
     public DbSet<PosPayment> PosPayments => Set<PosPayment>();
     public DbSet<PosAuditEntry> PosAudit => Set<PosAuditEntry>();
+    public DbSet<PosQrPayment> PosQrPayments => Set<PosQrPayment>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<EventListing> Events => Set<EventListing>();
     public DbSet<TicketTier> TicketTiers => Set<TicketTier>();

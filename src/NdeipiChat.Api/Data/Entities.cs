@@ -608,19 +608,58 @@ public sealed class PosProduct
     public bool IsActive { get; set; }
     public int SafetyStock { get; set; }
 
+    /// <summary>Counted products can't be sold past what's in stock; uncounted ones have no stock.</summary>
+    public bool TrackStock { get; set; } = true;
+
     /// <summary>Variants and modifiers, as JSON (PosVariantDto / PosModifierDto lists).</summary>
     public string? VariantsJson { get; set; }
     public string? ModifiersJson { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
-/// <summary>How many of a product (or one variant, by name; "" for the product) a store has.</summary>
+/// <summary>How many of a product (or one variant, by name; "" for the product) a store has. Never below zero.</summary>
 public sealed class PosStock
 {
     public Guid StoreId { get; set; }
     public Guid ProductId { get; set; }
     public required string Variant { get; set; }
     public decimal Quantity { get; set; }
+}
+
+/// <summary>
+/// A Ndeipi Pay request shown as a QR code on a till: the customer who scans it pays
+/// <see cref="Amount"/> from their wallet to the merchant owner's, through <see cref="BankTransferId"/>.
+/// </summary>
+public sealed class PosQrPayment
+{
+    public Guid Id { get; set; }
+
+    /// <summary>What the QR code carries: long and random, so it can't be guessed.</summary>
+    public required string Code { get; set; }
+
+    public Guid MerchantId { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid StaffId { get; set; }
+
+    /// <summary>Who's paid: the merchant's owner, whose wallet takes the money.</summary>
+    public Guid RecipientId { get; set; }
+
+    public decimal Amount { get; set; }
+
+    /// <summary>The wallet currency it's paid in, e.g. "usdc".</summary>
+    public required string Currency { get; set; }
+
+    public required string Status { get; set; }
+    public string? Error { get; set; }
+    public Guid? PayerId { get; set; }
+    public Guid? BankTransferId { get; set; }
+
+    /// <summary>The sale it paid for; a payment pays for one sale only.</summary>
+    public Guid? SaleId { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
 }
 
 public sealed class PosShift
