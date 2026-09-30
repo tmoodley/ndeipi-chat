@@ -69,6 +69,9 @@
                     </Grid>
                 </Border>
 
+                <!-- Ndeipi Pay: a shop's QR code, paid from this wallet. -->
+                <Button Text="📷  Scan to pay" Command="{Binding ScanToPayCommand}" Style="{StaticResource Primary}" />
+
                 <Label Text="{Binding ErrorMessage}" Style="{StaticResource Error}" IsVisible="{Binding ErrorMessage, Converter={StaticResource IsNotNull}}" />
 
                 <!-- Verification with Bridge. -->

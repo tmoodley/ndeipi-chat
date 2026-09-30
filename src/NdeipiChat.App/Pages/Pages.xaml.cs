@@ -22,6 +22,13 @@ public partial class WebSubAppPage : ViewModelPage
         InitializeComponent();
         _viewModel = viewModel;
         WebContent.UserAgent = InAppUserAgent;
+#if ANDROID
+        WebContent.HandlerChanged += (_, _) =>
+        {
+            if (WebContent.Handler is Microsoft.Maui.Handlers.WebViewHandler handler && handler.PlatformView is Android.Webkit.WebView web)
+                web.SetWebChromeClient(new NdeipiChat.App.Platforms.Android.CameraWebChromeClient(handler, () => _viewModel.Site));
+        };
+#endif
         _viewModel.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(WebSubAppViewModel.Url) && _viewModel.Url is { } url)

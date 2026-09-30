@@ -14,6 +14,7 @@
     .reg-tile .icon { font-size: 30px; }
     .reg-tile .name { font-weight: 700; font-size: 14px; line-height: 1.2; }
     .reg-tile .price { font-size: 13px; color: var(--muted); }
+    .reg-tile.out { opacity: .55; cursor: not-allowed; }
     .reg-cart { position: sticky; top: 8px; }
     .reg-line { display: flex; gap: 8px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--divider); cursor: pointer; }
     .reg-line .grow { flex: 1; min-width: 0; }
@@ -63,18 +64,21 @@
             <div class="reg-products">
                 @foreach (var product in Shown(catalog))
                 {
-                    var stock = product.Stock.FirstOrDefault(s => s.Variant == "");
-                    <button class="reg-tile" @key="product.Id" @onclick="() => Pick(product)">
+                    // A product with variants is out only when every version is.
+                    var left = product.TrackStock
+                        ? new[] { "" }.Concat(product.Variants.Select(v => v.Name)).Sum(v => App.Available(product, v) ?? 0)
+                        : (decimal?)null;
+                    <button class="reg-tile @(left <= 0 ? "out" : "")" @key="product.Id" disabled="@(left <= 0)" @onclick="() => Pick(product)">
                         <span class="icon">@product.Icon</span>
                         <span class="name">@product.Name</span>
                         <span class="price pos-money">@App.Money(product.Price)@(product.Variants.Count > 0 ? "+" : "")</span>
-                        @if (stock is { IsNegative: true })
+                        @if (left <= 0)
                         {
-                            <span class="pos-badge neg">@PosFormat.Quantity(stock.Quantity) in stock</span>
+                            <span class="pos-badge neg">Out of stock</span>
                         }
-                        else if (stock is { IsLow: true })
+                        else if (left is { } l && l <= product.SafetyStock)
                         {
-                            <span class="pos-badge low">Low: @PosFormat.Quantity(stock.Quantity)</span>
+                            <span class="pos-badge low">@PosFormat.Quantity(l) left</span>
                         }
                     </button>
                 }
@@ -160,10 +164,10 @@
             {
                 <div class="pos-muted">Choose one</div>
                 <div class="reg-options" style="margin: 6px 0 12px">
-                    <button class="@(_variant == "" ? "on" : "")" @onclick='() => _variant = ""'>Standard · @App.Money(p.Price)</button>
+                    <button class="@(_variant == "" ? "on" : "")" disabled="@(App.Available(p, "") <= 0)" @onclick='() => _variant = ""'>Standard · @App.Money(p.Price)@(App.Available(p, "") <= 0 ? " · out" : "")</button>
                     @foreach (var v in p.Variants)
                     {
-                        <button class="@(_variant == v.Name ? "on" : "")" @key="v.Name" @onclick="() => _variant = v.Name">@v.Name · @App.Money(v.Price)</button>
+                        <button class="@(_variant == v.Name ? "on" : "")" @key="v.Name" disabled="@(App.Available(p, v.Name) <= 0)" @onclick="() => _variant = v.Name">@v.Name · @App.Money(v.Price)@(App.Available(p, v.Name) <= 0 ? " · out" : "")</button>
                     }
                 </div>
             }
@@ -176,6 +180,10 @@
                         <button class="@(_modifiers.Contains(mod.Name) ? "on" : "")" @key="mod.Name" @onclick="() => Toggle(mod.Name)">@mod.Name@(mod.Price > 0 ? $" +{App.Money(mod.Price)}" : "")</button>
                     }
                 </div>
+            }
+            @if (App.Error is { } error)
+            {
+                <p class="pos-error">@error</p>
             }
             <div class="pos-actions">
                 <button class="primary pos-big" @onclick="AddPicked">Add to sale</button>
@@ -330,16 +338,17 @@
         {
             // A scan is one beep, one item: the product's own code is its standard version
             // (a variant's code is that variant). Choices are for tapping the tile.
+            // Out of stock still counts as found: the till says so instead of "no such code".
             if (product.Barcode == code || product.Sku == code)
             {
-                App.Add(product);
-                await BeepAsync();
+                if (App.Add(product))
+                    await BeepAsync();
                 return true;
             }
             if (product.Variants.FirstOrDefault(v => v.Barcode == code || v.Sku == code) is { } variant)
             {
-                App.Add(product, variant.Name);
-                await BeepAsync();
+                if (App.Add(product, variant.Name))
+                    await BeepAsync();
                 return true;
             }
         }
@@ -365,7 +374,9 @@
             App.Add(product);
             return;
         }
-        (_picking, _variant, _modifiers) = (product, "", []);
+        // Start on the first version that's in stock.
+        var first = new[] { "" }.Concat(product.Variants.Select(v => v.Name)).FirstOrDefault(v => App.Available(product, v) is not <= 0) ?? "";
+        (_picking, _variant, _modifiers, App.Error) = (product, first, [], null);
     }
 
     void Toggle(string modifier)
@@ -376,7 +387,8 @@
 
     async Task AddPicked()
     {
-        App.Add(_picking!, _variant, [.. _modifiers]);
+        if (!App.Add(_picking!, _variant, [.. _modifiers]))
+            return;
         _picking = null;
         await FocusSearchAsync();
     }

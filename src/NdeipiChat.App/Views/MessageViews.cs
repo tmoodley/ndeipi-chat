@@ -19,3 +19,8 @@ public partial class UnsupportedMessageView : MessageRow
 {
     public UnsupportedMessageView() => InitializeComponent();
 }
+
+public partial class PosReceiptMessageView : MessageRow
+{
+    public PosReceiptMessageView() => InitializeComponent();
+}

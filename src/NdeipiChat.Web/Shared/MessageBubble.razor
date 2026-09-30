@@ -41,6 +41,41 @@
                 </div>
                 break;
 
+            case PosReceiptMessageViewModel receipt:
+                <div class="receipt-card">
+                    <div class="receipt-head">
+                        <span class="receipt-icon">🧾</span>
+                        <div>
+                            <div class="receipt-shop">@receipt.MerchantName</div>
+                            <div class="receipt-meta">@receipt.StoreName · @receipt.WhenText</div>
+                        </div>
+                    </div>
+                    <div class="receipt-total">
+                        <span>Total</span>
+                        <strong>@receipt.TotalText</strong>
+                    </div>
+                    <div class="receipt-rows">
+                        @foreach (var line in receipt.Lines)
+                        {
+                            <div class="receipt-row"><span>@line.Label</span><span>@line.Value</span></div>
+                        }
+                    </div>
+                    <div class="receipt-rows muted">
+                        @foreach (var row in receipt.Totals.Concat(receipt.Payments))
+                        {
+                            <div class="receipt-row"><span>@row.Label</span><span>@row.Value</span></div>
+                        }
+                    </div>
+                    <div class="receipt-foot">
+                        <span>Receipt @receipt.ReceiptNumber</span>
+                        @if (receipt.HasCashier)
+                        {
+                            <span>@receipt.CashierText</span>
+                        }
+                    </div>
+                </div>
+                break;
+
             case UnsupportedMessageViewModel unsupported:
                 <div class="bubble muted">@unsupported.Text</div>
                 break;

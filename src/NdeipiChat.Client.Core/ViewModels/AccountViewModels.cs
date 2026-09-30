@@ -155,10 +155,11 @@ public sealed partial class WalletViewModel : ObservableObject
     readonly ChatApi _api;
     readonly ChatSession _session;
     readonly IDialogs _dialogs;
+    readonly INavigator _navigator;
 
-    public WalletViewModel(ChatApi api, ChatSession session, IDialogs dialogs, IUiDispatcher ui)
+    public WalletViewModel(ChatApi api, ChatSession session, IDialogs dialogs, IUiDispatcher ui, INavigator navigator)
     {
-        (_api, _session, _dialogs) = (api, session, dialogs);
+        (_api, _session, _dialogs, _navigator) = (api, session, dialogs, navigator);
         NewWalletChain = "";
         NewWalletAddress = "";
         _session.Connection.BankingStatusChanged += status => ui.Post(async () =>
@@ -186,6 +187,10 @@ public sealed partial class WalletViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>Ndeipi Pay: scan a shop's QR code and pay it from this wallet.</summary>
+    [RelayCommand]
+    Task ScanToPayAsync() => _navigator.GoToAsync(Routes.ScanToPay);
 
     public bool IsVerified => Status?.CanTransfer == true;
 

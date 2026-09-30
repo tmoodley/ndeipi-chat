@@ -72,4 +72,7 @@ public static class MessageKinds
     public const string Text = "text";
     public const string AssetTransfer = "asset.transfer";
     public const string BankTransfer = "bank.transfer";
+
+    /// <summary>A shop's receipt, sent from its POS till (<see cref="PosReceiptPayload"/>).</summary>
+    public const string PosReceipt = "pos.receipt";
 }

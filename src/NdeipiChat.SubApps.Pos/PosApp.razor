@@ -35,6 +35,14 @@
     .pos-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .pos-big { height: 54px; font-size: 18px; border-radius: 16px; width: 100%; }
     .pos-money { font-variant-numeric: tabular-nums; }
+    /* The shell makes inputs full width; a date sits beside its heading instead. */
+    input.pos-date { width: auto; flex: 0 0 auto; max-width: 190px; }
+    .pos-qr-box { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 0 6px; text-align: center; }
+    .pos-qr { width: min(260px, 70vw); height: auto; border-radius: 14px; box-shadow: var(--shadow, none); }
+    .pos-qr-hint { margin: 0; font-size: 15px; max-width: 34ch; }
+    .pos-qr-state { width: 84px; height: 84px; border-radius: 50%; display: grid; place-items: center; font-size: 40px; font-weight: 800; background: var(--secondary); }
+    .pos-qr-state.ok { background: rgba(31, 169, 113, .16); color: var(--success); }
+    .pos-qr-state.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
     .pos-table { width: 100%; border-collapse: collapse; font-size: 14px; }
     .pos-table td, .pos-table th { padding: 8px 6px; border-bottom: 1px solid var(--divider); text-align: left; }
     .pos-table td.num, .pos-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -367,9 +375,44 @@
     // ---- The cart ----
 
     /// <summary>Adds a product (or variant, with modifiers), joining a matching undiscounted line.</summary>
-    public void Add(PosProductDto product, string variant = "", List<string>? modifiers = null, decimal quantity = 1)
+    /// <summary>
+    /// How many more of a counted product this till can sell: the store's stock as last loaded,
+    /// less offline sales still waiting to upload. Null if the product isn't counted.
+    /// </summary>
+    public decimal? Available(PosProductDto product, string variant)
+    {
+        if (product.InStock(variant) is not { } stock)
+            return null;
+        var queued = Queue.Where(q => q.Problem is null).SelectMany(q => q.Request.Lines)
+            .Where(l => l.ProductId == product.Id && (l.Variant ?? "") == variant).Sum(l => l.Quantity);
+        return Math.Max(0, stock - queued);
+    }
+
+    /// <summary>Why the cart can't be sold as it is (more of something than the store has), or null.</summary>
+    public string? StockProblem() =>
+        Cart.GroupBy(c => (c.Product.Id, c.Variant))
+            .Select(g => (Item: g.First(), Wanted: g.Sum(c => c.Quantity), Have: Available(g.First().Product, g.Key.Variant)))
+            .Where(x => x.Have is { } have && x.Wanted > have)
+            .Select(x => OutOf(x.Item.Product.Name + (x.Item.Variant.Length > 0 ? $" ({x.Item.Variant})" : ""), x.Have!.Value))
+            .FirstOrDefault();
+
+    static string OutOf(string name, decimal have) =>
+        have <= 0 ? $"{name} is out of stock." : $"Only {PosFormat.Quantity(have)} of {name} left in stock.";
+
+    /// <summary>Adds to the sale, unless the store hasn't got that many (then says so, and returns false).</summary>
+    public bool Add(PosProductDto product, string variant = "", List<string>? modifiers = null, decimal quantity = 1)
     {
         modifiers ??= [];
+        if (Available(product, variant) is { } have)
+        {
+            var inCart = Cart.Where(c => c.Product.Id == product.Id && c.Variant == variant).Sum(c => c.Quantity);
+            if (inCart + quantity > have)
+            {
+                Error = OutOf(product.Name + (variant.Length > 0 ? $" ({variant})" : ""), have);
+                StateHasChanged();
+                return false;
+            }
+        }
         var same = Cart.FirstOrDefault(c => c.Product.Id == product.Id && c.Variant == variant && c.Modifiers.SequenceEqual(modifiers) && c.DiscountKind is null);
         if (same is not null)
             same.Quantity += quantity;
@@ -377,6 +420,7 @@
             Cart.Add(new CartItem { Product = product, Variant = variant, Modifiers = modifiers, Quantity = quantity });
         Error = null;
         StateHasChanged();
+        return true;
     }
 
     /// <summary>The cart priced by the shared rules (<see cref="PosPricing"/>): what the server will charge.</summary>
@@ -384,6 +428,8 @@
     {
         if (Cart.Count == 0 || Merchant is null || Store is null)
             return (null, null);
+        if (StockProblem() is { } stock)
+            return (null, stock);
         try
         {
             return (PosPricing.Quote(Cart.Select(c => (c.Product, c.ToRequest())).ToList(), CartDiscountKind, CartDiscountValue,
@@ -403,7 +449,7 @@
     {
         LastSale = sale;
         Cart.Clear();
-        (CartDiscountKind, CartDiscountValue, SaleId) = (null, 0, Guid.NewGuid());
+        (CartDiscountKind, CartDiscountValue, SaleId, Error) = (null, 0, Guid.NewGuid(), null);
         StateHasChanged();
         _ = LoadCatalogAsync();
     }

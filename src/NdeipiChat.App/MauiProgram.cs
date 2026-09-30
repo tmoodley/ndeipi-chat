@@ -64,6 +64,7 @@ public static class MauiProgram
             .AddMessageTemplate<TextMessageViewModel, TextMessageView>()
             .AddMessageTemplate<AssetTransferMessageViewModel, AssetTransferMessageView>()
             .AddMessageTemplate<BankTransferMessageViewModel, BankTransferMessageView>()
+            .AddMessageTemplate<PosReceiptMessageViewModel, PosReceiptMessageView>()
             .AddMessageTemplate<UnsupportedMessageViewModel, UnsupportedMessageView>();
         builder.Services.AddSingleton<MessageTemplateSelector>();
 
