@@ -5,6 +5,9 @@ covers SRS SR-02 (Razor packaging, loading on first use, `<DynamicComponent>`) a
 (checked before it runs). The Inventory app (`src/NdeipiChat.SubApps.Inventory`) is the working
 example.
 
+For the big picture (how the pieces fit, the limits today, and what's needed before separate teams
+can ship on their own), see the [micro-app guide](micro-apps.md).
+
 ## How it loads
 
 1. The launcher lists the app from the user's manifest: `Route` `apps/{id}`, `Assembly`, a
@@ -78,8 +81,8 @@ name and the bundle's exact SHA-256 (`SubAppSigning.Payload`).
   the bundle being served. It never signs anything, so taking over the server doesn't let anyone
   sign a bundle.
 - **What the shell does:** it checks the signature against the keys compiled into it
-  (`src/NdeipiChat.Web/Platform/PublisherKeys.cs`), never against keys the server sends.
-  Signatures are required everywhere except Development, which serves bundles built on the fly
+  (`src/NdeipiChat.Client.Core/PublisherKeys.cs`, shared with the phone app), never against keys
+  the server sends. Signatures are required everywhere except Development, which serves bundles built on the fly
   that nothing has signed.
 
 **The key.** The private key is `~/.ndeipi/subapp-publisher.key` on the publishing machine.
