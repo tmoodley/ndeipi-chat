@@ -35,9 +35,20 @@ public partial class WebSubAppPage : ViewModelPage
         NdeipiChat.App.Platform.AppLog.Info($"web navigating {e.Url.Split('?', '#')[0]}");
         if (!Uri.TryCreate(e.Url, UriKind.Absolute, out var target) || _viewModel.Site is not { } site)
             return;
+        // The WebView's own pages (it starts on about:blank) stay in it. They aren't somewhere else:
+        // sending about:blank to Android made it ask which browser should open a blank page.
+        if (target.Scheme is "about" or "data" or "blob" or "javascript")
+            return;
+        if (target.Scheme is not ("http" or "https"))
+        {
+            // mailto:, tel: and the like: whichever app handles them.
+            e.Cancel = true;
+            _ = Launcher.Default.TryOpenAsync(target);
+            return;
+        }
         if (!string.Equals(target.GetLeftPart(UriPartial.Authority), site.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
         {
-            // Somewhere else: the system browser, not this WebView.
+            // Another website: the system browser, not this WebView.
             e.Cancel = true;
             _ = Browser.Default.OpenAsync(target, BrowserLaunchMode.SystemPreferred);
             return;

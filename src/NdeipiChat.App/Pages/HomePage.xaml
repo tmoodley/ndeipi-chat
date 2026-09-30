@@ -185,12 +185,12 @@
                                     <Label Text="{Binding Icon}" VerticalOptions="Center" />
                                     <Label Text="{Binding Title}" FontSize="14" FontAttributes="Bold" VerticalOptions="Center" Margin="4,0">
                                         <Label.GestureRecognizers>
-                                            <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                            <TapGestureRecognizer Command="{Binding Launcher.LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, x:DataType=vm:HomeViewModel}"
                                                                   CommandParameter="{Binding .}" />
                                         </Label.GestureRecognizers>
                                     </Label>
                                     <Button Text="✕" FontSize="12" Padding="8,0" BackgroundColor="Transparent" TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}"
-                                            Command="{Binding CloseCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                            Command="{Binding Launcher.CloseCommand, Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, x:DataType=vm:HomeViewModel}"
                                             CommandParameter="{Binding .}" />
                                 </HorizontalStackLayout>
                             </Border>
@@ -213,7 +213,7 @@
                             <DataTemplate x:DataType="vm:SubAppItemViewModel">
                                 <VerticalStackLayout Spacing="6" FlexLayout.Basis="25%" Padding="0,0,0,14">
                                     <VerticalStackLayout.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:LauncherViewModel}}, x:DataType=vm:LauncherViewModel}"
+                                        <TapGestureRecognizer Command="{Binding Launcher.LaunchCommand, Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, x:DataType=vm:HomeViewModel}"
                                                               CommandParameter="{Binding .}" />
                                     </VerticalStackLayout.GestureRecognizers>
                                     <Border WidthRequest="56" HeightRequest="56" StrokeShape="RoundRectangle 18" StrokeThickness="0"
@@ -244,7 +244,7 @@
                                 <DataTemplate x:DataType="vm:ConversationItemViewModel">
                                     <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto" Style="{StaticResource Row}" RowSpacing="2">
                                         <Grid.GestureRecognizers>
-                                            <TapGestureRecognizer Command="{Binding OpenCommand, Source={RelativeSource AncestorType={x:Type vm:ChatsViewModel}}, x:DataType=vm:ChatsViewModel}"
+                                            <TapGestureRecognizer Command="{Binding Chats.OpenCommand, Source={RelativeSource AncestorType={x:Type vm:HomeViewModel}}, x:DataType=vm:HomeViewModel}"
                                                                   CommandParameter="{Binding .}" />
                                         </Grid.GestureRecognizers>
                                         <controls:AvatarView Grid.RowSpan="2" Text="{Binding Initials}" ImageUrl="{Binding AvatarUrl}" Size="46" VerticalOptions="Center" />
