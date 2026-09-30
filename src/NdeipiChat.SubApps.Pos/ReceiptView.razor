@@ -1,0 +1,107 @@
+@* A receipt (FR-PAY-03): printed through the device's print dialog, which reaches thermal
+   printers set up on it, or sent to the customer's Ndeipi chats by their email or phone. *@
+
+<div class="pos-receipt">
+    <div class="center"><strong>@Sale.MerchantName</strong><br />@Sale.StoreName</div>
+    <hr />
+    <div class="line"><span>@Sale.ReceiptNumber</span><span>@PosFormat.Time(Sale.OccurredAt)</span></div>
+    <div>Served by @Sale.CashierName@(Sale.Offline ? " · recorded offline" : "")</div>
+    @if (Sale.Status != PosSaleStatuses.Completed)
+    {
+        <div class="center"><strong>*** @Sale.Status.ToUpperInvariant() ***</strong>@(Sale.StatusReason is { } why ? $" {why}" : "")</div>
+    }
+    <hr />
+    @foreach (var line in Sale.Lines)
+    {
+        <div class="line">
+            <span>@PosFormat.Quantity(line.Quantity) × @line.Name@(line.Variant.Length > 0 ? $" ({line.Variant})" : "")</span>
+            <span>@line.Total.ToString("0.00", CultureInfo.InvariantCulture)</span>
+        </div>
+        @if (line.Modifiers.Count > 0)
+        {
+            <div style="padding-left: 12px">+ @string.Join(", ", line.Modifiers)</div>
+        }
+        @if (line.Discount > 0)
+        {
+            <div style="padding-left: 12px">discount −@line.Discount.ToString("0.00", CultureInfo.InvariantCulture)</div>
+        }
+    }
+    <hr />
+    <div class="line"><span>Subtotal</span><span>@Sale.Subtotal.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
+    @if (Sale.Discount > 0)
+    {
+        <div class="line"><span>Discount</span><span>−@Sale.Discount.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
+    }
+    <div class="line"><span>Tax@(Sale.TaxInclusive ? " (included)" : "")</span><span>@Sale.Tax.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
+    <div class="line"><strong>TOTAL @Sale.Currency</strong><strong>@Sale.Total.ToString("0.00", CultureInfo.InvariantCulture)</strong></div>
+    @foreach (var payment in Sale.Payments)
+    {
+        <div class="line"><span>@PosTenders.Label(payment.Tender)@(payment.Reference is { } r ? $" {r}" : "")</span><span>@payment.Amount.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
+    }
+    @if (Sale.Change > 0)
+    {
+        <div class="line"><span>Change</span><span>@Sale.Change.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
+    }
+    <hr />
+    <div class="center">Thank you!</div>
+</div>
+
+<div class="pos-actions" style="justify-content: center">
+    <button class="secondary" @onclick="PrintAsync">🖨 Print</button>
+    @if (Sale.Id != Guid.Empty && App.Session is not null)
+    {
+        <button class="secondary" @onclick="() => _sending = !_sending">💬 Send to Ndeipi</button>
+    }
+</div>
+@if (_sending)
+{
+    <form class="pos-row" style="margin-top: 10px" @onsubmit="SendAsync">
+        <input class="grow" @bind="_contact" placeholder="Customer's email or phone" autocomplete="off" />
+        <button type="submit" class="primary" disabled="@_busy">Send</button>
+    </form>
+}
+@if (_message is not null)
+{
+    <p class="@(_sent ? "pos-badge ok" : "pos-error")">@_message</p>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public PosSaleDto Sale { get; set; } = null!;
+
+    bool _sending, _busy, _sent;
+    string? _contact, _message;
+
+    async Task PrintAsync()
+    {
+        try
+        {
+            await (await App.Module).InvokeVoidAsync("printReceipt");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    async Task SendAsync()
+    {
+        (_busy, _message) = (true, null);
+        try
+        {
+            await App.Api.TillAsync<object>(HttpMethod.Post, $"/sales/{Sale.Id}/receipt", new SendReceiptRequest(_contact ?? ""));
+            (_sent, _message, _sending) = (true, "Sent to their Ndeipi chats.", false);
+        }
+        catch (PosException ex) when (ex.Locked)
+        {
+            await App.HandleAsync(ex);
+        }
+        catch (PosException ex)
+        {
+            (_sent, _message) = (false, ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

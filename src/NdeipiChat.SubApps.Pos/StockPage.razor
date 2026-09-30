@@ -1,0 +1,110 @@
+@* Stock at this store (FR-INV-02/03): levels with low and negative warnings, and stock intake by
+   scanning a code (or picking the product) and entering how many arrived. *@
+
+<div class="pos-grid2">
+    <div class="pos-card">
+        <h3 style="margin-top: 0">Stock at @App.Store!.Name</h3>
+        <table class="pos-table">
+            <tr><th>Product</th><th class="num">In stock</th><th></th></tr>
+            @foreach (var (product, variant, level) in Levels)
+            {
+                <tr class="click" @key="(product.Id, variant)" @onclick="() => Choose(product, variant)">
+                    <td>@product.Icon @product.Name@(variant.Length > 0 ? $" ({variant})" : "")</td>
+                    <td class="num">@(level is null ? "—" : PosFormat.Quantity(level.Quantity))</td>
+                    <td>
+                        @if (level is { IsNegative: true })
+                        {
+                            <span class="pos-badge neg">below zero</span>
+                        }
+                        else if (level is { IsLow: true })
+                        {
+                            <span class="pos-badge low">low</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </table>
+    </div>
+
+    <div class="pos-card">
+        <h3 style="margin-top: 0">Stock in (or out)</h3>
+        <form @onsubmit="FindAsync">
+            <label class="pos-field">Scan or type a barcode or SKU<input @bind="_code" autocomplete="off" placeholder="Scan here" /></label>
+        </form>
+        @if (_product is { } p)
+        {
+            <p style="margin: 10px 0"><strong>@p.Icon @p.Name@(_variant.Length > 0 ? $" ({_variant})" : "")</strong></p>
+            <div class="pos-fields">
+                <label class="pos-field">How many arrived (negative takes stock out)<input inputmode="decimal" @bind="_quantity" /></label>
+                <label class="pos-field">Reason<input @bind="_reason" maxlength="200" placeholder="e.g. Delivery from supplier" /></label>
+            </div>
+            <div class="pos-actions"><button class="primary" disabled="@_busy" @onclick="AdjustAsync">Record</button></div>
+        }
+        @if (_message is not null)
+        {
+            <p class="@(_ok ? "pos-badge ok" : "pos-error")">@_message</p>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    string? _code, _quantity, _reason, _message;
+    string _variant = "";
+    PosProductDto? _product;
+    bool _busy, _ok;
+
+    IEnumerable<(PosProductDto Product, string Variant, PosStockLevelDto? Level)> Levels =>
+        (App.Catalog?.Products ?? []).Where(p => p.IsActive)
+            .SelectMany(p => new[] { "" }.Concat(p.Variants.Select(v => v.Name)).Select(v => (p, v, p.Stock.FirstOrDefault(s => s.Variant == v))));
+
+    void Choose(PosProductDto product, string variant) => (_product, _variant, _message) = (product, variant, null);
+
+    Task FindAsync()
+    {
+        var code = _code?.Trim();
+        _message = null;
+        foreach (var product in App.Catalog?.Products ?? [])
+        {
+            if (product.Barcode == code || product.Sku == code)
+            {
+                Choose(product, "");
+                return Task.CompletedTask;
+            }
+            if (product.Variants.FirstOrDefault(v => v.Barcode == code || v.Sku == code) is { } variant)
+            {
+                Choose(product, variant.Name);
+                return Task.CompletedTask;
+            }
+        }
+        (_ok, _message) = (false, $"Nothing has the code {code}. Add it under Products first.");
+        return Task.CompletedTask;
+    }
+
+    async Task AdjustAsync()
+    {
+        if (_product is null || PosFormat.Parse(_quantity) is not { } quantity)
+        {
+            (_ok, _message) = (false, "Enter how many.");
+            return;
+        }
+        (_busy, _message) = (true, null);
+        try
+        {
+            var level = await App.Api.SendAsync<PosStockLevelDto>(HttpMethod.Post, $"{PosApi.Base}/stores/{App.Store!.Id}/stock",
+                new StockAdjustRequest(_product.Id, _variant.Length > 0 ? _variant : null, quantity, _reason));
+            (_ok, _message) = (true, $"{_product.Name}: {PosFormat.Quantity(level!.Quantity)} in stock now.");
+            (_quantity, _reason, _code) = (null, null, null);
+            await App.LoadCatalogAsync();
+        }
+        catch (PosException ex)
+        {
+            (_ok, _message) = (false, ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

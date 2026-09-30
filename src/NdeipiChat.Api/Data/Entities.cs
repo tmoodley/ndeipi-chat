@@ -521,3 +521,204 @@ public sealed class GroupMember
     public required string Role { get; set; }
     public DateTimeOffset JoinedAt { get; set; }
 }
+
+// ---- Point of Sale ----
+
+/// <summary>A business using POS. Its owner is its first Merchant Admin.</summary>
+public sealed class PosMerchant
+{
+    public Guid Id { get; set; }
+    public Guid OwnerId { get; set; }
+    public required string Name { get; set; }
+    public required string Currency { get; set; }
+    public bool TaxInclusive { get; set; }
+    public decimal DiscountLimitPercent { get; set; }
+    public int LockSeconds { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public sealed class PosStore
+{
+    public Guid Id { get; set; }
+    public Guid MerchantId { get; set; }
+    public required string Name { get; set; }
+    public string? Address { get; set; }
+    public decimal TaxRatePercent { get; set; }
+
+    /// <summary>The last receipt number given out here; receipts count up per store.</summary>
+    public int ReceiptCount { get; set; }
+}
+
+/// <summary>A Ndeipi user working for a merchant, with their role and till PIN.</summary>
+public sealed class PosStaff
+{
+    public Guid Id { get; set; }
+    public Guid MerchantId { get; set; }
+    public Guid UserId { get; set; }
+    public User User { get; set; } = null!;
+    public required string Role { get; set; }
+
+    /// <summary>The one store they work at; null for all.</summary>
+    public Guid? StoreId { get; set; }
+
+    /// <summary>PBKDF2 of the PIN with <see cref="PinSalt"/>; never the PIN itself.</summary>
+    public byte[]? PinHash { get; set; }
+    public byte[]? PinSalt { get; set; }
+    public DateTimeOffset AddedAt { get; set; }
+}
+
+/// <summary>A till unlocked by a staff PIN: who's at it, until it locks or expires.</summary>
+public sealed class PosTillSession
+{
+    public Guid Id { get; set; }
+
+    /// <summary>SHA-256 of the token the till holds.</summary>
+    public required byte[] TokenHash { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid StaffId { get; set; }
+
+    /// <summary>The Ndeipi account the till device is signed in with.</summary>
+    public Guid DeviceUserId { get; set; }
+    public required string Terminal { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+}
+
+public sealed class PosCategory
+{
+    public Guid Id { get; set; }
+    public Guid MerchantId { get; set; }
+    public required string Name { get; set; }
+    public required string Icon { get; set; }
+    public required string Tone { get; set; }
+    public int Order { get; set; }
+}
+
+public sealed class PosProduct
+{
+    public Guid Id { get; set; }
+    public Guid MerchantId { get; set; }
+    public Guid? CategoryId { get; set; }
+    public required string Name { get; set; }
+    public required string Icon { get; set; }
+    public string? Sku { get; set; }
+    public string? Barcode { get; set; }
+    public decimal Price { get; set; }
+    public decimal? TaxRatePercent { get; set; }
+    public bool IsActive { get; set; }
+    public int SafetyStock { get; set; }
+
+    /// <summary>Variants and modifiers, as JSON (PosVariantDto / PosModifierDto lists).</summary>
+    public string? VariantsJson { get; set; }
+    public string? ModifiersJson { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>How many of a product (or one variant, by name; "" for the product) a store has.</summary>
+public sealed class PosStock
+{
+    public Guid StoreId { get; set; }
+    public Guid ProductId { get; set; }
+    public required string Variant { get; set; }
+    public decimal Quantity { get; set; }
+}
+
+public sealed class PosShift
+{
+    public Guid Id { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid StaffId { get; set; }
+    public DateTimeOffset OpenedAt { get; set; }
+    public decimal OpeningFloat { get; set; }
+    public DateTimeOffset? ClosedAt { get; set; }
+    public decimal? CountedCash { get; set; }
+}
+
+/// <summary>Cash moved in or out of the drawer outside a sale: drops, pay-ins and "no sale" opens.</summary>
+public sealed class PosCashMovement
+{
+    public Guid Id { get; set; }
+    public Guid ShiftId { get; set; }
+    public Guid StaffId { get; set; }
+    public required string Kind { get; set; }
+    public decimal Amount { get; set; }
+    public string? Note { get; set; }
+    public DateTimeOffset At { get; set; }
+}
+
+public sealed class PosSale
+{
+    public Guid Id { get; set; }
+    public Guid MerchantId { get; set; }
+    public Guid StoreId { get; set; }
+    public Guid ShiftId { get; set; }
+    public Guid StaffId { get; set; }
+
+    /// <summary>The till's idempotency key: unique per merchant.</summary>
+    public Guid ClientSaleId { get; set; }
+    public int ReceiptNumber { get; set; }
+    public required string Status { get; set; }
+    public string? StatusReason { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal Discount { get; set; }
+    public decimal Tax { get; set; }
+    public decimal Total { get; set; }
+    public decimal Change { get; set; }
+
+    /// <summary>When it was rung up; for an offline sale, earlier than it reached the server.</summary>
+    public DateTimeOffset OccurredAt { get; set; }
+    public DateTimeOffset ReceivedAt { get; set; }
+    public bool Offline { get; set; }
+    public DateTimeOffset? ReversedAt { get; set; }
+
+    /// <summary>The shift a refund was paid out of (a void undoes the sale in its own shift).</summary>
+    public Guid? ReversedShiftId { get; set; }
+    public List<PosSaleLine> Lines { get; set; } = [];
+    public List<PosPayment> Payments { get; set; } = [];
+}
+
+public sealed class PosSaleLine
+{
+    public Guid Id { get; set; }
+    public Guid SaleId { get; set; }
+    public int Position { get; set; }
+    public Guid ProductId { get; set; }
+    public required string Name { get; set; }
+    public required string Variant { get; set; }
+    public string? Modifiers { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal Discount { get; set; }
+    public decimal TaxRatePercent { get; set; }
+    public decimal Tax { get; set; }
+    public decimal Total { get; set; }
+}
+
+public sealed class PosPayment
+{
+    public Guid Id { get; set; }
+    public Guid SaleId { get; set; }
+    public required string Tender { get; set; }
+    public decimal Amount { get; set; }
+    public string? Reference { get; set; }
+}
+
+/// <summary>
+/// One entry in a merchant's tamper-evident trail (NFR-SEC-03). <see cref="Hash"/> covers this
+/// entry's fields and the previous entry's hash, so editing or deleting any entry breaks the chain.
+/// </summary>
+public sealed class PosAuditEntry
+{
+    public long Id { get; set; }
+    public Guid MerchantId { get; set; }
+    public long Sequence { get; set; }
+    public DateTimeOffset At { get; set; }
+    public Guid? StoreId { get; set; }
+    public Guid StaffId { get; set; }
+    public required string StaffName { get; set; }
+    public required string Terminal { get; set; }
+    public required string Action { get; set; }
+    public required string Details { get; set; }
+    public required string PreviousHash { get; set; }
+    public required string Hash { get; set; }
+}

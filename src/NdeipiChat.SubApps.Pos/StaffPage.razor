@@ -1,0 +1,128 @@
+@* Staff (SRS §3): Ndeipi users added by email with a role and, optionally, one store. Admins
+   change them; managers can see who works here. *@
+
+<div class="pos-grid2">
+    <div class="pos-card">
+        <h3 style="margin-top: 0">Staff</h3>
+        <table class="pos-table">
+            <tr><th>Name</th><th>Role</th><th>Store</th><th>PIN</th><th></th></tr>
+            @foreach (var person in _staff)
+            {
+                <tr @key="person.Id">
+                    <td>@person.User.DisplayName</td>
+                    <td>
+                        @if (IsAdmin)
+                        {
+                            <select value="@person.Role" @onchange="e => SaveAsync(person, e.Value as string ?? person.Role, person.StoreId)">
+                                @foreach (var role in PosRoles.All)
+                                {
+                                    <option value="@role">@PosRoles.Label(role)</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            @PosRoles.Label(person.Role)
+                        }
+                    </td>
+                    <td>@(person.StoreId is { } s ? App.Merchant!.Stores.FirstOrDefault(x => x.Id == s)?.Name : "All")</td>
+                    <td>@(person.PinSet ? "✓" : "not set")</td>
+                    <td>
+                        @if (IsAdmin)
+                        {
+                            <button class="link" style="color: var(--danger)" @onclick="() => RemoveAsync(person)">Remove</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </table>
+    </div>
+
+    @if (IsAdmin)
+    {
+        <div class="pos-card">
+            <h3 style="margin-top: 0">Add someone</h3>
+            <p class="pos-muted" style="margin-top: 0">They need a Ndeipi account. They set their own till PIN in POS.</p>
+            <div class="pos-fields">
+                <label class="pos-field">Email or phone<input @bind="_email" /></label>
+                <label class="pos-field">Role
+                    <select @bind="_role">
+                        @foreach (var role in PosRoles.All)
+                        {
+                            <option value="@role">@PosRoles.Label(role)</option>
+                        }
+                    </select>
+                </label>
+                <label class="pos-field">Store
+                    <select @bind="_store">
+                        <option value="">All stores</option>
+                        @foreach (var store in App.Merchant!.Stores)
+                        {
+                            <option value="@store.Id">@store.Name</option>
+                        }
+                    </select>
+                </label>
+            </div>
+            <div class="pos-actions"><button class="primary" disabled="@_busy" @onclick="AddAsync">Add</button></div>
+        </div>
+    }
+</div>
+@if (_error is not null)
+{
+    <p class="pos-error">@_error</p>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    List<PosStaffDto> _staff = [];
+    string _email = "", _role = PosRoles.Cashier, _store = "";
+    string? _error;
+    bool _busy;
+
+    bool IsAdmin => App.Merchant?.MyRole == PosRoles.Admin;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _staff = await App.Api.GetAsync<List<PosStaffDto>>($"{PosApi.Base}/merchants/{App.Merchant!.Id}/staff") ?? [];
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    Task AddAsync() => RunAsync(async () =>
+    {
+        await App.Api.SendAsync<PosStaffDto>(HttpMethod.Post, $"{PosApi.Base}/merchants/{App.Merchant!.Id}/staff",
+            new AddStaffRequest(_email, _role, Guid.TryParse(_store, out var store) ? store : null));
+        _email = "";
+    });
+
+    Task SaveAsync(PosStaffDto person, string role, Guid? store) => RunAsync(() =>
+        App.Api.SendAsync<PosStaffDto>(HttpMethod.Put, $"{PosApi.Base}/staff/{person.Id}", new SaveStaffRequest(role, store)));
+
+    Task RemoveAsync(PosStaffDto person) => RunAsync(() => App.Api.SendAsync<object>(HttpMethod.Delete, $"{PosApi.Base}/staff/{person.Id}", null));
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+        await LoadAsync();
+    }
+}

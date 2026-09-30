@@ -1,0 +1,469 @@
+@* The till (FR-CAT-01..04): scan or search, a category grid, variants and modifiers, the cart
+   with line and cart discounts, then Charge. A USB or Bluetooth barcode scanner types into the
+   search box and presses Enter; the camera scans too, where the browser can (FR-HDW-02). *@
+@implements IAsyncDisposable
+
+<style>
+    .reg-search { display: flex; gap: 8px; margin-bottom: 10px; }
+    .reg-search input { flex: 1; font-size: 17px; }
+    .reg-cats { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: none; }
+    .reg-cats button { flex-shrink: 0; border-radius: 16px; padding: 7px 12px; font-size: 14px; }
+    .reg-cats button.on { background: var(--brand); color: #fff; }
+    .reg-products { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 10px; }
+    .reg-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px; border-radius: 16px; background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, transparent); color: var(--text); text-align: center; min-height: 116px; }
+    .reg-tile .icon { font-size: 30px; }
+    .reg-tile .name { font-weight: 700; font-size: 14px; line-height: 1.2; }
+    .reg-tile .price { font-size: 13px; color: var(--muted); }
+    .reg-cart { position: sticky; top: 8px; }
+    .reg-line { display: flex; gap: 8px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--divider); cursor: pointer; }
+    .reg-line .grow { flex: 1; min-width: 0; }
+    .reg-line .qty { font-weight: 800; min-width: 34px; }
+    .reg-totals .pos-row { justify-content: space-between; padding: 3px 0; }
+    .reg-totals .total { font-size: 22px; font-weight: 800; }
+    .reg-options { display: flex; flex-wrap: wrap; gap: 8px; }
+    .reg-options button { border-radius: 14px; padding: 9px 12px; }
+    .reg-options button.on { background: var(--brand); color: #fff; }
+    .reg-video { width: 100%; border-radius: 14px; background: #000; max-height: 50vh; object-fit: cover; }
+</style>
+
+@if (App.Session is { Shift: null })
+{
+    <div class="pos-note" style="margin-bottom: 10px">Your shift isn't open. <button class="link" @onclick="() => App.Go(PosView.Shift)">Open it</button> to start selling.</div>
+}
+@foreach (var stuck in App.Queue.Where(q => q.Problem is not null))
+{
+    <div class="pos-note" style="margin-bottom: 10px" @key="stuck.Request.ClientSaleId">
+        An offline sale from @PosFormat.Time(stuck.Request.OccurredAt!.Value) couldn't be uploaded: @stuck.Problem
+        <button class="link" @onclick="() => App.DiscardQueuedAsync(stuck)">Discard it</button>
+    </div>
+}
+
+<div class="pos-grid2">
+    <section>
+        <form class="reg-search" @onsubmit="SubmitSearchAsync">
+            <input @ref="_searchBox" @bind="_search" @bind:event="oninput" placeholder="Scan a barcode, or search" autocomplete="off" />
+            @if (_canScan)
+            {
+                <button type="button" class="secondary" title="Scan with the camera" @onclick="OpenScannerAsync">📷</button>
+            }
+        </form>
+        @if (_notFound is not null)
+        {
+            <p class="pos-error">Nothing has the code @_notFound.</p>
+        }
+        @if (App.Catalog is { } catalog)
+        {
+            <div class="reg-cats">
+                <button class="@(_category is null ? "on" : "")" @onclick="() => _category = null">All</button>
+                @foreach (var category in catalog.Categories)
+                {
+                    <button class="@(_category == category.Id ? "on" : "")" @key="category.Id" @onclick="() => _category = category.Id">@category.Icon @category.Name</button>
+                }
+            </div>
+            <div class="reg-products">
+                @foreach (var product in Shown(catalog))
+                {
+                    var stock = product.Stock.FirstOrDefault(s => s.Variant == "");
+                    <button class="reg-tile" @key="product.Id" @onclick="() => Pick(product)">
+                        <span class="icon">@product.Icon</span>
+                        <span class="name">@product.Name</span>
+                        <span class="price pos-money">@App.Money(product.Price)@(product.Variants.Count > 0 ? "+" : "")</span>
+                        @if (stock is { IsNegative: true })
+                        {
+                            <span class="pos-badge neg">@PosFormat.Quantity(stock.Quantity) in stock</span>
+                        }
+                        else if (stock is { IsLow: true })
+                        {
+                            <span class="pos-badge low">Low: @PosFormat.Quantity(stock.Quantity)</span>
+                        }
+                    </button>
+                }
+            </div>
+            @if (catalog.Products.Count(p => p.IsActive) == 0)
+            {
+                <div class="pos-card pos-muted">No products yet. @(App.Merchant is { } m && PosRoles.CanManage(m.MyRole) ? "Add them in the back office." : "Ask a manager to add them.")</div>
+            }
+        }
+        else
+        {
+            <p class="pos-muted">Loading the catalogue…</p>
+        }
+    </section>
+
+    <aside class="pos-card reg-cart">
+        <div class="pos-row" style="justify-content: space-between">
+            <strong>Sale</strong>
+            @if (App.Cart.Count > 0)
+            {
+                <button class="link" @onclick="ClearCart">Clear</button>
+            }
+        </div>
+        @if (App.Cart.Count == 0)
+        {
+            <p class="pos-muted">Scan or tap products to add them.</p>
+        }
+        @foreach (var item in App.Cart)
+        {
+            <div class="reg-line" @key="item.Key" @onclick="() => _editing = item">
+                <span class="qty">@PosFormat.Quantity(item.Quantity)×</span>
+                <span class="grow">
+                    @item.Name
+                    @if (item.DiscountKind is not null)
+                    {
+                        <br /><span class="pos-muted">Discount @(item.DiscountKind == PosDiscountKinds.Percent ? $"{item.DiscountValue:0.##}%" : App.Money(item.DiscountValue))</span>
+                    }
+                </span>
+                @if (Quote is { } q && q.Lines.ElementAtOrDefault(App.Cart.IndexOf(item)) is { } priced)
+                {
+                    <span class="pos-money">@App.Money(priced.Total)</span>
+                }
+            </div>
+        }
+        @if (Quote is { } quote)
+        {
+            <div class="reg-totals" style="margin-top: 10px">
+                <div class="pos-row"><span>Subtotal</span><span class="pos-money">@App.Money(quote.Subtotal)</span></div>
+                @if (quote.Discount > 0)
+                {
+                    <div class="pos-row"><span>Discount</span><span class="pos-money">−@App.Money(quote.Discount)</span></div>
+                }
+                <div class="pos-row"><span>Tax@(App.Merchant!.TaxInclusive ? " (included)" : "")</span><span class="pos-money">@App.Money(quote.Tax)</span></div>
+                <div class="pos-row total"><span>Total</span><span class="pos-money">@App.Money(quote.Total)</span></div>
+            </div>
+            @if (quote.NeedsApproval)
+            {
+                <div class="pos-note" style="margin-top: 8px">@quote.ApprovalReason A manager will enter their PIN.</div>
+            }
+        }
+        else if (Problem is { } problem)
+        {
+            <p class="pos-error">@problem</p>
+        }
+        <div class="pos-actions">
+            <button class="secondary" disabled="@(App.Cart.Count == 0)" @onclick="() => _discounting = true">
+                % Discount@(App.CartDiscountKind is not null ? " ✓" : "")
+            </button>
+            <button class="primary pos-big" disabled="@(Quote is null || App.Session is not { Shift: not null })" @onclick="() => _paying = true">
+                Charge @(Quote is { } t ? App.Money(t.Total) : "")
+            </button>
+        </div>
+    </aside>
+</div>
+
+@* Choosing a variant and modifiers. *@
+@if (_picking is { } p)
+{
+    <div class="pos-sheet-back" @onclick="() => _picking = null">
+        <div class="pos-sheet" @onclick:stopPropagation="true">
+            <h3>@p.Icon @p.Name</h3>
+            @if (p.Variants.Count > 0)
+            {
+                <div class="pos-muted">Choose one</div>
+                <div class="reg-options" style="margin: 6px 0 12px">
+                    <button class="@(_variant == "" ? "on" : "")" @onclick='() => _variant = ""'>Standard · @App.Money(p.Price)</button>
+                    @foreach (var v in p.Variants)
+                    {
+                        <button class="@(_variant == v.Name ? "on" : "")" @key="v.Name" @onclick="() => _variant = v.Name">@v.Name · @App.Money(v.Price)</button>
+                    }
+                </div>
+            }
+            @if (p.Modifiers.Count > 0)
+            {
+                <div class="pos-muted">Add</div>
+                <div class="reg-options" style="margin: 6px 0 12px">
+                    @foreach (var mod in p.Modifiers)
+                    {
+                        <button class="@(_modifiers.Contains(mod.Name) ? "on" : "")" @key="mod.Name" @onclick="() => Toggle(mod.Name)">@mod.Name@(mod.Price > 0 ? $" +{App.Money(mod.Price)}" : "")</button>
+                    }
+                </div>
+            }
+            <div class="pos-actions">
+                <button class="primary pos-big" @onclick="AddPicked">Add to sale</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Editing a cart line: quantity, a discount, or removing it. *@
+@if (_editing is { } line)
+{
+    <div class="pos-sheet-back" @onclick="() => _editing = null">
+        <div class="pos-sheet" @onclick:stopPropagation="true">
+            <h3>@line.Name</h3>
+            <div class="pos-row" style="margin-bottom: 12px">
+                <button class="secondary" style="width: 52px; height: 52px; font-size: 22px" @onclick="() => Step(line, -1)">−</button>
+                <input class="pos-money" style="text-align: center; font-size: 20px; max-width: 110px" inputmode="decimal"
+                       value="@PosFormat.Quantity(line.Quantity)" @onchange="e => SetQuantity(line, e.Value as string)" />
+                <button class="secondary" style="width: 52px; height: 52px; font-size: 22px" @onclick="() => Step(line, 1)">＋</button>
+            </div>
+            <DiscountEditor Kind="@line.DiscountKind" Value="line.DiscountValue" OnChange="d => { line.DiscountKind = d.Kind; line.DiscountValue = d.Value; }" />
+            <div class="pos-actions">
+                <button class="secondary" style="color: var(--danger)" @onclick="() => Remove(line)">Remove</button>
+                <button class="primary" @onclick="() => _editing = null">Done</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_discounting)
+{
+    <div class="pos-sheet-back" @onclick="() => _discounting = false">
+        <div class="pos-sheet" @onclick:stopPropagation="true">
+            <h3>Discount on the whole sale</h3>
+            <DiscountEditor Kind="@App.CartDiscountKind" Value="App.CartDiscountValue" OnChange="d => { App.CartDiscountKind = d.Kind; App.CartDiscountValue = d.Value; }" />
+            <p class="pos-muted">Over @(App.Merchant!.DiscountLimitPercent.ToString("0.##"))% needs a manager's PIN.</p>
+            <div class="pos-actions"><button class="primary" @onclick="() => _discounting = false">Done</button></div>
+        </div>
+    </div>
+}
+
+@if (_scanning)
+{
+    <div class="pos-sheet-back" @onclick="CloseScannerAsync">
+        <div class="pos-sheet" @onclick:stopPropagation="true">
+            <h3>Scan a barcode</h3>
+            <video class="reg-video" @ref="_video" muted></video>
+            <p class="pos-muted">@(_lastScan is null ? "Point the camera at a barcode." : $"Added {_lastScan}. Scan the next one.")</p>
+            <div class="pos-actions"><button class="primary" @onclick="CloseScannerAsync">Done</button></div>
+        </div>
+    </div>
+}
+
+@if (_paying && Quote is { } due)
+{
+    <PaymentPanel Quote="due" OnClose="() => _paying = false" OnPaid="Paid" />
+}
+
+@if (_receipt is { } sale)
+{
+    <div class="pos-sheet-back">
+        <div class="pos-sheet">
+            <ReceiptView Sale="sale" />
+            <div class="pos-actions">
+                <button class="primary pos-big" @onclick="NextSaleAsync">New sale</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    string _search = "";
+    string? _notFound, _lastScan;
+    Guid? _category;
+    PosProductDto? _picking;
+    string _variant = "";
+    List<string> _modifiers = [];
+    CartItem? _editing;
+    bool _discounting, _paying, _scanning, _canScan;
+    PosSaleDto? _receipt;
+    ElementReference _searchBox, _video;
+    DotNetObjectReference<RegisterPage>? _self;
+
+    PosQuoteDto? Quote => App.Quote().Quote;
+    string? Problem => App.Quote().Problem;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _self = DotNetObjectReference.Create(this);
+        try
+        {
+            _canScan = await (await App.Module).InvokeAsync<bool>("canScan");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+            await FocusSearchAsync();
+    }
+
+    async Task FocusSearchAsync()
+    {
+        try
+        {
+            await _searchBox.FocusAsync();
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    IEnumerable<PosProductDto> Shown(PosCatalogDto catalog)
+    {
+        var products = catalog.Products.Where(p => p.IsActive);
+        if (_search.Trim() is { Length: > 0 } text)
+            return products.Where(p => p.Name.Contains(text, StringComparison.OrdinalIgnoreCase) || p.Sku == text || p.Barcode == text);
+        return _category is { } id ? products.Where(p => p.CategoryId == id) : products;
+    }
+
+    /// <summary>Enter in the search box: a scanner's code (or a typed SKU) adds the item; a lone search match adds that.</summary>
+    async Task SubmitSearchAsync()
+    {
+        var text = _search.Trim();
+        if (text.Length == 0 || App.Catalog is not { } catalog)
+            return;
+        if (await AddByCodeAsync(text))
+            _search = "";
+        else if (Shown(catalog).ToList() is [var only])
+        {
+            Pick(only);
+            _search = "";
+        }
+        else if (!Shown(catalog).Any())
+        {
+            // An unknown code: say so, and clear the box for the next scan.
+            (_notFound, _search) = (text, "");
+        }
+        await FocusSearchAsync();
+    }
+
+    /// <summary>A barcode or SKU, the product's or a variant's (FR-CAT-01): from the device's catalogue, so it works offline.</summary>
+    async Task<bool> AddByCodeAsync(string code)
+    {
+        _notFound = null;
+        foreach (var product in App.Catalog!.Products.Where(p => p.IsActive))
+        {
+            // A scan is one beep, one item: the product's own code is its standard version
+            // (a variant's code is that variant). Choices are for tapping the tile.
+            if (product.Barcode == code || product.Sku == code)
+            {
+                App.Add(product);
+                await BeepAsync();
+                return true;
+            }
+            if (product.Variants.FirstOrDefault(v => v.Barcode == code || v.Sku == code) is { } variant)
+            {
+                App.Add(product, variant.Name);
+                await BeepAsync();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    async Task BeepAsync()
+    {
+        try
+        {
+            await (await App.Module).InvokeVoidAsync("beep");
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    void Pick(PosProductDto product)
+    {
+        _notFound = null;
+        if (product.Variants.Count == 0 && product.Modifiers.Count == 0)
+        {
+            App.Add(product);
+            return;
+        }
+        (_picking, _variant, _modifiers) = (product, "", []);
+    }
+
+    void Toggle(string modifier)
+    {
+        if (!_modifiers.Remove(modifier))
+            _modifiers.Add(modifier);
+    }
+
+    async Task AddPicked()
+    {
+        App.Add(_picking!, _variant, [.. _modifiers]);
+        _picking = null;
+        await FocusSearchAsync();
+    }
+
+    void Step(CartItem line, decimal by)
+    {
+        line.Quantity = Math.Max(0, line.Quantity + by);
+        if (line.Quantity == 0)
+            Remove(line);
+    }
+
+    void SetQuantity(CartItem line, string? text)
+    {
+        if (PosFormat.Parse(text) is { } quantity && quantity > 0)
+            line.Quantity = decimal.Round(quantity, 3);
+    }
+
+    void Remove(CartItem line)
+    {
+        App.Cart.Remove(line);
+        _editing = null;
+    }
+
+    void ClearCart()
+    {
+        App.Cart.Clear();
+        (App.CartDiscountKind, App.CartDiscountValue) = (null, 0);
+    }
+
+    void Paid(PosSaleDto sale)
+    {
+        (_paying, _notFound) = (false, null);
+        App.Finished(sale);
+        _receipt = sale;
+    }
+
+    async Task NextSaleAsync()
+    {
+        _receipt = null;
+        await FocusSearchAsync();
+    }
+
+    // ---- Camera scanning ----
+
+    async Task OpenScannerAsync()
+    {
+        (_scanning, _lastScan) = (true, null);
+        StateHasChanged();
+        await Task.Yield();
+        try
+        {
+            await (await App.Module).InvokeVoidAsync("startScan", _video, _self);
+        }
+        catch (JSException)
+        {
+            _scanning = false;
+            App.Error = "The camera couldn't start. Allow camera access, or type the code.";
+        }
+    }
+
+    [JSInvokable]
+    public async Task Scanned(string code)
+    {
+        if (await AddByCodeAsync(code))
+            _lastScan = App.Cart.LastOrDefault()?.Name ?? code;
+        else
+            _notFound = code;
+        StateHasChanged();
+    }
+
+    async Task CloseScannerAsync()
+    {
+        _scanning = false;
+        try
+        {
+            await (await App.Module).InvokeVoidAsync("stopScan");
+        }
+        catch (JSException)
+        {
+        }
+        await FocusSearchAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_scanning)
+            await CloseScannerAsync();
+        _self?.Dispose();
+    }
+}

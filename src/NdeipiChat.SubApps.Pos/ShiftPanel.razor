@@ -1,0 +1,106 @@
+@* The cashier's shift (FR-AUTH-03): open with a float; drops, pay-ins and "no sale" drawer opens
+   (all audited); the X report as it stands; close with the counted cash for the Z report. *@
+
+@if (App.Session is null)
+{
+    <div class="pos-card pos-muted">Unlock the till to see your shift.</div>
+}
+else if (_closed is { } z)
+{
+    <ShiftReport Shift="z" Title="Z report — shift closed" />
+    <div class="pos-actions"><button class="primary" @onclick="() => _closed = null">Start another shift</button></div>
+}
+else if (App.Session.Shift is null)
+{
+    <div class="pos-card" style="max-width: 420px">
+        <h3 style="margin-top: 0">Open your shift</h3>
+        <label class="pos-field">Cash in the drawer to start (float)<input inputmode="decimal" @bind="_float" placeholder="0.00" /></label>
+        @if (_error is not null)
+        {
+            <p class="pos-error">@_error</p>
+        }
+        <div class="pos-actions"><button class="primary pos-big" disabled="@_busy" @onclick="OpenAsync">Open shift</button></div>
+    </div>
+}
+else
+{
+    <div class="pos-grid2">
+        <ShiftReport Shift="App.Session.Shift" Title="X report — shift so far" />
+        <div class="pos-card">
+            <h3 style="margin-top: 0">Drawer</h3>
+            <div class="pos-fields">
+                <label class="pos-field">Amount<input inputmode="decimal" @bind="_amount" placeholder="0.00" /></label>
+                <label class="pos-field">Note<input @bind="_note" maxlength="200" placeholder="Optional" /></label>
+            </div>
+            <div class="pos-actions">
+                <button class="secondary" disabled="@_busy" @onclick='() => MoveAsync("drop")'>Cash drop to safe</button>
+                <button class="secondary" disabled="@_busy" @onclick='() => MoveAsync("payin")'>Pay in</button>
+                <button class="secondary" disabled="@_busy" @onclick='() => MoveAsync("nosale")'>No sale (open drawer)</button>
+            </div>
+            <h3>Close shift</h3>
+            <label class="pos-field">Cash you counted in the drawer<input inputmode="decimal" @bind="_counted" placeholder="0.00" /></label>
+            @if (_error is not null)
+            {
+                <p class="pos-error">@_error</p>
+            }
+            <div class="pos-actions"><button class="primary" disabled="@_busy" @onclick="CloseAsync">Close shift and print Z</button></div>
+        </div>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public PosApp App { get; set; } = null!;
+
+    string? _float, _amount, _note, _counted, _error;
+    bool _busy;
+    PosShiftDto? _closed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The X report fresh from the server, when there's a connection.
+        if (App.Session is { Shift: not null })
+            await RunAsync(async () => App.SetShift(await App.Api.TillAsync<PosShiftDto>(HttpMethod.Get, "/shift")));
+    }
+
+    Task OpenAsync() => RunAsync(async () =>
+    {
+        App.SetShift(await App.Api.TillAsync<PosShiftDto>(HttpMethod.Post, "/shift", new OpenShiftRequest(PosFormat.Parse(_float) ?? 0)));
+        App.Go(PosView.Register);
+    });
+
+    Task MoveAsync(string kind) => RunAsync(async () =>
+    {
+        App.SetShift(await App.Api.TillAsync<PosShiftDto>(HttpMethod.Post, "/shift/cash", new CashMovementRequest(kind, PosFormat.Parse(_amount) ?? 0, _note)));
+        (_amount, _note) = (null, null);
+    });
+
+    Task CloseAsync() => RunAsync(async () =>
+    {
+        if (PosFormat.Parse(_counted) is not { } counted)
+            throw new PosException("Enter the cash you counted.");
+        _closed = await App.Api.TillAsync<PosShiftDto>(HttpMethod.Post, "/shift/close", new CloseShiftRequest(counted));
+        App.SetShift(null);
+        _counted = null;
+    });
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (PosException ex) when (ex.Locked)
+        {
+            await App.HandleAsync(ex);
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Offline ? "No connection: shifts need one." : ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

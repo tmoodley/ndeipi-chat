@@ -1,0 +1,25 @@
+@* A discount: none, a percentage, or an amount off (FR-CAT-04). *@
+
+<div class="pos-row" style="gap: 6px; flex-wrap: wrap">
+    <button class="@(Kind is null ? "primary" : "secondary") small" @onclick="() => Set(null, 0)">None</button>
+    <button class="@(Kind == PosDiscountKinds.Percent ? "primary" : "secondary") small" @onclick="() => Set(PosDiscountKinds.Percent, Value)">% off</button>
+    <button class="@(Kind == PosDiscountKinds.Amount ? "primary" : "secondary") small" @onclick="() => Set(PosDiscountKinds.Amount, Value)">Amount off</button>
+    @if (Kind is not null)
+    {
+        <input style="max-width: 120px" inputmode="decimal" value="@(Value == 0 ? "" : Value.ToString("0.##", CultureInfo.InvariantCulture))"
+               placeholder="@(Kind == PosDiscountKinds.Percent ? "e.g. 10" : "e.g. 2.00")"
+               @onchange="e => Set(Kind, PosFormat.Parse(e.Value as string) ?? 0)" />
+    }
+</div>
+
+@code {
+    [Parameter] public string? Kind { get; set; }
+    [Parameter] public decimal Value { get; set; }
+    [Parameter] public EventCallback<(string? Kind, decimal Value)> OnChange { get; set; }
+
+    async Task Set(string? kind, decimal value)
+    {
+        (Kind, Value) = (kind, kind is null ? 0 : Math.Max(0, value));
+        await OnChange.InvokeAsync((Kind, Value));
+    }
+}
