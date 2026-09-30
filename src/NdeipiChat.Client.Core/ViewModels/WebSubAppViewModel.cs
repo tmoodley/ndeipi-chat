@@ -57,6 +57,16 @@ public sealed partial class WebSubAppViewModel(
         (Url, ErrorMessage, IsLoading) = (null, null, true);
         try
         {
+            // One of the web shell's own pages (e.g. Ndeipi Pay): part of the site, not a separately
+            // published bundle, so there's nothing to verify, only a sign-in to hand over.
+            if (parameters.TryGetValue(Routes.WebPageParameter, out var p) && p is string page && Routes.WebPages.TryGetValue(page.Split('/')[0], out var title))
+            {
+                Title = title;
+                Site = httpClients.CreateClient(AuthService.HttpClientName).BaseAddress;
+                Url = await auth.CreateWebHandoffAsync(page);
+                return;
+            }
+
             var appId = parameters.TryGetValue(Routes.SubAppIdParameter, out var id) ? id?.ToString() : null;
             if (!launcher.IsLoaded)
                 await launcher.LoadCommand.ExecuteAsync(null);

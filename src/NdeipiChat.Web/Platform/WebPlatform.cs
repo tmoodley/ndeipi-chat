@@ -116,6 +116,7 @@ public sealed class WebNavigator(NavigationManager navigation, IJSRuntime js) : 
             Routes.BankTransfer => $"chat/{Conversation()}/send-money",
             Routes.AssetTransfer => $"chat/{Conversation()}/transfer",
             Routes.Wallet => "wallet",
+            Routes.ScanToPay => PosPay.PayPath,
             Routes.RegisterCow => Cow() is { } cow ? $"herd/register?cow={cow}" : "herd/register",
             Routes.Cow => $"herd/cow/{Cow()}",
             Routes.ComposePost => "feed/new",

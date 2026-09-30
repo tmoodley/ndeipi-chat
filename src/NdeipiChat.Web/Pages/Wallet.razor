@@ -37,6 +37,8 @@
         </div>
     </section>
 
+    <button class="primary wide" @onclick="() => Vm.ScanToPayCommand.ExecuteAsync(null)">📷 Scan to pay</button>
+
     @if (Vm.ErrorMessage is not null)
     {
         <p class="error">@Vm.ErrorMessage</p>

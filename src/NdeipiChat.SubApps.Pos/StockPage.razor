@@ -10,11 +10,11 @@
             {
                 <tr class="click" @key="(product.Id, variant)" @onclick="() => Choose(product, variant)">
                     <td>@product.Icon @product.Name@(variant.Length > 0 ? $" ({variant})" : "")</td>
-                    <td class="num">@(level is null ? "—" : PosFormat.Quantity(level.Quantity))</td>
+                    <td class="num">@PosFormat.Quantity(level?.Quantity ?? 0)</td>
                     <td>
-                        @if (level is { IsNegative: true })
+                        @if (level is null or { IsOut: true })
                         {
-                            <span class="pos-badge neg">below zero</span>
+                            <span class="pos-badge neg">out</span>
                         }
                         else if (level is { IsLow: true })
                         {
@@ -24,6 +24,10 @@
                 </tr>
             }
         </table>
+        @if (NotCounted.Any())
+        {
+            <p class="pos-muted" style="margin-bottom: 0">Not counted (sold without stock): @string.Join(", ", NotCounted.Select(p => p.Name)). Change that under Products.</p>
+        }
     </div>
 
     <div class="pos-card">
@@ -35,7 +39,7 @@
         {
             <p style="margin: 10px 0"><strong>@p.Icon @p.Name@(_variant.Length > 0 ? $" ({_variant})" : "")</strong></p>
             <div class="pos-fields">
-                <label class="pos-field">How many arrived (negative takes stock out)<input inputmode="decimal" @bind="_quantity" /></label>
+                <label class="pos-field">How many arrived (negative takes stock out, never below none)<input inputmode="decimal" @bind="_quantity" /></label>
                 <label class="pos-field">Reason<input @bind="_reason" maxlength="200" placeholder="e.g. Delivery from supplier" /></label>
             </div>
             <div class="pos-actions"><button class="primary" disabled="@_busy" @onclick="AdjustAsync">Record</button></div>
@@ -55,8 +59,10 @@
     PosProductDto? _product;
     bool _busy, _ok;
 
+    IEnumerable<PosProductDto> NotCounted => (App.Catalog?.Products ?? []).Where(p => p.IsActive && !p.TrackStock);
+
     IEnumerable<(PosProductDto Product, string Variant, PosStockLevelDto? Level)> Levels =>
-        (App.Catalog?.Products ?? []).Where(p => p.IsActive)
+        (App.Catalog?.Products ?? []).Where(p => p.IsActive && p.TrackStock)
             .SelectMany(p => new[] { "" }.Concat(p.Variants.Select(v => v.Name)).Select(v => (p, v, p.Stock.FirstOrDefault(s => s.Variant == v))));
 
     void Choose(PosProductDto product, string variant) => (_product, _variant, _message) = (product, variant, null);

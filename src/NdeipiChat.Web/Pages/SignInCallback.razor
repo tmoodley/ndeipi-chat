@@ -21,9 +21,14 @@
 </div>
 
 @code {
-    /// <summary>apps/{id}, optionally with a plain query such as "?chat={guid}".</summary>
+    /// <summary>
+    /// Where a phone handoff may go on to: a sub-app, apps/{id} (optionally with a plain query such
+    /// as "?chat={guid}"), or Ndeipi Pay, pay or pay/{code}.
+    /// </summary>
     static bool IsSubAppPage(string next)
     {
+        if (next == PosPay.PayPath || (next.StartsWith(PosPay.PayPath + "/", StringComparison.Ordinal) && PosPay.CodeFrom(next[(PosPay.PayPath.Length + 1)..]) is not null))
+            return true;
         if (!next.StartsWith(WebSubApps.LoadedAppsPrefix + "/", StringComparison.Ordinal))
             return false;
         var (path, query) = next.IndexOf('?') is var q and >= 0 ? (next[..q], next[(q + 1)..]) : (next, "");

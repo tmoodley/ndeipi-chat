@@ -60,6 +60,9 @@ public sealed class ShellNavigator : INavigator
                 return Shell.Current.GoToAsync($"//main/home/{AppShell.AllAppsRoute}");
             if (route == Routes.Wallet)
                 return Shell.Current.GoToAsync("//main/wallet");
+            // Ndeipi Pay is the web shell's pay page, signed in, in the WebView on top of this tab.
+            if (route == Routes.ScanToPay)
+                return Shell.Current.GoToAsync(Routes.WebSubApp, new Dictionary<string, object> { [Routes.WebPageParameter] = PosPay.PayPath });
             if (route.StartsWith(Routes.SubAppPrefix, StringComparison.Ordinal))
                 return OpenSubAppAsync(route[Routes.SubAppPrefix.Length..],
                     parameters is not null && parameters.TryGetValue(Routes.SubAppRouteParameter, out var appRoute) ? appRoute as string : null);

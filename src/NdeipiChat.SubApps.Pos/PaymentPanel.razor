@@ -1,12 +1,66 @@
-@* Taking payment (FR-PAY-01): cash, card on the shop's own terminal, and vouchers, split any way,
-   with change from cash. Sent with the cart's idempotency key (FR-PAY-02), so a retry can't
-   charge twice. With no connection, a cash sale is kept on the till to upload later (FR-OFF-01). *@
+@* Taking payment (FR-PAY-01): cash, card on the shop's own terminal, vouchers, and Ndeipi Pay (the
+   customer scans a QR code and pays from their wallet), split any way, with change from cash. Sent
+   with the cart's idempotency key (FR-PAY-02), so a retry can't charge twice. With no connection,
+   a cash sale is kept on the till to upload later (FR-OFF-01). *@
+@implements IAsyncDisposable
 
 <div class="pos-sheet-back" @onclick="Close">
     <div class="pos-sheet" @onclick:stopPropagation="true">
         @if (_approving)
         {
             <PinPad Title="Manager approval" Subtitle="@Quote.ApprovalReason" Busy="_busy" Error="@_error" OnPin="ApproveAsync" OnCancel="() => _approving = false" />
+        }
+        else if (_qr is { } qr)
+        {
+            @* Ndeipi Pay: the code on screen until the customer's payment comes through. *@
+            <div class="pos-row" style="justify-content: space-between">
+                <h3 style="margin: 0">Ndeipi Pay</h3>
+                <span class="pos-money" style="font-size: 26px; font-weight: 800">@App.Money(qr.Amount)</span>
+            </div>
+            <div class="pos-qr-box">
+                @if (qr.Status == PosQrStatuses.Waiting)
+                {
+                    <QrCode Text="@qr.PayUrl" Label="@($"Pay {App.Money(qr.Amount)} with Ndeipi")" />
+                    <p class="pos-qr-hint">Scan with the phone's camera, or <strong>Scan to pay</strong> in Ndeipi.</p>
+                    <p class="pos-muted" style="margin: 0">Waiting for the customer · expires @PosFormat.Time(qr.ExpiresAt)</p>
+                }
+                else if (qr.Status == PosQrStatuses.Paying)
+                {
+                    <div class="pos-qr-state">⏳</div>
+                    <p class="pos-qr-hint"><strong>@(qr.PayerName ?? "The customer")</strong> confirmed. Waiting for the money to arrive…</p>
+                    <p class="pos-muted" style="margin: 0">This usually takes a few seconds. Don't hand over the goods yet.</p>
+                }
+                else if (qr.Status == PosQrStatuses.Paid)
+                {
+                    <div class="pos-qr-state ok">✓</div>
+                    <p class="pos-qr-hint"><strong>Paid</strong> by @(qr.PayerName ?? "the customer").</p>
+                }
+                else
+                {
+                    <div class="pos-qr-state bad">✕</div>
+                    <p class="pos-qr-hint">@(qr.Status switch
+                    {
+                        PosQrStatuses.Expired => "The code expired before anyone paid.",
+                        PosQrStatuses.Cancelled => "The code was cancelled.",
+                        _ => qr.Error ?? "The payment didn't go through."
+                    })</p>
+                }
+            </div>
+            @if (_error is not null)
+            {
+                <p class="pos-error">@_error</p>
+            }
+            <div class="pos-actions">
+                @if (qr.Status == PosQrStatuses.Waiting)
+                {
+                    <button class="secondary" style="flex: 1" disabled="@_busy" @onclick="CancelQrAsync">Cancel</button>
+                }
+                else if (PosQrStatuses.IsFinal(qr.Status) && qr.Status != PosQrStatuses.Paid)
+                {
+                    <button class="secondary" @onclick="() => _qr = null">Back</button>
+                    <button class="primary" style="flex: 1" disabled="@_busy" @onclick="() => StartQrAsync(qr.Amount)">Show a new code</button>
+                }
+            </div>
         }
         else
         {
@@ -22,9 +76,13 @@
             @foreach (var tender in _tenders)
             {
                 <div class="pos-row" style="padding: 8px 0; border-bottom: 1px solid var(--divider)" @key="tender">
-                    <span class="grow">@PosTenders.Label(tender.Tender)@(tender.Reference is { } r ? $" · {r}" : "")</span>
+                    <span class="grow">@PosTenders.Label(tender.Tender)@(Shown(tender) is { } r ? $" · {r}" : "")</span>
                     <span class="pos-money">@App.Money(tender.Amount)</span>
-                    <button class="link" @onclick="() => _tenders.Remove(tender)">✕</button>
+                    @* Money that's arrived by Ndeipi Pay can't be taken off: the sale has to go through with it. *@
+                    @if (tender.Tender != PosTenders.Qr)
+                    {
+                        <button class="link" @onclick="() => _tenders.Remove(tender)">✕</button>
+                    }
                 </div>
             }
 
@@ -35,8 +93,8 @@
 
             @if (Remaining > 0)
             {
-                <div class="pos-row" style="gap: 6px; margin-bottom: 10px">
-                    @foreach (var tender in PosTenders.All.Where(t => App.Online || t == PosTenders.Cash))
+                <div class="pos-row" style="gap: 6px; margin-bottom: 10px; flex-wrap: wrap">
+                    @foreach (var tender in PosTenders.All.Where(t => App.Online || !PosTenders.NeedsConnection(t)))
                     {
                         <button class="@(_tender == tender ? "primary" : "secondary") small" @key="tender" @onclick="() => _tender = tender">@PosTenders.Label(tender)</button>
                     }
@@ -44,7 +102,7 @@
                 @if (_tender == PosTenders.Cash)
                 {
                     <div class="pos-row" style="gap: 6px; flex-wrap: wrap; margin-bottom: 10px">
-                        @foreach (var amount in QuickCash())
+                        @foreach (var amount in QuickCash().Distinct())
                         {
                             <button class="secondary" @key="amount" @onclick="() => AddTender(PosTenders.Cash, amount, null)">@App.Money(amount)</button>
                         }
@@ -52,12 +110,20 @@
                 }
                 <div class="pos-fields">
                     <label class="pos-field">Amount<input inputmode="decimal" @bind="_amount" placeholder="@Remaining.ToString("0.00", CultureInfo.InvariantCulture)" /></label>
-                    @if (_tender != PosTenders.Cash)
+                    @if (_tender is PosTenders.Card or PosTenders.Voucher)
                     {
                         <label class="pos-field">@(_tender == PosTenders.Card ? "Terminal approval code" : "Voucher code")<input @bind="_reference" maxlength="64" /></label>
                     }
                 </div>
-                <button class="secondary" style="margin-top: 8px" @onclick="AddTyped">Add @PosTenders.Label(_tender).ToLowerInvariant()</button>
+                @if (_tender == PosTenders.Qr)
+                {
+                    <button class="primary" style="margin-top: 8px" disabled="@_busy" @onclick="() => StartQrAsync(PosFormat.Parse(_amount) ?? Remaining)">Show QR code</button>
+                    <p class="pos-muted">The customer scans it and pays from their Ndeipi wallet. The sale completes once the money arrives.</p>
+                }
+                else
+                {
+                    <button class="secondary" style="margin-top: 8px" @onclick="AddTyped">Add @PosTenders.Label(_tender).ToLowerInvariant()</button>
+                }
                 @if (_tender == PosTenders.Card)
                 {
                     <p class="pos-muted">Take the card on your payment terminal first. Ndeipi never sees the card's number.</p>
@@ -88,8 +154,17 @@
     string _tender = PosTenders.Cash;
     string? _amount, _reference, _error, _approvalPin;
     bool _busy, _approving;
+    PosQrPaymentDto? _qr;
+    CancellationTokenSource? _watching;
 
     decimal Remaining => Quote.Total - _tenders.Sum(t => t.Amount);
+
+    bool QrPaid => _tenders.Any(t => t.Tender == PosTenders.Qr);
+
+    /// <summary>A tender's reference as the cashier should see it: Ndeipi Pay's is an id, so it shows who paid.</summary>
+    string? Shown(TenderRequest tender) => tender.Tender == PosTenders.Qr ? _payers.GetValueOrDefault(tender.Reference ?? "") : tender.Reference;
+
+    readonly Dictionary<string, string> _payers = [];
 
     /// <summary>The exact amount, then the next round notes above it.</summary>
     IEnumerable<decimal> QuickCash()
@@ -125,6 +200,114 @@
         (_amount, _reference) = (null, null);
     }
 
+    // ---- Ndeipi Pay ----
+
+    async Task StartQrAsync(decimal amount)
+    {
+        amount = PosPricing.Money(amount);
+        if (amount <= 0 || amount > Remaining)
+        {
+            _error = "Ndeipi Pay can't be more than what's left to pay.";
+            return;
+        }
+        (_busy, _error) = (true, null);
+        try
+        {
+            _qr = await App.Api.TillAsync<PosQrPaymentDto>(HttpMethod.Post, "/qr-payments", new StartQrPaymentRequest(amount));
+            _amount = null;
+            Watch(_qr!.Id);
+        }
+        catch (PosException ex) when (ex.Locked)
+        {
+            await App.HandleAsync(ex);
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>Checks on the payment every two seconds until it's settled one way or the other.</summary>
+    void Watch(Guid id)
+    {
+        _watching?.Cancel();
+        var watching = _watching = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            while (!watching.IsCancellationRequested)
+            {
+                await Task.Delay(2000);
+                if (watching.IsCancellationRequested)
+                    return;
+                try
+                {
+                    var latest = await App.Api.TillAsync<PosQrPaymentDto>(HttpMethod.Get, $"/qr-payments/{id}");
+                    if (latest is null || watching.IsCancellationRequested)
+                        continue;
+                    await InvokeAsync(() => SettleAsync(latest));
+                    if (PosQrStatuses.IsFinal(latest.Status))
+                        return;
+                }
+                catch (PosException)
+                {
+                    // A blip in the connection: keep checking.
+                }
+            }
+        });
+    }
+
+    async Task SettleAsync(PosQrPaymentDto latest)
+    {
+        if (_qr?.Id != latest.Id)
+            return;
+        _qr = latest;
+        if (latest.Status == PosQrStatuses.Paid && _tenders.All(t => t.Reference != latest.Id.ToString()))
+        {
+            _tenders.Add(new TenderRequest(PosTenders.Qr, latest.Amount, latest.Id.ToString()));
+            _payers[latest.Id.ToString()] = latest.PayerName ?? "paid";
+            StateHasChanged();
+            await Task.Delay(900);
+            _qr = null;
+            // Scanned and paid in full: the sale completes by itself.
+            if (Remaining <= 0)
+                await CompleteAsync();
+        }
+        StateHasChanged();
+    }
+
+    async Task CancelQrAsync()
+    {
+        if (_qr is not { } qr)
+            return;
+        _watching?.Cancel();
+        _busy = true;
+        try
+        {
+            var latest = await App.Api.TillAsync<PosQrPaymentDto>(HttpMethod.Delete, $"/qr-payments/{qr.Id}");
+            // Someone paid just as it was cancelled: keep the payment.
+            if (latest is { Status: not PosQrStatuses.Cancelled })
+            {
+                await SettleAsync(latest);
+                if (!PosQrStatuses.IsFinal(latest.Status))
+                    Watch(latest.Id);
+                return;
+            }
+            _qr = null;
+        }
+        catch (PosException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
     async Task CompleteAsync()
     {
         if (Quote.NeedsApproval && _approvalPin is null)
@@ -141,8 +324,8 @@
         }
         catch (PosException ex) when (ex.Offline)
         {
-            if (_tenders.Any(t => t.Tender != PosTenders.Cash))
-                _error = "No connection: card and voucher payments need one. Take cash, or try again.";
+            if (_tenders.Any(t => PosTenders.NeedsConnection(t.Tender)))
+                _error = "No connection: card, voucher and Ndeipi Pay sales need one. Try again in a moment.";
             else if (Quote.NeedsApproval)
                 _error = "No connection: an approved discount needs one. Remove the discount, or try again.";
             else
@@ -170,5 +353,22 @@
         await CompleteAsync();
     }
 
-    Task Close() => OnClose.InvokeAsync();
+    async Task Close()
+    {
+        // Money has come in (or is on its way): the sale has to be completed, not walked away from.
+        if (QrPaid || _qr is { Status: PosQrStatuses.Paying or PosQrStatuses.Paid })
+        {
+            _error = "A Ndeipi Pay payment has come in for this sale. Complete the sale.";
+            return;
+        }
+        if (_qr is { Status: PosQrStatuses.Waiting })
+            await CancelQrAsync();
+        await OnClose.InvokeAsync();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        _watching?.Cancel();
+        return ValueTask.CompletedTask;
+    }
 }

@@ -84,12 +84,42 @@ public sealed class LocalPreview
             (await user.Http.PostAsync("api/posts", form)).EnsureSuccessStatusCode();
         }
 
+        // POS: a shop with a counted shirt (3 in stock) and an uncounted burger; PIN 2580. Both
+        // wallets are verified, and the stand-in Bridge settles transfers at once, so a Ndeipi Pay
+        // payment completes as soon as the customer confirms it.
+        foreach (var user in new[] { me, tendai })
+            await app.DbAsync(db =>
+            {
+                db.BankingProfiles.Add(new NdeipiChat.Api.Data.BankingProfile
+                {
+                    UserId = user.Id, BridgeCustomerId = $"cust_{user.Id:N}", KycLinkId = $"kyc_{user.Id:N}",
+                    KycStatus = NdeipiChat.Api.Data.BankingProfile.Approved, TosStatus = NdeipiChat.Api.Data.BankingProfile.Approved,
+                    WalletId = $"wal_{user.Id:N}", WalletChain = "solana", WalletAddress = $"addr_{user.Id:N}", UpdatedAt = DateTimeOffset.UtcNow
+                });
+                return db.SaveChangesAsync();
+            });
+        app.Bridge.On(HttpMethod.Post, "/v0/transfers", _ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { id = $"tr_{Guid.NewGuid():N}", state = "payment_processed" })
+        });
+        var shop = await me.PostAsync<PosMerchantDto>("api/pos/merchants", new CreateMerchantRequest("Arcadia Sports Club Bar & Restaurant", "usd", true, "Arcadia", 15));
+        using (var pin = await me.Http.PutAsJsonAsync($"api/pos/merchants/{shop.Id}/pin", new SetPinRequest("2580"), ContractJson.Options))
+            pin.EnsureSuccessStatusCode();
+        var shirt = await me.PostAsync<PosProductDto>($"api/pos/merchants/{shop.Id}/products",
+            new SaveProductRequest(null, "Shirt", "👕", "SHIRT", "600000000100", 45m, null, true, 1, null, null));
+        await me.PostAsync<PosProductDto>($"api/pos/merchants/{shop.Id}/products",
+            new SaveProductRequest(null, "Burger", "🍔", "BURG", null, 8m, null, true, 0, null, null, TrackStock: false));
+        await me.PostAsync<PosStockLevelDto>($"api/pos/stores/{shop.Stores[0].Id}/stock", new StockAdjustRequest(shirt.Id, null, 3, "Delivery"));
+
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };
-        var store = new InMemoryTokenStore();
-        var auth = new AuthService(new HttpClient { BaseAddress = site }, store, new SimulatedClerkSignIn(app, me), options, TimeProvider.System);
-        await auth.SignInAsync();
-        await File.WriteAllTextAsync(tokensFile, ContractJson.Write((await store.LoadAsync())!));
+        foreach (var (user, file) in new[] { (me, tokensFile), (tendai, tokensFile + ".tendai") })
+        {
+            var store = new InMemoryTokenStore();
+            var auth = new AuthService(new HttpClient { BaseAddress = site }, store, new SimulatedClerkSignIn(app, user), options, TimeProvider.System);
+            await auth.SignInAsync();
+            await File.WriteAllTextAsync(file, ContractJson.Write((await store.LoadAsync())!));
+        }
 
         await Task.Delay(TimeSpan.FromMinutes(minutes));
     }

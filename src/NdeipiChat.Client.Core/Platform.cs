@@ -96,6 +96,18 @@ public static class Routes
     public const string Cow = "cow";
     public const string ComposePost = "compose-post";
 
+    /// <summary>Ndeipi Pay: scan a shop's QR code and pay it. A page of the web shell ("pay"), in the WebView on the phone.</summary>
+    public const string ScanToPay = "scan-to-pay";
+
+    /// <summary>With <see cref="WebSubApp"/>: a page of the web shell to open instead of a sub-app (<see cref="WebPages"/>).</summary>
+    public const string WebPageParameter = "webPage";
+
+    /// <summary>The web shell's own pages the phone may open in its WebView, and their titles.</summary>
+    public static readonly IReadOnlyDictionary<string, string> WebPages = new Dictionary<string, string>
+    {
+        [PosPay.PayPath] = "Scan to pay",
+    };
+
     /// <summary>The host shell's launcher grid.</summary>
     public const string Launcher = "launcher";
 

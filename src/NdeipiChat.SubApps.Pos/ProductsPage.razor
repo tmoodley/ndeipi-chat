@@ -66,6 +66,7 @@
                 <label class="pos-field">Warn when stock is at<input inputmode="numeric" @bind="form.SafetyStock" /></label>
             </div>
             <label class="pos-row" style="margin-top: 10px"><input type="checkbox" @bind="form.IsActive" /> <span>For sale</span></label>
+            <label class="pos-row" style="margin-top: 6px"><input type="checkbox" @bind="form.TrackStock" /> <span>Count stock <span class="pos-muted">(the till won't sell more than the store has; turn off for meals, drinks poured to order and services)</span></span></label>
 
             <h4>Variants <span class="pos-muted">(e.g. sizes, each with its own price and codes)</span></h4>
             @foreach (var variant in form.Variants)
@@ -117,6 +118,7 @@
         public string? TaxRate { get; set; }
         public string SafetyStock { get; set; } = "0";
         public bool IsActive { get; set; } = true;
+        public bool TrackStock { get; set; } = true;
         public List<VariantForm> Variants { get; set; } = [];
         public List<ModifierForm> Modifiers { get; set; } = [];
     }
@@ -148,6 +150,7 @@
         TaxRate = p.TaxRatePercent is { } rate ? N(rate) : null,
         SafetyStock = p.SafetyStock.ToString(CultureInfo.InvariantCulture),
         IsActive = p.IsActive,
+        TrackStock = p.TrackStock,
         Variants = p.Variants.Select(v => new VariantForm { Name = v.Name, Price = N(v.Price), Barcode = v.Barcode, Sku = v.Sku }).ToList(),
         Modifiers = p.Modifiers.Select(m => new ModifierForm { Name = m.Name, Price = N(m.Price) }).ToList()
     }, null);
@@ -168,7 +171,8 @@
             form.IsActive,
             int.TryParse(form.SafetyStock, out var safety) ? safety : 0,
             form.Variants.Select(v => new PosVariantDto(v.Name, PosFormat.Parse(v.Price) ?? price, v.Sku, v.Barcode)).ToList(),
-            form.Modifiers.Select(m => new PosModifierDto(m.Name, PosFormat.Parse(m.Price) ?? 0)).ToList());
+            form.Modifiers.Select(m => new PosModifierDto(m.Name, PosFormat.Parse(m.Price) ?? 0)).ToList(),
+            form.TrackStock);
         (_busy, _error) = (true, null);
         try
         {

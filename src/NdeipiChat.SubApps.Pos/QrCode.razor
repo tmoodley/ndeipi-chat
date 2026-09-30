@@ -1,0 +1,32 @@
+@* A QR code, drawn as SVG from QRCoder's module grid: sharp at any size and on paper, and dark on
+   white in both themes so every phone camera can read it. *@
+@using QRCoder
+
+<svg class="pos-qr" viewBox="0 0 @_size @_size" role="img" aria-label="@Label" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg">
+    <rect width="@_size" height="@_size" fill="#fff" />
+    <path d="@_path" fill="#111" />
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Label { get; set; } = "QR code";
+
+    string? _text, _path;
+    int _size;
+
+    protected override void OnParametersSet()
+    {
+        if (Text == _text)
+            return;
+        _text = Text;
+        using var data = new QRCodeGenerator().CreateQrCode(Text, QRCodeGenerator.ECCLevel.M);
+        var modules = data.ModuleMatrix;
+        _size = modules.Count;
+        var path = new System.Text.StringBuilder();
+        for (var y = 0; y < _size; y++)
+            for (var x = 0; x < _size; x++)
+                if (modules[y][x])
+                    path.Append('M').Append(x).Append(' ').Append(y).Append("h1v1h-1z");
+        _path = path.ToString();
+    }
+}

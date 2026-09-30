@@ -66,13 +66,23 @@ public static class PosTenders
     /// <summary>A gift voucher or store credit, by its code.</summary>
     public const string Voucher = "voucher";
 
-    public static readonly IReadOnlyList<string> All = [Cash, Card, Voucher];
+    /// <summary>
+    /// Ndeipi Pay: the customer scans the till's QR code and pays from their Ndeipi wallet. Its
+    /// reference is the <see cref="PosQrPaymentDto"/>'s id, and the server only accepts it once paid.
+    /// </summary>
+    public const string Qr = "qr";
+
+    public static readonly IReadOnlyList<string> All = [Cash, Card, Voucher, Qr];
+
+    /// <summary>Tenders that need the till to be online.</summary>
+    public static bool NeedsConnection(string tender) => tender != Cash;
 
     public static string Label(string tender) => tender switch
     {
         Cash => "Cash",
         Card => "Card",
         Voucher => "Voucher",
+        Qr => "Ndeipi Pay",
         _ => tender
     };
 }
@@ -144,7 +154,11 @@ public sealed record PosVariantDto(string Name, decimal Price, string? Sku, stri
 public sealed record PosModifierDto(string Name, decimal Price);
 
 /// <param name="TaxRatePercent">Null: the store's rate.</param>
-/// <param name="Stock">At the store asked about: base product first, then each variant by name.</param>
+/// <param name="TrackStock">
+/// Whether the store counts this product. Counted products can't be sold past what's in stock;
+/// uncounted ones (a meal, a service) have no stock at all.
+/// </param>
+/// <param name="Stock">At the store asked about: base product first, then each variant by name. Empty if not counted.</param>
 public sealed record PosProductDto(
     Guid Id,
     Guid? CategoryId,
@@ -158,7 +172,13 @@ public sealed record PosProductDto(
     int SafetyStock,
     IReadOnlyList<PosVariantDto> Variants,
     IReadOnlyList<PosModifierDto> Modifiers,
-    IReadOnlyList<PosStockLevelDto> Stock);
+    IReadOnlyList<PosStockLevelDto> Stock,
+    bool TrackStock = true)
+{
+    /// <summary>How many of the product (<paramref name="variant"/> "") or a variant are in stock; null if it isn't counted.</summary>
+    public decimal? InStock(string variant) =>
+        TrackStock ? Stock.FirstOrDefault(s => s.Variant == variant)?.Quantity ?? 0 : null;
+}
 
 public sealed record SaveProductRequest(
     Guid? CategoryId,
@@ -171,10 +191,12 @@ public sealed record SaveProductRequest(
     bool IsActive,
     int SafetyStock,
     IReadOnlyList<PosVariantDto>? Variants,
-    IReadOnlyList<PosModifierDto>? Modifiers);
+    IReadOnlyList<PosModifierDto>? Modifiers,
+    bool TrackStock = true);
 
 /// <param name="Variant">"" for the product itself.</param>
-public sealed record PosStockLevelDto(string Variant, decimal Quantity, bool IsLow, bool IsNegative);
+/// <param name="IsOut">None left: the till won't sell it until more is stocked in.</param>
+public sealed record PosStockLevelDto(string Variant, decimal Quantity, bool IsLow, bool IsOut);
 
 /// <summary>Everything a till needs to sell offline: the catalogue with this store's stock.</summary>
 public sealed record PosCatalogDto(IReadOnlyList<PosCategoryDto> Categories, IReadOnlyList<PosProductDto> Products, DateTimeOffset LoadedAt);
@@ -182,10 +204,13 @@ public sealed record PosCatalogDto(IReadOnlyList<PosCategoryDto> Categories, IRe
 /// <summary>What a scanned or typed code matched: the product, and the variant if the code was a variant's.</summary>
 public sealed record PosLookupDto(PosProductDto Product, string? Variant);
 
-/// <summary>Stock arriving or counted (FR-INV-03); a negative quantity takes stock out.</summary>
+/// <summary>
+/// Stock arriving or counted (FR-INV-03); a negative quantity takes stock out, but never more than
+/// the store has.
+/// </summary>
 public sealed record StockAdjustRequest(Guid ProductId, string? Variant, decimal Quantity, string? Reason);
 
-public sealed record PosStockAlertDto(Guid ProductId, string Name, string Variant, decimal Quantity, int SafetyStock, bool IsNegative);
+public sealed record PosStockAlertDto(Guid ProductId, string Name, string Variant, decimal Quantity, int SafetyStock, bool IsOut);
 
 // ---- Shifts ----
 
@@ -302,6 +327,120 @@ public sealed record ReverseSaleRequest(string Reason, string ApprovalPin);
 
 /// <summary>Sends the receipt to a customer's Ndeipi chats (FR-PAY-03), by their account's email or phone.</summary>
 public sealed record SendReceiptRequest(string EmailOrPhone);
+
+// ---- Ndeipi Pay: paying at the till by scanning a QR code ----
+
+/// <summary>
+/// Ndeipi Pay. The till asks for a payment and shows its QR code. The customer scans it, which
+/// opens <see cref="PayPath"/> in Ndeipi, and confirms. The money goes from their wallet to the
+/// merchant owner's through Bridge, and the till completes the sale once Bridge confirms it.
+/// </summary>
+public static class PosPay
+{
+    /// <summary>The customer's side of the API: any signed-in Ndeipi user, not only POS staff.</summary>
+    public const string BasePath = "api/pay";
+
+    /// <summary>The page a QR code opens, relative to the Ndeipi site: "pay/{code}". "pay" alone scans one.</summary>
+    public const string PayPath = "pay";
+
+    /// <summary>How long a customer has to scan and confirm before the till has to ask again.</summary>
+    public const int ExpiryMinutes = 10;
+
+    /// <summary>The page a payment's QR code opens, for a site like "https://chat.ndeipi.com/".</summary>
+    public static string PayUrl(Uri site, string code) => new Uri(site, $"{PayPath}/{code}").ToString();
+
+    /// <summary>The code in a scanned pay link (or a code typed in), or null if it isn't one.</summary>
+    public static string? CodeFrom(string? scanned)
+    {
+        var text = scanned?.Trim();
+        if (string.IsNullOrEmpty(text))
+            return null;
+        if (Uri.TryCreate(text, UriKind.Absolute, out var uri))
+        {
+            var parts = uri.AbsolutePath.Trim('/').Split('/');
+            text = parts.Length >= 2 && parts[^2] == PayPath ? parts[^1] : null;
+        }
+        return text is { Length: >= 16 and <= 64 } && text.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_') ? text : null;
+    }
+}
+
+public static class PosQrStatuses
+{
+    /// <summary>Shown on the till, waiting for someone to scan and confirm.</summary>
+    public const string Waiting = "waiting";
+
+    /// <summary>Confirmed by the customer; the transfer is on its way.</summary>
+    public const string Paying = "paying";
+
+    /// <summary>The money arrived: the till can complete the sale with it.</summary>
+    public const string Paid = "paid";
+
+    public const string Failed = "failed";
+    public const string Expired = "expired";
+    public const string Cancelled = "cancelled";
+
+    public static bool IsFinal(string status) => status is Paid or Failed or Expired or Cancelled;
+}
+
+/// <summary>The till asks for <paramref name="Amount"/> by Ndeipi Pay.</summary>
+public sealed record StartQrPaymentRequest(decimal Amount);
+
+/// <param name="PayUrl">What the QR code holds.</param>
+/// <param name="PayerName">Who confirmed it, once someone has.</param>
+/// <param name="SaleId">The sale it paid for, once the till completed it.</param>
+public sealed record PosQrPaymentDto(
+    Guid Id,
+    string Code,
+    string PayUrl,
+    decimal Amount,
+    string Currency,
+    string Status,
+    string? Error,
+    string? PayerName,
+    Guid? SaleId,
+    DateTimeOffset ExpiresAt);
+
+/// <summary>A payment request as the customer sees it after scanning.</summary>
+/// <param name="Currency">What their wallet pays in, e.g. "usdc".</param>
+/// <param name="IsMine">Whether the signed-in user is the one who confirmed it.</param>
+public sealed record PayRequestDto(
+    string Code,
+    string MerchantName,
+    string StoreName,
+    decimal Amount,
+    string Currency,
+    string Status,
+    string? Error,
+    DateTimeOffset ExpiresAt,
+    bool IsMine);
+
+// ---- Receipts in chat ----
+
+/// <summary>
+/// A "pos.receipt" message. The till only sends the sale's id; the server fills in the rest from
+/// the recorded sale, so a receipt in a chat is always a real one.
+/// </summary>
+public sealed record PosReceiptPayload(
+    Guid SaleId,
+    string MerchantName = "",
+    string StoreName = "",
+    string ReceiptNumber = "",
+    DateTimeOffset OccurredAt = default,
+    string Currency = "",
+    IReadOnlyList<PosReceiptLine>? Lines = null,
+    decimal Subtotal = 0,
+    decimal Discount = 0,
+    decimal Tax = 0,
+    bool TaxInclusive = false,
+    decimal Total = 0,
+    IReadOnlyList<PosReceiptPayment>? Payments = null,
+    decimal Change = 0,
+    string CashierName = "");
+
+/// <param name="Name">With its variant and modifiers, e.g. "Burger (Double) + Cheese".</param>
+public sealed record PosReceiptLine(decimal Quantity, string Name, decimal Total);
+
+public sealed record PosReceiptPayment(string Tender, decimal Amount);
 
 // ---- Audit ----
 

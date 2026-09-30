@@ -36,7 +36,7 @@
     <div class="line"><strong>TOTAL @Sale.Currency</strong><strong>@Sale.Total.ToString("0.00", CultureInfo.InvariantCulture)</strong></div>
     @foreach (var payment in Sale.Payments)
     {
-        <div class="line"><span>@PosTenders.Label(payment.Tender)@(payment.Reference is { } r ? $" {r}" : "")</span><span>@payment.Amount.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
+        <div class="line"><span>@PosTenders.Label(payment.Tender)@(payment.Reference is { } r && payment.Tender != PosTenders.Qr ? $" {r}" : "")</span><span>@payment.Amount.ToString("0.00", CultureInfo.InvariantCulture)</span></div>
     }
     @if (Sale.Change > 0)
     {

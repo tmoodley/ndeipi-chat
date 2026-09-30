@@ -41,7 +41,7 @@
                         {
                             <div class="pos-row" style="padding: 5px 0" @key="(alert.ProductId, alert.Variant)">
                                 <span class="grow">@alert.Name@(alert.Variant.Length > 0 ? $" ({alert.Variant})" : "")</span>
-                                <span class="pos-badge @(alert.IsNegative ? "neg" : "low")">@PosFormat.Quantity(alert.Quantity)@(alert.IsNegative ? " — check" : $" / {alert.SafetyStock}")</span>
+                                <span class="pos-badge @(alert.IsOut ? "neg" : "low")">@(alert.IsOut ? "Out of stock" : $"{PosFormat.Quantity(alert.Quantity)} left")</span>
                             </div>
                         }
                     </div>
@@ -77,12 +77,12 @@
         <div class="pos-card">
             <div class="pos-row" style="margin-bottom: 10px">
                 <h3 class="grow" style="margin: 0">Sales</h3>
-                <input type="date" value="@_day.ToString("yyyy-MM-dd")" @onchange="DayChangedAsync" />
+                <input type="date" class="pos-date" aria-label="Day" value="@_day.ToString("yyyy-MM-dd")" @onchange="DayChangedAsync" />
             </div>
             @if (_sales is { } sales)
             {
                 <SalesTable Sales="sales" OnOpen="s => _sale = s" />
-                <p class="pos-muted">@sales.Count sales · @App.Money(sales.Where(s => s.Status == PosSaleStatuses.Completed).Sum(s => s.Total)) kept</p>
+                <p class="pos-muted">@sales.Count @(sales.Count == 1 ? "sale" : "sales") · @App.Money(sales.Where(s => s.Status == PosSaleStatuses.Completed).Sum(s => s.Total)) taken</p>
             }
         </div>
         break;
