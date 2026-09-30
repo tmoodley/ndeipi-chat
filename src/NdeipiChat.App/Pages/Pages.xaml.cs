@@ -22,6 +22,8 @@ public partial class WebSubAppPage : ViewModelPage
         InitializeComponent();
         _viewModel = viewModel;
         WebContent.UserAgent = InAppUserAgent;
+        // The bar's ← steps back inside the web app too, like Android's back button.
+        Shell.SetBackButtonBehavior(this, new BackButtonBehavior { Command = new Command(() => _ = BackAsync()) });
 #if ANDROID
         WebContent.HandlerChanged += (_, _) =>
         {
@@ -88,6 +90,38 @@ public partial class WebSubAppPage : ViewModelPage
     async void OnClose(object? sender, EventArgs e) => await CloseAsync();
 
     static Task CloseAsync() => Shell.Current.GoToAsync("..");
+
+    /// <summary>Android's back button: one step back inside the web app, not out of it.</summary>
+    protected override bool OnBackButtonPressed()
+    {
+        _ = BackAsync();
+        return true;
+    }
+
+    /// <summary>
+    /// Presses the page's own back button (every sub-app and web page has one, ".bar-back", even when
+    /// its header is hidden in the app). That goes back a step, or when there's nowhere left to go,
+    /// to embed/close, which closes this page (OnNavigating). With no page to ask, it just closes.
+    /// </summary>
+    async Task BackAsync()
+    {
+        if (_viewModel.Url is null || _viewModel.ErrorMessage is not null)
+        {
+            await CloseAsync();
+            return;
+        }
+        try
+        {
+            var result = await WebContent.EvaluateJavaScriptAsync(
+                "(function () { var b = document.querySelector('main .bar-back') || document.querySelector('.bar-back'); if (!b) return 'none'; b.click(); return 'ok'; })()");
+            if (result?.Contains("ok") != true)
+                await CloseAsync();
+        }
+        catch (Exception)
+        {
+            await CloseAsync();
+        }
+    }
 }
 
 public partial class LauncherPage : ViewModelPage
