@@ -1,0 +1,160 @@
+@using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+@implements IAsyncDisposable
+@inject DevHostOptions Options
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IWebAssemblyHostEnvironment Env
+
+@* The app, hosted the way the web shell's apps/{id} page hosts it (SubAppHost.razor): its root
+   component in an error boundary, with a SubAppContext cascaded to it. In the phone app's embedded
+   mode there's no shell around it. The dev host's bar and panels (devhost.js) are outside this
+   frame; they talk to it with postMessage. *@
+
+<PageTitle>@Title · Dev host</PageTitle>
+
+@if (_context is not null)
+{
+    <div class="@(_embedded ? "dh-embedded" : "shell")">
+        <main class="content@(_embedded ? " embedded" : "")">
+            <DevErrorBoundary @ref="_boundary" OnError="ReportError">
+                <ChildContent>
+                    <CascadingValue Value="_context" IsFixed="true">
+                        <DynamicComponent Type="Options.RootType" />
+                    </CascadingValue>
+                </ChildContent>
+                <ErrorContent>
+                    <header class="bar"><h1>@Title</h1></header>
+                    <div class="empty">
+                        <p>@Title ran into a problem. The rest of Ndeipi is fine.</p>
+                        <p class="dh-crash">@context.GetType().Name: @context.Message</p>
+                        <button class="primary" @onclick="() => _boundary?.Recover()">Try again</button>
+                    </div>
+                </ErrorContent>
+            </DevErrorBoundary>
+        </main>
+    </div>
+}
+
+@code {
+    SubAppContext? _context;
+    bool _embedded;
+    DevErrorBoundary? _boundary;
+    DotNetObjectReference<DevHost>? _self;
+
+    string Title => Options.Title ?? Options.AppId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = ParseQuery(new Uri(Navigation.Uri).Query);
+        var user = (query.TryGetValue("user", out var id) && Guid.TryParse(id, out var userId)
+            ? Options.Users.FirstOrDefault(u => u.Id == userId) : null) ?? Options.Users[0];
+        var appQuery = query.TryGetValue("q", out var q) ? q : Options.Query;
+        _embedded = query.GetValueOrDefault("embedded") == "1";
+
+        Options.Api.User = user;
+        Options.Api.Called += OnCalled;
+        Options.Realtime.SubscriptionChanged += OnSubscriptionChanged;
+        Options.Realtime.Published += OnPublished;
+        Options.Realtime.HandlerFailed += OnHandlerFailed;
+
+        _self = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("ndeipiDevHost.connect", _self);
+        Post(new
+        {
+            type = "hello",
+            appId = Options.AppId,
+            title = Title,
+            users = Options.Users,
+            user = user.Id,
+            embedded = _embedded,
+            query = appQuery,
+            realtime = Options.OfferRealtime,
+            device = Options.OfferDevice,
+        });
+
+        var baseUri = new Uri(Env.BaseAddress);
+        var api = new HttpClient(new DevApiHandler(Options.Api, baseUri.AbsolutePath)) { BaseAddress = baseUri };
+        _context = new SubAppContext(
+            Options.AppId,
+            user.Id,
+            user.DisplayName,
+            api,
+            () => { Post(new { type = "launcher" }); return Task.CompletedTask; },
+            Options.OfferRealtime ? Options.Realtime : null,
+            Options.OfferDevice ? new DevDevice(JS, Options.AppId, user.Id) : null,
+            appQuery);
+    }
+
+    /// <summary>The Realtime panel's Send: null if it went, or why it didn't.</summary>
+    [JSInvokable]
+    public async Task<string?> Publish(string topic, string json)
+    {
+        if (string.IsNullOrWhiteSpace(topic))
+            return "Enter a topic.";
+        json = string.IsNullOrWhiteSpace(json) ? "null" : json;
+        try
+        {
+            using var document = System.Text.Json.JsonDocument.Parse(json);
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            return "That isn't JSON: " + ex.Message;
+        }
+        var failed = false;
+        void OnFailed(string topic, Exception ex) => failed = true;
+        Options.Realtime.HandlerFailed += OnFailed;
+        try
+        {
+            await Options.Realtime.PublishJsonAsync(topic.Trim(), json);
+        }
+        finally
+        {
+            Options.Realtime.HandlerFailed -= OnFailed;
+        }
+        return failed ? "Sent, but the app's handler threw. See Log." : null;
+    }
+
+    void OnHandlerFailed(string topic, Exception ex) =>
+        Post(new { type = "error", message = $"The app's handler for {topic} threw {ex.GetType().Name}: {ex.Message}", detail = ex.ToString() });
+
+    void OnCalled(DevApiCall call) => Post(new { type = "request", call.Method, call.Path, call.Status, call.Milliseconds, call.RequestBody, call.ResponseBody });
+
+    void OnSubscriptionChanged(string topic, bool subscribed) => Post(new { type = subscribed ? "subscribed" : "unsubscribed", topic });
+
+    void OnPublished(string topic, string json) => Post(new { type = "published", topic, payload = json });
+
+    Task ReportError(Exception ex)
+    {
+        Post(new { type = "error", message = $"The app crashed: {ex.GetType().Name}: {ex.Message}", detail = ex.ToString() });
+        return Task.CompletedTask;
+    }
+
+    void Post(object message) => _ = PostAsync(message);
+
+    async Task PostAsync(object message)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("ndeipiDevHost.post", message);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    static Dictionary<string, string> ParseQuery(string query) =>
+        query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(pair => pair.Split('=', 2))
+            .GroupBy(pair => Uri.UnescapeDataString(pair[0]))
+            .ToDictionary(g => g.Key, g => Uri.UnescapeDataString((g.Last().ElementAtOrDefault(1) ?? "").Replace('+', ' ')));
+
+    public ValueTask DisposeAsync()
+    {
+        Options.Api.Called -= OnCalled;
+        Options.Realtime.SubscriptionChanged -= OnSubscriptionChanged;
+        Options.Realtime.Published -= OnPublished;
+        Options.Realtime.HandlerFailed -= OnHandlerFailed;
+        _self?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

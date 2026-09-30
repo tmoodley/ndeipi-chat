@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Packs content/ as a `dotnet new` template package. Nothing here is compiled. -->
+
+  <Import Project="..\..\eng\SubAppsSdk.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <PackageId>NdeipiChat.SubApps.Templates</PackageId>
+    <PackageType>Template</PackageType>
+    <Title>Ndeipi micro-app templates</Title>
+    <Description>`dotnet new ndeipi-subapp`: a Ndeipi micro-app and a dev host that runs it on its own.</Description>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="content\**\*" Exclude="content\**\bin\**;content\**\obj\**;content\**\.vs\**" Pack="true" PackagePath="content\" />
+  </ItemGroup>
+
+  <!-- The template's default package version follows this release. -->
+  <Target Name="CheckTemplateVersion" BeforeTargets="Pack">
+    <PropertyGroup>
+      <_TemplateJson>$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)\content\ndeipi-subapp\.template.config\template.json'))</_TemplateJson>
+    </PropertyGroup>
+    <Error Condition="!$(_TemplateJson.Contains('&quot;defaultValue&quot;: &quot;$(SubAppsSdkVersion)&quot;'))"
+           Text="template.json's sdkVersion default must be $(SubAppsSdkVersion), the version being packed (eng/SubAppsSdk.props)." />
+  </Target>
+
+</Project>

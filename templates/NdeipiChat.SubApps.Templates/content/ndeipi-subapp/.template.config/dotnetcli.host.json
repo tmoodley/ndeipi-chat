@@ -1,0 +1,9 @@
+{
+  "$schema": "http://json.schemastore.org/dotnetcli.host",
+  "symbolInfo": {
+    "appId": { "longName": "app-id", "shortName": "" },
+    "title": { "longName": "title", "shortName": "" },
+    "inRepo": { "longName": "in-repo", "shortName": "" },
+    "sdkVersion": { "longName": "sdk-version", "shortName": "" }
+  }
+}

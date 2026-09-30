@@ -1,0 +1,181 @@
+@* The Sample Title micro-app. The Ndeipi shell renders this component when someone opens the app,
+   and everything it needs comes through SubAppContext: who's signed in, an API client that's
+   already signed in, live topics and device storage. *@
+@attribute [SubAppRoot(SampleNameContract.AppId)]
+@implements IAsyncDisposable
+
+<style>
+    /* App styles go here, prefixed with the app id. Use the shell's classes and tokens for the rest. */
+    .sample-id-meta { font-size: 13px; color: var(--muted); }
+    .sample-id-live { font-size: 12px; font-weight: 600; color: var(--success); }
+</style>
+
+<header class="bar">
+    <button class="bar-back link" title="Back to your apps" @onclick="Context.NavigateToLauncher">‹</button>
+    <h1>Sample Title</h1>
+</header>
+
+<div class="page">
+    <p class="muted small">
+        Signed in as @Context.DisplayName
+        @if (_live)
+        {
+            <span class="sample-id-live"> · Live</span>
+        }
+        @if (Context.Query.Length > 0)
+        {
+            <span> · opened with ?@Context.Query</span>
+        }
+    </p>
+
+    <form class="form" @onsubmit="AddAsync">
+        <div class="inline-form">
+            <input @bind="Draft" @bind:event="oninput" placeholder="Add something" maxlength="@SampleNameContract.MaxTitleLength" />
+            <button type="submit" class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_draft))">Add</button>
+        </div>
+    </form>
+
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+
+    @if (_items is null)
+    {
+        <p class="muted">Loading…</p>
+    }
+    else if (_items.Count == 0)
+    {
+        <div class="empty"><p>Nothing here yet. Add the first item above.</p></div>
+    }
+    else
+    {
+        <ul class="list">
+            @foreach (var item in _items)
+            {
+                <li class="row static" @key="item.Id">
+                    <div class="row-main">
+                        <span class="name">@item.Title</span>
+                        <span class="sample-id-meta">@item.AddedBy · @item.AddedAt.ToLocalTime().ToString("d MMM, HH:mm")</span>
+                    </div>
+                    @if (item.AddedById == Context.UserId)
+                    {
+                        <button class="link danger" disabled="@_busy" @onclick="() => RemoveAsync(item)">Remove</button>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    const string DraftKey = "draft";
+
+    List<ItemDto>? _items;
+    string _draft = "";
+    string? _error;
+    bool _busy, _live;
+    IAsyncDisposable? _subscription;
+
+    // The half-typed item is kept on this device, so it survives leaving the app.
+    string Draft
+    {
+        get => _draft;
+        set
+        {
+            _draft = value;
+            _ = Context.Device?.SetValueAsync(DraftKey, value.Length > 0 ? value : null);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Context.Device is { } device)
+            _draft = await device.GetValueAsync(DraftKey) ?? "";
+
+        // Realtime is null in a shell without it: the list still works, it just doesn't update itself.
+        if (Context.Realtime is { } realtime)
+        {
+            _subscription = await realtime.SubscribeAsync(SampleNameContract.ItemsTopic, OnItemChangedAsync);
+            _live = true;
+        }
+
+        await RunAsync(async () => _items = await Context.Api.GetFromJsonAsync<List<ItemDto>>(SampleNameContract.BasePath + "/items") ?? []);
+    }
+
+    Task AddAsync() => RunAsync(async () =>
+    {
+        var response = await Context.Api.PostAsJsonAsync(SampleNameContract.BasePath + "/items", new AddItemRequest(_draft.Trim()));
+        await EnsureSuccessAsync(response);
+        if (await response.Content.ReadFromJsonAsync<ItemDto>() is { } item)
+            Upsert(item);
+        Draft = "";
+    });
+
+    Task RemoveAsync(ItemDto item) => RunAsync(async () =>
+    {
+        await EnsureSuccessAsync(await Context.Api.DeleteAsync($"{SampleNameContract.BasePath}/items/{item.Id}"));
+        _items?.RemoveAll(i => i.Id == item.Id);
+    });
+
+    // Someone (maybe this person, on another device) changed the list.
+    Task OnItemChangedAsync(JsonElement payload)
+    {
+        var change = payload.Deserialize<ItemChanged>(JsonSerializerOptions.Web);
+        if (change is null || _items is null)
+            return Task.CompletedTask;
+        if (change.Removed)
+            _items.RemoveAll(i => i.Id == change.Item.Id);
+        else
+            Upsert(change.Item);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    void Upsert(ItemDto item)
+    {
+        if (_items is not null && _items.All(i => i.Id != item.Id))
+            _items.Insert(0, item);
+    }
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (HttpRequestException ex)
+        {
+            _error = ex.StatusCode is null ? "No connection. Try again in a moment." : ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    // The Ndeipi API explains an error in the problem's title, written for the person using the app.
+    static async Task EnsureSuccessAsync(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+        string? title = null;
+        try
+        {
+            var problem = await response.Content.ReadFromJsonAsync<JsonElement>();
+            title = problem.TryGetProperty("title", out var t) ? t.GetString() : null;
+        }
+        catch (JsonException)
+        {
+        }
+        throw new HttpRequestException(title ?? "Something went wrong. Please try again.", null, response.StatusCode);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+    }
+}

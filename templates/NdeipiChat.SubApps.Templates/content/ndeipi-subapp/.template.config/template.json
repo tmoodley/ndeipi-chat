@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Ndeipi",
+  "classifications": [ "Ndeipi", "Blazor", "WebAssembly", "Micro-app" ],
+  "identity": "NdeipiChat.SubApps.Template",
+  "groupIdentity": "NdeipiChat.SubApps",
+  "name": "Ndeipi micro-app",
+  "description": "A Ndeipi micro-app (a Razor Class Library the shell loads on first use) and a dev host that runs it with a fake user, a mock API and live topics.",
+  "shortName": "ndeipi-subapp",
+  "tags": {
+    "language": "C#",
+    "type": "solution"
+  },
+  "sourceName": "SubAppTemplate",
+  "preferNameDirectory": true,
+  "symbols": {
+    "appId": {
+      "type": "parameter",
+      "datatype": "string",
+      "description": "The app's id: its launcher entry, route (apps/{id}) and API path (api/{id}). Lower case. Defaults to the last part of the name, e.g. \"bookings\" for NdeipiChat.SubApps.Bookings."
+    },
+    "title": {
+      "type": "parameter",
+      "datatype": "string",
+      "description": "The app's name as people see it, e.g. \"Bookings\". Defaults to the last part of the name."
+    },
+    "inRepo": {
+      "type": "parameter",
+      "datatype": "bool",
+      "defaultValue": "false",
+      "description": "Reference the SDK and dev host projects in the ndeipi-chat repo instead of NuGet packages. Use with -o src, from the repo root."
+    },
+    "sdkVersion": {
+      "type": "parameter",
+      "datatype": "string",
+      "defaultValue": "0.1.0",
+      "replaces": "SDK_VERSION",
+      "description": "The version of the NdeipiChat.SubApps.Sdk and .DevHost packages to reference."
+    },
+    "appName": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "lastSegment",
+      "replaces": "SampleName",
+      "fileRename": "SampleName"
+    },
+    "defaultAppId": {
+      "type": "derived",
+      "valueSource": "name",
+      "valueTransform": "lastSegmentLower"
+    },
+    "finalAppId": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "appId",
+        "fallbackVariableName": "defaultAppId"
+      },
+      "replaces": "sample-id"
+    },
+    "finalTitle": {
+      "type": "generated",
+      "generator": "coalesce",
+      "parameters": {
+        "sourceVariableName": "title",
+        "fallbackVariableName": "appName"
+      },
+      "replaces": "Sample Title"
+    },
+    "port": {
+      "type": "generated",
+      "generator": "port",
+      "parameters": { "low": 5200, "high": 5299 },
+      "replaces": "5270"
+    }
+  },
+  "forms": {
+    "lastSegment": {
+      "identifier": "replace",
+      "pattern": "^.*\\.",
+      "replacement": ""
+    },
+    "lowerCase": {
+      "identifier": "lowerCase"
+    },
+    "lastSegmentLower": {
+      "identifier": "chain",
+      "steps": [ "lastSegment", "lowerCase" ]
+    }
+  },
+  "sources": [
+    {
+      "modifiers": [
+        {
+          "condition": "(inRepo)",
+          "exclude": [ "SubAppTemplate.slnx", "README.md" ]
+        }
+      ]
+    }
+  ],
+  "primaryOutputs": [
+    { "path": "SubAppTemplate/SubAppTemplate.csproj" },
+    { "path": "SubAppTemplate.DevHost/SubAppTemplate.DevHost.csproj" }
+  ],
+  "postActions": []
+}

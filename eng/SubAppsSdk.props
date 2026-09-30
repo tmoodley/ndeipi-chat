@@ -1,0 +1,19 @@
+<Project>
+  <!-- Shared by the micro-app SDK packages: NdeipiChat.SubApps.Sdk, .DevHost and .Templates.
+       Bump SubAppsSdkVersion for every release of the three; the template defaults to it. -->
+  <PropertyGroup>
+    <SubAppsSdkVersion>0.1.0</SubAppsSdkVersion>
+    <Version>$(SubAppsSdkVersion)</Version>
+    <IsPackable>true</IsPackable>
+    <Authors>Ndeipi</Authors>
+    <Company>Ndeipi</Company>
+    <PackageProjectUrl>https://github.com/tmoodley/ndeipi-chat/blob/main/docs/micro-apps.md</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tmoodley/ndeipi-chat</RepositoryUrl>
+    <PackageTags>ndeipi;blazor;webassembly;micro-app;sub-app</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
+  </ItemGroup>
+</Project>
