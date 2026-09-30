@@ -73,6 +73,22 @@ public static class PosModel
             e.Property(s => s.Quantity).HasPrecision(18, 3);
             e.HasOne<PosStore>().WithMany().HasForeignKey(s => s.StoreId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<PosProduct>().WithMany().HasForeignKey(s => s.ProductId).OnDelete(DeleteBehavior.NoAction);
+            // A shop can't have fewer than none of something: the database refuses it outright.
+            e.ToTable(t => t.HasCheckConstraint("CK_PosStock_NotNegative", "[Quantity] >= 0"));
+        });
+
+        model.Entity<PosQrPayment>(e =>
+        {
+            e.Property(p => p.Code).HasMaxLength(64);
+            e.HasIndex(p => p.Code).IsUnique();
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.Currency).HasMaxLength(8);
+            e.Property(p => p.Status).HasMaxLength(16);
+            e.Property(p => p.Error).HasMaxLength(300);
+            e.HasIndex(p => p.BankTransferId).HasFilter("[BankTransferId] IS NOT NULL");
+            e.HasIndex(p => p.SaleId).IsUnique().HasFilter("[SaleId] IS NOT NULL");
+            e.HasIndex(p => new { p.StoreId, p.CreatedAt });
+            e.HasOne<PosStore>().WithMany().HasForeignKey(p => p.StoreId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<PosShift>(e =>

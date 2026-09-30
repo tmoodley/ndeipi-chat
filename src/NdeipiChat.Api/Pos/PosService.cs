@@ -473,6 +473,7 @@ public sealed class PosService(
         product.TaxRatePercent = request.TaxRatePercent is { } rate ? Rate(rate) : null;
         product.IsActive = request.IsActive;
         product.SafetyStock = Math.Clamp(request.SafetyStock, 0, 1_000_000);
+        product.TrackStock = request.TrackStock;
         var variants = (request.Variants ?? []).Where(v => !string.IsNullOrWhiteSpace(v.Name))
             .Select(v => new PosVariantDto(Required(v.Name, 60, "Variant name"), Price(v.Price, "Variant price"), Optional(v.Sku, 64), Optional(v.Barcode, 64))).ToList();
         if (variants.Select(v => v.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count() != variants.Count)
@@ -512,15 +513,21 @@ public sealed class PosService(
             throw new ChatRejectedException("That product has no such variant.");
         if (request.Quantity == 0 || Math.Abs(request.Quantity) > 1_000_000)
             throw new ChatRejectedException("Enter how many arrived (or went).");
+        if (!product.TrackStock)
+            throw new ChatRejectedException($"{product.Name} isn't counted. Turn on \"Count stock\" for it under Products first.");
 
-        await AddStockAsync(storeId, product.Id, variant, request.Quantity, ct);
+        var name = product.Name + (variant.Length > 0 ? $" ({variant})" : "");
+        if (request.Quantity > 0)
+            await AddStockAsync(storeId, product.Id, variant, request.Quantity, ct);
+        else if (!await TakeStockAsync(storeId, product.Id, variant, -request.Quantity, ct))
+            throw new ChatRejectedException($"There {Are(await InStockAsync(storeId, product.Id, variant, ct))} of {name} in stock, so {-request.Quantity:0.###} can't be taken out.");
         await AuditAsync(store.MerchantId, storeId, staff.Id, await NameAsync(staff, ct), "web", "stock.adjust",
-            $"{product.Name}{(variant.Length > 0 ? $" ({variant})" : "")} {request.Quantity:+0.###;-0.###} {Optional(request.Reason, 200)}".Trim(), ct);
-        var quantity = await db.PosStock.Where(s => s.StoreId == storeId && s.ProductId == product.Id && s.Variant == variant).Select(s => s.Quantity).FirstAsync(ct);
-        return new PosStockLevelDto(variant, quantity, quantity <= product.SafetyStock, quantity < 0);
+            $"{name} {request.Quantity:+0.###;-0.###} {Optional(request.Reason, 200)}".Trim(), ct);
+        var quantity = await InStockAsync(storeId, product.Id, variant, ct);
+        return Level(product, variant, quantity);
     }
 
-    /// <summary>What's low or below zero at a store (FR-INV-02; negatives from offline sales, FR-OFF-03).</summary>
+    /// <summary>What's low or out at a store (FR-INV-02).</summary>
     public async Task<List<PosStockAlertDto>?> StockAlertsAsync(User me, Guid storeId, CancellationToken ct)
     {
         var store = await db.PosStores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == storeId, ct);
@@ -533,12 +540,21 @@ public sealed class PosService(
     {
         var rows = await (from s in db.PosStock
                           join p in db.PosProducts on s.ProductId equals p.Id
-                          where s.StoreId == store.Id && p.IsActive && s.Quantity <= p.SafetyStock
+                          where s.StoreId == store.Id && p.IsActive && p.TrackStock && s.Quantity <= p.SafetyStock
                           orderby s.Quantity
                           select new { p.Id, p.Name, s.Variant, s.Quantity, p.SafetyStock }).ToListAsync(ct);
-        return rows.Select(r => new PosStockAlertDto(r.Id, r.Name, r.Variant, r.Quantity, r.SafetyStock, r.Quantity < 0)).ToList();
+        return rows.Select(r => new PosStockAlertDto(r.Id, r.Name, r.Variant, r.Quantity, r.SafetyStock, r.Quantity <= 0)).ToList();
     }
 
+    static PosStockLevelDto Level(PosProduct product, string variant, decimal quantity) =>
+        new(variant, quantity, quantity <= product.SafetyStock, quantity <= 0);
+
+    static string Are(decimal quantity) => quantity == 1 ? "is only 1" : quantity == 0 ? "are none" : $"are only {quantity:0.###}";
+
+    async Task<decimal> InStockAsync(Guid storeId, Guid productId, string variant, CancellationToken ct) =>
+        await db.PosStock.Where(s => s.StoreId == storeId && s.ProductId == productId && s.Variant == variant).Select(s => (decimal?)s.Quantity).FirstOrDefaultAsync(ct) ?? 0;
+
+    /// <summary>Puts stock in (a delivery, or a sale coming back).</summary>
     async Task AddStockAsync(Guid storeId, Guid productId, string variant, decimal quantity, CancellationToken ct)
     {
         var updated = await db.PosStock.Where(s => s.StoreId == storeId && s.ProductId == productId && s.Variant == variant)
@@ -549,6 +565,14 @@ public sealed class PosService(
             await db.SaveChangesAsync(ct);
         }
     }
+
+    /// <summary>
+    /// Takes <paramref name="quantity"/> out if the store has that many, in one statement, so two
+    /// tills selling the last one at once can't both have it. False (and nothing taken) otherwise.
+    /// </summary>
+    async Task<bool> TakeStockAsync(Guid storeId, Guid productId, string variant, decimal quantity, CancellationToken ct) =>
+        await db.PosStock.Where(s => s.StoreId == storeId && s.ProductId == productId && s.Variant == variant && s.Quantity >= quantity)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.Quantity, x => x.Quantity - quantity), ct) > 0;
 
     async Task<Dictionary<(Guid, string), decimal>> StockAsync(Guid storeId, CancellationToken ct) =>
         (await db.PosStock.AsNoTracking().Where(s => s.StoreId == storeId).ToListAsync(ct)).ToDictionary(s => (s.ProductId, s.Variant), s => s.Quantity);
@@ -647,6 +671,40 @@ public sealed class PosService(
             throw new ChatRejectedException("Only cash can be overpaid (for change).");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // FR-INV-01: the sale takes its stock first, all or nothing (the transaction undoes it all
+        // if anything below fails). Counted stock never goes below zero, so a till can't sell what
+        // the store doesn't have. An offline sale already happened, though: it takes what there is,
+        // and the difference goes in the audit trail for the manager.
+        var shortfalls = new List<string>();
+        foreach (var group in priced.Lines.Where(l => l.Product.TrackStock).GroupBy(l => (l.Product.Id, l.Line.Variant)))
+        {
+            var quantity = group.Sum(l => l.Line.Quantity);
+            if (await TakeStockAsync(till.Store.Id, group.Key.Id, group.Key.Variant, quantity, ct))
+                continue;
+            var have = await InStockAsync(till.Store.Id, group.Key.Id, group.Key.Variant, ct);
+            var name = group.First().Product.Name + (group.Key.Variant.Length > 0 ? $" ({group.Key.Variant})" : "");
+            if (!request.Offline)
+                throw new ChatRejectedException(have <= 0 ? $"{name} is out of stock." : $"Only {have:0.###} of {name} left in stock.");
+            if (have > 0)
+                await TakeStockAsync(till.Store.Id, group.Key.Id, group.Key.Variant, have, ct);
+            shortfalls.Add($"{name}: sold {quantity:0.###} offline with {have:0.###} in stock");
+        }
+
+        // Ndeipi Pay: each payment must be paid, for this store and amount, and pay for this sale only.
+        foreach (var payment in payments.Where(p => p.Tender == PosTenders.Qr))
+        {
+            var qrId = Guid.TryParse(payment.Reference, out var id) ? id : Guid.Empty;
+            var qr = await db.PosQrPayments.FirstOrDefaultAsync(q => q.Id == qrId && q.StoreId == till.Store.Id, ct)
+                ?? throw new ChatRejectedException("That Ndeipi Pay payment isn't from this till.");
+            if (qr.Status != PosQrStatuses.Paid)
+                throw new ChatRejectedException("That Ndeipi Pay payment hasn't come through yet.");
+            if (qr.Amount != payment.Amount)
+                throw new ChatRejectedException("That Ndeipi Pay payment was for a different amount.");
+            if (qr.SaleId is not null)
+                throw new ChatRejectedException("That Ndeipi Pay payment has already paid for a sale.");
+        }
+
         await db.PosStores.Where(s => s.Id == till.Store.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.ReceiptCount, x => x.ReceiptCount + 1), ct);
         var receiptNumber = await db.PosStores.Where(s => s.Id == till.Store.Id).Select(s => s.ReceiptCount).FirstAsync(ct);
 
@@ -701,14 +759,22 @@ public sealed class PosService(
             return first is null ? throw new ChatRejectedException("The sale couldn't be recorded. Try again.") : (await SaleDtoAsync(first.Id, ct))!;
         }
 
-        // FR-INV-01: stock goes down with the sale. It may go below zero (an offline sale, or
-        // stock never counted in); that shows up as a warning for the manager (FR-OFF-03).
-        foreach (var group in sale.Lines.GroupBy(l => (l.ProductId, l.Variant)))
-            await AddStockAsync(till.Store.Id, group.Key.ProductId, group.Key.Variant, -group.Sum(l => l.Quantity), ct);
+        // A payment can only ever pay for one sale: the unique index on SaleId holds that even if
+        // two tills try at once.
+        var qrIds = payments.Where(p => p.Tender == PosTenders.Qr).Select(p => Guid.Parse(p.Reference!)).ToList();
+        if (qrIds.Count > 0
+            && await db.PosQrPayments.Where(q => qrIds.Contains(q.Id) && q.SaleId == null).ExecuteUpdateAsync(s => s.SetProperty(q => q.SaleId, sale.Id), ct) != qrIds.Count)
+            throw new ChatRejectedException("That Ndeipi Pay payment has already paid for a sale.");
         await tx.CommitAsync(ct);
 
         if (approver is not null)
             await AuditAsync(till, "discount.override", $"receipt {Receipt(till.Store, receiptNumber)}: {quote.ApprovalReason} Approved by {await NameAsync(approver, ct)}; discount {quote.Discount:0.00}", ct);
+        if (shortfalls.Count > 0)
+            await AuditAsync(till, "stock.shortfall", $"receipt {Receipt(till.Store, receiptNumber)}: {string.Join("; ", shortfalls)}", ct);
+
+        // Paid by scanning: the customer is known, so their receipt goes straight to their chats.
+        if (qrIds.Count > 0)
+            await SendReceiptToPayersAsync(till, sale.Id, qrIds, ct);
         return (await SaleDtoAsync(sale.Id, ct))!;
     }
 
@@ -738,9 +804,11 @@ public sealed class PosService(
         sale.StatusReason = reason;
         sale.ReversedAt = Now;
         sale.ReversedShiftId = refund ? currentShift.Id : sale.ShiftId;
+        var productIds = sale.Lines.Select(l => l.ProductId).Distinct().ToList();
+        var counted = await db.PosProducts.Where(p => productIds.Contains(p.Id) && p.TrackStock).Select(p => p.Id).ToListAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
-        foreach (var group in sale.Lines.GroupBy(l => (l.ProductId, l.Variant)))
+        foreach (var group in sale.Lines.Where(l => counted.Contains(l.ProductId)).GroupBy(l => (l.ProductId, l.Variant)))
             await AddStockAsync(sale.StoreId, group.Key.ProductId, group.Key.Variant, group.Sum(l => l.Quantity), ct);
         await tx.CommitAsync(ct);
 
@@ -775,9 +843,34 @@ public sealed class PosService(
         if (customer.Id == device.Id)
             throw new ChatRejectedException("That's this till's own account.");
 
-        var chat = await conversations.CreateAsync(device, new CreateConversationRequest(ConversationType.Direct, [customer.Id], null), ct);
-        await messages.SendAsync(device, new SendMessageRequest(chat.Id, MessageKinds.Text, ContractJson.ToElement(new TextPayload(ReceiptText(sale))), Guid.NewGuid()), ct);
+        await SendReceiptAsync(device, customer.Id, saleId, ct);
         return true;
+    }
+
+    /// <summary>The receipt as a receipt card in the customer's chat with the till's account (PosReceiptHandler fills it in).</summary>
+    async Task SendReceiptAsync(User device, Guid customerId, Guid saleId, CancellationToken ct)
+    {
+        var chat = await conversations.CreateAsync(device, new CreateConversationRequest(ConversationType.Direct, [customerId], null), ct);
+        await messages.SendAsync(device, new SendMessageRequest(chat.Id, MessageKinds.PosReceipt, ContractJson.ToElement(new PosReceiptPayload(saleId)), Guid.NewGuid()), ct);
+    }
+
+    /// <summary>After a sale paid by scanning: each payer gets the receipt, from the account signed in on the till.</summary>
+    async Task SendReceiptToPayersAsync(Till till, Guid saleId, List<Guid> qrIds, CancellationToken ct)
+    {
+        var device = await db.Users.FirstAsync(u => u.Id == till.Session.DeviceUserId, ct);
+        var payers = await db.PosQrPayments.Where(q => qrIds.Contains(q.Id) && q.PayerId != null && q.PayerId != device.Id)
+            .Select(q => q.PayerId!.Value).Distinct().ToListAsync(ct);
+        foreach (var payer in payers)
+        {
+            try
+            {
+                await SendReceiptAsync(device, payer, saleId, ct);
+            }
+            catch (ChatRejectedException)
+            {
+                // The sale stands either way; the till can still print or resend it.
+            }
+        }
     }
 
     /// <summary>A receipt as plain text: for chats, and the shape of a printed one.</summary>
@@ -873,7 +966,7 @@ public sealed class PosService(
             sale.Subtotal, sale.Discount, sale.Tax, sale.Total, payments, sale.Change, sale.StatusReason);
     }
 
-    static string Receipt(PosStore store, int number) => $"{store.Name[..Math.Min(3, store.Name.Length)].ToUpperInvariant()}-{number:000000}";
+    internal static string Receipt(PosStore store, int number) => $"{store.Name[..Math.Min(3, store.Name.Length)].ToUpperInvariant()}-{number:000000}";
 
     // ---- Audit trail (NFR-SEC-03) ----
 
@@ -1019,10 +1112,10 @@ public sealed class PosService(
     static PosProductDto ToDto(PosProduct p, Dictionary<(Guid, string), decimal> stock)
     {
         var variants = Variants(p);
-        var levels = new[] { "" }.Concat(variants.Select(v => v.Name))
+        var levels = !p.TrackStock ? [] : new[] { "" }.Concat(variants.Select(v => v.Name))
             .Where(v => stock.ContainsKey((p.Id, v)))
-            .Select(v => { var q = stock[(p.Id, v)]; return new PosStockLevelDto(v, q, q <= p.SafetyStock, q < 0); })
+            .Select(v => Level(p, v, stock[(p.Id, v)]))
             .ToList();
-        return new PosProductDto(p.Id, p.CategoryId, p.Name, p.Icon, p.Sku, p.Barcode, p.Price, p.TaxRatePercent, p.IsActive, p.SafetyStock, variants, Modifiers(p), levels);
+        return new PosProductDto(p.Id, p.CategoryId, p.Name, p.Icon, p.Sku, p.Barcode, p.Price, p.TaxRatePercent, p.IsActive, p.SafetyStock, variants, Modifiers(p), levels, p.TrackStock);
     }
 }
