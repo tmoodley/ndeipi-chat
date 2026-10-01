@@ -1,7 +1,13 @@
 @* A profile's header: cover banner (a photo, or their colour), hexagon avatar over it, stats on one
    side, actions and their other networks on the other. *@
 <section class="sc-hero glass">
-    <div class="sc-cover @(Profile.CoverUrl is null ? SocialActions.ToneFor(Profile.User.Id) : "has-image")" style="@(Profile.CoverUrl is { } cover ? $"background-image: url('{cover}')" : "")"></div>
+    @* Their colour at once; their cover photo fades in over it once it has downloaded. *@
+    <div class="sc-cover @SocialActions.ToneFor(Profile.User.Id) @(Profile.CoverUrl is null ? "" : "has-image")">
+        @if (Profile.CoverUrl is { } cover)
+        {
+            <img class="cover-img" src="@cover" alt="" onload="this.classList.add('ready')" />
+        }
+    </div>
     <div class="sc-hero-body">
         <div class="sc-stats">
             <button class="sc-stat" @onclick='() => StatClicked.InvokeAsync("timeline")'><b>@Profile.PostCount</b><span>Posts</span></button>
