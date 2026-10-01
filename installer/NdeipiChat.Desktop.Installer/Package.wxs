@@ -1,0 +1,67 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!-- The UpgradeCode never changes: every Ndeipi MSI is the same product, so a newer one replaces an older one. -->
+  <Package Name="Ndeipi"
+           Manufacturer="Ndeipi"
+           Version="$(ProductVersion)"
+           UpgradeCode="094D85CD-CE55-436D-83BA-8636177BAD7A"
+           Scope="perMachine"
+           Compressed="yes">
+
+    <SummaryInformation Description="Ndeipi for Windows: chats, money, apps and more." />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Ndeipi is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="NdeipiIcon" SourceFile="$(AppPublishDir)appicon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="NdeipiIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://chat.ndeipi.com" />
+    <Property Id="ARPHELPLINK" Value="https://chat.ndeipi.com" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Ndeipi" />
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder" />
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- Everything the self-contained publish produced: the app, .NET and the Windows App SDK. -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(AppPublishDir)**">
+        <!-- Debug symbols aren't needed to run it. -->
+        <Exclude Files="$(AppPublishDir)**\*.pdb" />
+      </Files>
+    </ComponentGroup>
+
+    <Component Id="StartMenuShortcut" Directory="ProgramMenuFolder" Guid="5D9C2F1B-7C47-4E6E-9E43-31B5B7A5E0A1">
+      <Shortcut Id="NdeipiStartMenu" Name="Ndeipi" Description="Chats, money, apps and more"
+                Target="[INSTALLFOLDER]Ndeipi.exe" WorkingDirectory="INSTALLFOLDER" Icon="NdeipiIcon" />
+      <RegistryValue Root="HKCU" Key="Software\Ndeipi\Desktop" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="7A1E4C6B-2F7D-4C1B-8D7E-6B0B2C9F4A12">
+      <Shortcut Id="NdeipiDesktop" Name="Ndeipi" Description="Chats, money, apps and more"
+                Target="[INSTALLFOLDER]Ndeipi.exe" WorkingDirectory="INSTALLFOLDER" Icon="NdeipiIcon" />
+      <RegistryValue Root="HKCU" Key="Software\Ndeipi\Desktop" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Feature Id="Main" Title="Ndeipi" Level="1">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <!-- A short installer: welcome, where to install, install, and open it at the end. There's no
+         license page: add one (WixUILicenseRtf, and drop the two Publish overrides) once there are terms to show. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Open Ndeipi" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <CustomAction Id="LaunchNdeipi" Directory="INSTALLFOLDER" ExeCommand="[INSTALLFOLDER]Ndeipi.exe" Return="asyncNoWait" Impersonate="yes" />
+    <UI>
+      <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchNdeipi"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 and NOT Installed" />
+    </UI>
+  </Package>
+</Wix>

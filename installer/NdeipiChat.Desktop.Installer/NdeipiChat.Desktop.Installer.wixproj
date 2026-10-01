@@ -1,0 +1,30 @@
+<Project Sdk="WixToolset.Sdk/5.0.2">
+
+  <!-- Ndeipi-x.y.z-x64.msi: the Windows desktop app (src/NdeipiChat.Desktop), published self-contained,
+       installed per machine under Program Files with Start menu and desktop shortcuts. Build it with
+       eng/build-desktop-msi.ps1, which publishes the app first. WiX v5 (MS-RL licensed, no EULA to accept). -->
+
+  <PropertyGroup>
+    <OutputName>Ndeipi-$(ProductVersion)-x64</OutputName>
+    <Platform Condition="'$(Platform)' == ''">x64</Platform>
+    <InstallerPlatform>x64</InstallerPlatform>
+    <!-- ICE03/ICE60: some Windows App SDK files declare many languages at once, more than the File
+         table's Language column holds. It only matters for version comparisons on upgrade. -->
+    <SuppressIces>ICE03;ICE60</SuppressIces>
+
+    <!-- The published app. eng/build-desktop-msi.ps1 passes these. -->
+    <AppPublishDir Condition="'$(AppPublishDir)' == ''">$(MSBuildThisFileDirectory)..\..\artifacts\Ndeipi-Windows-x64\</AppPublishDir>
+    <ProductVersion Condition="'$(ProductVersion)' == ''">1.0.0</ProductVersion>
+    <DefineConstants>AppPublishDir=$(AppPublishDir);ProductVersion=$(ProductVersion)</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
+  </ItemGroup>
+
+  <Target Name="CheckPublished" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(AppPublishDir)Ndeipi.exe')"
+           Text="No published app at $(AppPublishDir). Run eng/build-desktop-msi.ps1, or publish src/NdeipiChat.Desktop there first." />
+  </Target>
+
+</Project>
