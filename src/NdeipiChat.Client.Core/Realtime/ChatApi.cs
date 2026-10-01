@@ -62,6 +62,26 @@ public sealed class ChatApi(HttpClient http)
 
     public Task<List<BalanceDto>> GetBalancesAsync(CancellationToken ct = default) => GetAsync<List<BalanceDto>>("api/banking/balances", ct);
 
+    public Task<TrustScoreDto> GetTrustScoreAsync(Guid userId, CancellationToken ct = default) =>
+        GetAsync<TrustScoreDto>($"{TrustContract.BasePath}/{userId}", ct);
+
+    public Task<MyTrustDto> GetMyTrustAsync(CancellationToken ct = default) => GetAsync<MyTrustDto>($"{TrustContract.BasePath}/me", ct);
+
+    public Task<MyTrustDto> RefreshTrustAsync(CancellationToken ct = default) =>
+        SendAsync<MyTrustDto>(HttpMethod.Post, $"{TrustContract.BasePath}/refresh", null, ct);
+
+    public Task<TrustSettingsDto> GetTrustSettingsAsync(CancellationToken ct = default) =>
+        GetAsync<TrustSettingsDto>($"{TrustContract.BasePath}/settings", ct);
+
+    public Task<TrustLinkStartDto> StartTrustLinkAsync(string platform, CancellationToken ct = default) =>
+        SendAsync<TrustLinkStartDto>(HttpMethod.Post, $"{TrustContract.BasePath}/links/{Uri.EscapeDataString(platform)}", null, ct);
+
+    public Task<MyTrustDto> LinkTelegramAsync(TelegramLoginRequest login, CancellationToken ct = default) =>
+        SendAsync<MyTrustDto>(HttpMethod.Post, $"{TrustContract.BasePath}/links/telegram", login, ct);
+
+    public Task<MyTrustDto> UnlinkTrustAsync(string platform, CancellationToken ct = default) =>
+        SendAsync<MyTrustDto>(HttpMethod.Delete, $"{TrustContract.BasePath}/links/{Uri.EscapeDataString(platform)}", null, ct);
+
     public Task<LauncherManifestDto> GetLauncherAsync(CancellationToken ct = default) => GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath, ct);
 
     public Task<LauncherManifestDto> SetPinsAsync(IReadOnlyList<string> appIds, CancellationToken ct = default) =>

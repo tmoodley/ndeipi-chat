@@ -29,6 +29,7 @@ public sealed class GigsService(
     ChatNotifier notifier,
     IOptions<GigsOptions> gigOptions,
     IOptions<TokenOptions> tokenOptions,
+    IEnumerable<IWorkRecordListener> workListeners,
     TimeProvider clock)
 {
     public const int MaxMapWorkers = 500;
@@ -388,6 +389,9 @@ public sealed class GigsService(
                 throw new ChatRejectedException("This gig can't be approved now.");
             await db.GigProfiles.Where(p => p.UserId == gig.WorkerId)
                 .ExecuteUpdateAsync(s => s.SetProperty(p => p.CompletedGigs, p => p.CompletedGigs + 1), ct);
+            if (gig.WorkerId is { } doneBy)
+                foreach (var listener in workListeners)
+                    await listener.WorkRecordChangedAsync(doneBy, ct);
         }
 
         if (gig.PaymentMessageId is null && gig.ConversationId is { } chat && gig.WorkerId is { } worker)
@@ -422,6 +426,9 @@ public sealed class GigsService(
                 throw new ChatRejectedException("You've already rated this gig.");
             await db.GigProfiles.Where(p => p.UserId == gig.WorkerId)
                 .ExecuteUpdateAsync(s => s.SetProperty(p => p.RatingSum, p => p.RatingSum + stars).SetProperty(p => p.RatingCount, p => p.RatingCount + 1), ct);
+            if (gig.WorkerId is { } ratedWorker)
+                foreach (var listener in workListeners)
+                    await listener.WorkRecordChangedAsync(ratedWorker, ct);
         }
         else
         {
@@ -554,4 +561,10 @@ public sealed class GigMapTopicPolicy(LauncherService launcher) : ITopicPolicy
 
     public Task<bool> CanSubscribeAsync(User user, string key, CancellationToken ct) =>
         Task.FromResult(key == "all" && launcher.CanUse(user, GigsContract.AppId));
+}
+
+/// <summary>Told when someone's work record changes (a gig of theirs was approved, or rated): the Trust Score counts it.</summary>
+public interface IWorkRecordListener
+{
+    Task WorkRecordChangedAsync(Guid workerId, CancellationToken ct);
 }

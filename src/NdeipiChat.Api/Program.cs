@@ -15,6 +15,7 @@ using NdeipiChat.Api.Livestock;
 using NdeipiChat.Api.Points;
 using NdeipiChat.Api.Shamwaris;
 using NdeipiChat.Api.Social;
+using NdeipiChat.Api.Trust;
 using NdeipiChat.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -42,6 +43,7 @@ builder.Services.AddGigs(builder.Configuration);
 builder.Services.AddPos();
 builder.Services.AddDonations(builder.Configuration);
 builder.Services.AddPoints();
+builder.Services.AddTrust(builder.Configuration);
 builder.Services.AddLivestock(builder.Configuration);
 
 var app = builder.Build();
@@ -72,6 +74,7 @@ app.MapGigs();
 app.MapPos();
 app.MapDonations();
 app.MapPoints();
+app.MapTrust();
 app.MapTokenTransfers();
 app.MapBanking();
 app.MapLivestock();

@@ -31,6 +31,9 @@ public sealed record ClerkEmailAddress(string Id, string EmailAddress, ClerkVeri
 
 public sealed record ClerkPhoneNumber(string Id, string PhoneNumber, ClerkVerification? Verification = null);
 
+/// <summary>An account the user signs in to Clerk with, e.g. provider "oauth_google".</summary>
+public sealed record ClerkExternalAccount(string Id, string Provider, string? ProviderUserId, string? EmailAddress, string? Username = null, ClerkVerification? Verification = null);
+
 public sealed record ClerkUser(
     string Id,
     string? FirstName,
@@ -41,8 +44,13 @@ public sealed record ClerkUser(
     List<ClerkEmailAddress>? EmailAddresses,
     string? PrimaryPhoneNumberId = null,
     List<ClerkPhoneNumber>? PhoneNumbers = null,
-    JsonElement? PublicMetadata = null)
+    JsonElement? PublicMetadata = null,
+    List<ClerkExternalAccount>? ExternalAccounts = null)
 {
+    /// <summary>Sign-in accounts the provider has verified (Google, Apple, Microsoft…).</summary>
+    public IEnumerable<ClerkExternalAccount> VerifiedExternalAccounts =>
+        (ExternalAccounts ?? []).Where(a => a.Verification?.IsVerified == true && !string.IsNullOrEmpty(a.ProviderUserId));
+
     /// <summary>
     /// Roles an administrator gave the user in Clerk, as <c>public_metadata.roles</c> (an array of
     /// strings). Users can't change public metadata themselves, so roles can gate sub-apps.

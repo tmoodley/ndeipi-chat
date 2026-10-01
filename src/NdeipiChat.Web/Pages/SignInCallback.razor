@@ -27,7 +27,7 @@
     /// </summary>
     static bool IsSubAppPage(string next)
     {
-        if (next == PosPay.PayPath || (next.StartsWith(PosPay.PayPath + "/", StringComparison.Ordinal) && PosPay.CodeFrom(next[(PosPay.PayPath.Length + 1)..]) is not null))
+        if (next == PosPay.PayPath || next == TrustContract.PagePath ||(next.StartsWith(PosPay.PayPath + "/", StringComparison.Ordinal) && PosPay.CodeFrom(next[(PosPay.PayPath.Length + 1)..]) is not null))
             return true;
         if (!next.StartsWith(WebSubApps.LoadedAppsPrefix + "/", StringComparison.Ordinal))
             return false;

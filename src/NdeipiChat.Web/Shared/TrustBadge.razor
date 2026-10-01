@@ -1,0 +1,102 @@
+@implements IAsyncDisposable
+@inject ChatApi Api
+@inject ShellRealtime Realtime
+
+@* Someone's Trust Score as a small pill: everyone sees everyone's. Live follows changes as they happen. *@
+
+@if (_score is { } s)
+{
+    var body = $"{s.Score}";
+    if (Href is not null)
+    {
+        <a class="trust-badge @Tone(s.Score) @(Large ? "large" : "")" href="@Href" title="@Title(s)"><span class="shield">🛡</span><b>@body</b>@if (Large) {<span class="lvl">@s.Level</span>}</a>
+    }
+    else
+    {
+        <span class="trust-badge @Tone(s.Score) @(Large ? "large" : "")" title="@Title(s)"><span class="shield">🛡</span><b>@body</b>@if (Large) {<span class="lvl">@s.Level</span>}</span>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid UserId { get; set; }
+
+    /// <summary>Shows the level next to the number.</summary>
+    [Parameter] public bool Large { get; set; }
+
+    /// <summary>Follows the score's topic, so it changes on screen as it changes.</summary>
+    [Parameter] public bool Live { get; set; }
+
+    [Parameter] public string? Href { get; set; }
+
+    // Badges repeat (chat list, headers): one fetch per person every couple of minutes is plenty.
+    static readonly Dictionary<Guid, (TrustScoreDto Score, DateTime At)> Cache = [];
+    static readonly TimeSpan CacheFor = TimeSpan.FromMinutes(2);
+
+    TrustScoreDto? _score;
+    Guid _loaded;
+    IAsyncDisposable? _subscription;
+
+    public static string Tone(int score) => score switch { >= 85 => "t-high", >= 60 => "t-good", >= 30 => "t-mid", _ => "t-new" };
+
+    static string Title(TrustScoreDto s) =>
+        $"Trust Score {s.Score}/100 · {s.Level}" + (s.IdentityVerified ? " · identity checked" : "")
+        + (s.Settlements > 0 ? $" · {s.Settlements} {(s.Settlements == 1 ? "person" : "people")} paid" : "")
+        + (s.WorkReferences > 0 ? $" · work approved by {s.WorkReferences} {(s.WorkReferences == 1 ? "client" : "clients")}" : "");
+
+    /// <summary>Keeps a fresh score, e.g. the owner's after they link an account.</summary>
+    public static void Remember(TrustScoreDto score) => Cache[score.UserId] = (score, DateTime.UtcNow);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (UserId == _loaded)
+            return;
+        _loaded = UserId;
+        await StopFollowingAsync();
+        _score = Cache.TryGetValue(UserId, out var cached) && DateTime.UtcNow - cached.At < CacheFor ? cached.Score : null;
+        if (_score is null)
+        {
+            try
+            {
+                _score = await Api.GetTrustScoreAsync(UserId);
+                Remember(_score);
+            }
+            catch (ApiException)
+            {
+                // No score to show (an old server, or they're gone): the badge just stays hidden.
+            }
+        }
+
+        if (Live)
+        {
+            try
+            {
+                _subscription = await Realtime.SubscribeAsync(TrustContract.Topic(UserId), OnUpdateAsync);
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    Task OnUpdateAsync(System.Text.Json.JsonElement payload)
+    {
+        if (ContractJson.Read<TrustScoreDto>(payload) is { } score && score.UserId == UserId)
+        {
+            _score = score;
+            Remember(score);
+            return InvokeAsync(StateHasChanged);
+        }
+        return Task.CompletedTask;
+    }
+
+    async Task StopFollowingAsync()
+    {
+        if (_subscription is { } s)
+        {
+            _subscription = null;
+            await s.DisposeAsync();
+        }
+    }
+
+    public ValueTask DisposeAsync() => new(StopFollowingAsync());
+}
