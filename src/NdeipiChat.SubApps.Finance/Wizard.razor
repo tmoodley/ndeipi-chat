@@ -1,0 +1,476 @@
+@* Screens 2-6, the application form in five steps: eligibility (FR-ELG), the group and where it is
+   (FR-GRP), what the loan finances (FR-LTY, FR-TRM), documents (FR-DOC), then review and submit
+   (FR-SUB). Each Continue saves the draft, so a group can stop and finish later. *@
+
+<div class="fin-wiz-head">
+    <span><b>Gold Mining Loan</b></span>
+    <span>Step @Step of 5</span>
+</div>
+<div class="fin-progress"><div style="width:@(Step * 20)%"></div></div>
+
+@if (_loading)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    @switch (Step)
+    {
+        case 1:
+            <h2>Check eligibility</h2>
+            <p class="muted small" style="margin: 0">Your group must meet all four criteria.</p>
+            <section class="fin-card">
+                <div class="fin-q">Is your group a legally registered entity fully owned by Zambians?</div>
+                <div class="fin-yesno">
+                    <button class="@On(_zambian == true)" @onclick="() => _zambian = true">Yes</button>
+                    <button class="@On(_zambian == false)" @onclick="() => _zambian = false">No</button>
+                </div>
+            </section>
+            <section class="fin-card">
+                <div class="fin-q">Where is your group registered?</div>
+                <select @bind="_body">
+                    <option value="">Choose…</option>
+                    @foreach (var b in RegistrationBodies.All)
+                    {
+                        <option value="@b.Code">@b.Label</option>
+                    }
+                    <option value="other">Somewhere else / not registered</option>
+                </select>
+            </section>
+            <section class="fin-card">
+                <div class="fin-q">Which mining licence backs your proposal?</div>
+                <select @bind="_licence">
+                    <option value="">Choose…</option>
+                    @foreach (var l in LicenceTypes.All)
+                    {
+                        <option value="@l.Code">@l.Label</option>
+                    }
+                    <option value="other">Another licence / none</option>
+                </select>
+            </section>
+            <section class="fin-card">
+                <div class="fin-q">Does your group have a bank account?</div>
+                <div class="fin-yesno">
+                    <button class="@On(_bank == true)" @onclick="() => _bank = true">Yes</button>
+                    <button class="@On(_bank == false)" @onclick="() => _bank = false">No</button>
+                </div>
+            </section>
+            @if (Answered)
+            {
+                @if (Eligibility.Problems() is { Count: > 0 } problems)
+                {
+                    <div class="fin-warn">
+                        <b>Your group can't apply yet</b>
+                        @foreach (var p in problems)
+                        {
+                            <span>@p</span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="fin-ok">✓ Your group meets the criteria.</div>
+                }
+            }
+            break;
+
+        case 2:
+            <h2>Your group</h2>
+            <label class="fin-field">Group name<input @bind="_groupName" maxlength="@FinanceContract.MaxNameLength" placeholder="e.g. Kasenengwa Mining Cooperative" /></label>
+            <label class="fin-field">Group type
+                <select @bind="_groupType">
+                    <option value="">Choose…</option>
+                    @foreach (var t in GroupTypes.All)
+                    {
+                        <option value="@t.Code">@t.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="fin-field">Registration number<input @bind="_registration" maxlength="60" placeholder="As on your certificate" /></label>
+            <h3>Location</h3>
+            <div class="fin-two">
+                <label class="fin-field">Province
+                    <select @bind="_province" @bind:after="ProvinceChangedAsync">
+                        <option value="">Choose…</option>
+                        @foreach (var p in FinanceContract.Provinces)
+                        {
+                            <option value="@p">@p</option>
+                        }
+                    </select>
+                </label>
+                <label class="fin-field">Constituency
+                    <input @bind="_constituency" @bind:after="RouteAsync" list="fin-constituencies" maxlength="@FinanceContract.MaxPlaceLength" />
+                    <datalist id="fin-constituencies">
+                        @foreach (var c in _constituencies)
+                        {
+                            <option value="@c"></option>
+                        }
+                    </datalist>
+                </label>
+                <label class="fin-field">Ward<input @bind="_ward" @bind:after="RouteAsync" maxlength="@FinanceContract.MaxPlaceLength" /></label>
+                <label class="fin-field">Village<input @bind="_village" @bind:after="RouteAsync" maxlength="@FinanceContract.MaxPlaceLength" /></label>
+            </div>
+            <section class="fin-card" style="flex-direction: row; align-items: flex-start">
+                <span style="color: var(--fin-green)">📍</span>
+                <span class="small"><b>Your application will go to</b><br /><span class="muted">@RouteText</span></span>
+            </section>
+            break;
+
+        case 3:
+            <h2>What will the loan finance?</h2>
+            <div class="fin-q">Cluster group type</div>
+            <div class="fin-seg">
+                @foreach (var c in ClusterTypes.All)
+                {
+                    <button class="@On(_cluster == c.Code)" @onclick="() => ChooseCluster(c.Code)">@c.Label</button>
+                }
+            </div>
+            @if (_cluster is not null)
+            {
+                <div><div class="fin-q">Choose equipment</div><div class="muted small">All mercury-free. Pick one or more.</div></div>
+                @foreach (var q in _equipment.Where(q => q.ClusterType == _cluster))
+                {
+                    var chosen = _items.TryGetValue(q.Id, out var buy);
+                    <section class="fin-card fin-equip @(chosen ? "on" : "")">
+                        <input type="checkbox" checked="@chosen" @onchange="e => Toggle(q, (bool)e.Value!)" aria-label="@q.Name" />
+                        <div class="grow">
+                            <b>@q.Name</b>
+                            <span class="muted small">@q.Description</span>
+                            <span class="small">Hire @Price(q.HirePerMonth)/mo · Buy @Price(q.BuyPrice) · Running @Price(q.RunningPerMonth)/mo</span>
+                            @if (chosen)
+                            {
+                                <div class="fin-yesno" style="margin-top: 6px">
+                                    <button class="@On(!buy)" @onclick="() => _items[q.Id] = false">Hire</button>
+                                    <button class="@On(buy)" @onclick="() => _items[q.Id] = true">Buy</button>
+                                </div>
+                            }
+                        </div>
+                        @if (q.Mtp is not null)
+                        {
+                            <span class="fin-mtp">@q.Mtp</span>
+                        }
+                    </section>
+                }
+                @if (!_equipment.Any(q => q.ClusterType == _cluster))
+                {
+                    <p class="muted">No equipment is listed for this cluster type yet.</p>
+                }
+                <label class="fin-field">Months of running costs to finance
+                    <select @bind="_months">
+                        @foreach (var m in FinanceContract.RunningMonths)
+                        {
+                            <option value="@m">@m @(m == 1 ? "month" : "months")</option>
+                        }
+                    </select>
+                </label>
+                <span class="muted small" style="margin-top: -6px">Fuel, water, consumables and labour to operate the equipment.</span>
+                @if (_items.Count > 0)
+                {
+                    var estimate = LocalEstimate();
+                    <section class="fin-estimate">
+                        <span>Estimated loan value</span>
+                        @foreach (var line in estimate.Lines)
+                        {
+                            <div class="line"><span>@line.Label</span><span>@Format.Money(line.Amount)</span></div>
+                        }
+                        <div class="line total"><span>Total</span><span>@Format.Money(estimate.Total)</span></div>
+                        <span>
+                            Interest @FinanceContract.MinInterestPercent–@FinanceContract.MaxInterestPercent% by risk profile · grace period @FinanceContract.MinGraceMonths–@FinanceContract.MaxGraceMonths months.
+                            Final value set by Absa through the Cathedral Valuation of your proposal.
+                            @if (!estimate.Complete)
+                            {
+                                <b> Some prices are still to be confirmed, so the total leaves them out.</b>
+                            }
+                        </span>
+                    </section>
+                }
+            }
+            break;
+
+        case 4:
+            <h2>Upload documents</h2>
+            <p class="muted small" style="margin: 0">Clear photos or PDFs, up to @(FinanceContract.MaxDocumentBytes / 1024 / 1024) MB. Typed or clearly handwritten.</p>
+            @foreach (var d in _app?.Documents ?? [])
+            {
+                <section class="fin-card fin-doc">
+                    <span class="ico @(d.FileName is null ? "todo" : "")">@(d.FileName is null ? "↑" : "✓")</span>
+                    <span class="grow">
+                        <b>@d.Label</b>
+                        <small>@(d.FileName is { } f ? $"{f} · uploaded" : d.Hint)</small>
+                    </span>
+                    @if (_uploading == d.Kind)
+                    {
+                        <span class="muted small">Uploading…</span>
+                    }
+                    else
+                    {
+                        <label class="@(d.FileName is null ? "fin-outline" : "fin-link") fin-file" style="@(d.FileName is null ? "border: 1.5px solid var(--fin-green); border-radius: 10px; padding: 8px 14px; font-weight: 700; color: var(--fin-green)" : "color: var(--fin-green); font-weight: 700")">
+                            @(d.FileName is null ? "Upload" : "Replace")
+                            <InputFile OnChange="e => UploadAsync(d.Kind, e)" accept="image/*,application/pdf" disabled="@(_uploading is not null)" />
+                        </label>
+                    }
+                </section>
+            }
+            <section class="fin-warn">
+                <b>Prefer paper?</b>
+                <span>Print the form and hand it in, typed or in clear handwriting, at your Village Productivity Committee.</span>
+                <a href="_content/NdeipiChat.SubApps.Finance/gold-loan-form.html" target="_blank" style="color: var(--fin-green); font-weight: 700">Download printable form</a>
+            </section>
+            break;
+
+        case 5:
+            var a = _app!;
+            <h2>Review and submit</h2>
+            <section class="fin-card fin-rows">
+                <div class="row"><span>Group</span><span>@a.GroupName</span></div>
+                <div class="row"><span>Type</span><span>@Format.Label(GroupTypes.All, a.GroupType)</span></div>
+                <div class="row"><span>Registered with</span><span>@Format.Label(RegistrationBodies.All, a.Eligibility.RegistrationBody)</span></div>
+                <div class="row"><span>Registration no.</span><span>@a.RegistrationNumber</span></div>
+                <div class="row"><span>Licence</span><span>@Format.Label(LicenceTypes.All, a.Eligibility.LicenceType)</span></div>
+                <div class="row"><span>Location</span><span>@string.Join(", ", new[] { a.Village, a.Ward, a.Constituency, a.Province }.Where(p => p is not null))</span></div>
+                <div class="row"><span>Loan type</span><span>@Format.Label(ClusterTypes.All, a.ClusterType) · @string.Join(", ", a.Items.Select(i => $"{i.Name} ({(i.Buy ? "buy" : "hire")})"))</span></div>
+                <div class="row"><span>Running costs</span><span>@a.RunningMonths @(a.RunningMonths == 1 ? "month" : "months")</span></div>
+                <div class="row"><span>Est. loan value</span><span>@Format.Money(a.Estimate.Total)@(a.Estimate.Complete ? "" : " + prices to confirm")</span></div>
+                <div class="row"><span>Documents</span><span>@a.Documents.Count(d => d.FileName is not null) of @a.Documents.Count uploaded</span></div>
+            </section>
+            <label class="fin-check">
+                <input type="checkbox" @bind="_declared" />
+                <span>We confirm the group is fully Zambian-owned and that the information provided is true and complete.</span>
+            </label>
+            <div class="fin-ok" style="font-weight: 500; color: var(--fin-text)">
+                <span>Your application goes first to your <b>Village Productivity Committee</b>. After the ward appraisal it goes to your Chief for endorsement. You can track each approval in the app.</span>
+            </div>
+            break;
+    }
+
+    @if (_error is not null)
+    {
+        <p class="fin-bad">@_error</p>
+    }
+
+    <button class="fin-primary" disabled="@(_busy || !CanContinue)" @onclick="ContinueAsync">
+        @(_busy ? "Saving…" : Step == 5 ? (_app?.Status == LoanStatuses.Returned ? "Submit again" : "Submit application") : "Continue")
+    </button>
+    @if (_id is { } draftId && _app?.Status == LoanStatuses.Draft && Step == 1)
+    {
+        <button class="fin-link" disabled="@_busy" @onclick="() => DeleteAsync(draftId)">Delete this draft</button>
+    }
+}
+
+@code {
+    [CascadingParameter] public FinanceApp App { get; set; } = null!;
+    [Parameter] public Guid? Id { get; set; }
+    [Parameter] public int Step { get; set; } = 1;
+
+    Guid? _id;
+    LoanApplicationDto? _app;
+    List<LoanEquipmentDto> _equipment = [];
+    List<string> _constituencies = [];
+    LoanRouteDto? _route;
+    bool _loading = true, _busy, _declared;
+    string? _error, _uploading;
+
+    bool? _zambian, _bank;
+    string? _body, _licence, _groupName, _groupType, _registration, _province, _constituency, _ward, _village, _cluster;
+    int _months = 3;
+
+    /// <summary>Chosen equipment: true to buy, false to hire.</summary>
+    Dictionary<Guid, bool> _items = [];
+
+    static string On(bool on) => on ? "on" : "";
+
+    EligibilityDto Eligibility => new(_zambian, _body, _licence, _bank);
+
+    bool Answered => _zambian is not null && _body is { Length: > 0 } && _licence is { Length: > 0 } && _bank is not null;
+
+    bool CanContinue => Step switch
+    {
+        1 => Answered && Eligibility.Problems().Count == 0,
+        2 => new[] { _groupName, _groupType, _registration, _province, _constituency, _ward, _village }.All(v => !string.IsNullOrWhiteSpace(v)),
+        3 => _cluster is not null && _items.Count > 0,
+        4 => _app?.Documents.All(d => d.FileName is not null) == true,
+        5 => _declared,
+        _ => false
+    };
+
+    string RouteText
+    {
+        get
+        {
+            var village = _route?.Stages.FirstOrDefault(s => s.Stage == LoanStages.Village)?.Committee
+                ?? (string.IsNullOrWhiteSpace(_village) ? "your Village Productivity Committee" : $"the {_village.Trim()} Village Productivity Committee");
+            var ward = _route?.Stages.FirstOrDefault(s => s.Stage == LoanStages.Ward)?.Committee ?? "your Ward Development Committee";
+            return $"{Capitalise(village)}, chaired by your headman, then {ward}.";
+        }
+    }
+
+    static string Capitalise(string s) => s.Length > 0 ? char.ToUpperInvariant(s[0]) + s[1..] : s;
+
+    static string Price(decimal? amount) => amount is { } a ? Format.Money(a) : $"{FinanceContract.Currency} [TBC]";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _id = Id;
+        try
+        {
+            _equipment = await App.Api.GetAsync<List<LoanEquipmentDto>>($"{FinanceApi.Base}/equipment");
+            if (_id is { } id)
+                Fill(await App.Api.GetAsync<LoanApplicationDto>($"{FinanceApi.Base}/applications/{id}"));
+            if (_province is not null)
+                _constituencies = await App.Api.GetAsync<List<string>>($"{FinanceApi.Base}/constituencies?province={Uri.EscapeDataString(_province)}");
+            if (Step == 2)
+                await RouteAsync();
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+        _loading = false;
+    }
+
+    void Fill(LoanApplicationDto a)
+    {
+        _app = a;
+        (_zambian, _body, _licence, _bank) = (a.Eligibility.ZambianOwned, a.Eligibility.RegistrationBody, a.Eligibility.LicenceType, a.Eligibility.HasBankAccount);
+        (_groupName, _groupType, _registration) = (a.GroupName, a.GroupType, a.RegistrationNumber);
+        (_province, _constituency, _ward, _village) = (a.Province, a.Constituency, a.Ward, a.Village);
+        _cluster = a.ClusterType;
+        _months = a.RunningMonths;
+        _items = a.Items.ToDictionary(i => i.EquipmentId, i => i.Buy);
+    }
+
+    static string? N(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+
+    SaveLoanApplicationRequest Request() => new(
+        new EligibilityDto(_zambian, N(_body), N(_licence), _bank), N(_groupName), N(_groupType), N(_registration), N(_province), N(_constituency), N(_ward), N(_village), _cluster,
+        _items.Select(i => new LoanItemRequest(i.Key, i.Value)).ToList(), _months);
+
+    async Task ProvinceChangedAsync()
+    {
+        _constituencies = string.IsNullOrEmpty(_province)
+            ? []
+            : await App.Api.GetAsync<List<string>>($"{FinanceApi.Base}/constituencies?province={Uri.EscapeDataString(_province)}");
+        await RouteAsync();
+    }
+
+    async Task RouteAsync()
+    {
+        if (string.IsNullOrEmpty(_province))
+            return;
+        try
+        {
+            var query = string.Join('&', new[] { ("province", _province), ("constituency", _constituency), ("ward", _ward), ("village", _village) }
+                .Where(p => !string.IsNullOrWhiteSpace(p.Item2)).Select(p => $"{p.Item1}={Uri.EscapeDataString(p.Item2!.Trim())}"));
+            _route = await App.Api.GetAsync<LoanRouteDto>($"{FinanceApi.Base}/route?{query}");
+        }
+        catch (FinanceException)
+        {
+        }
+    }
+
+    void ChooseCluster(string cluster)
+    {
+        if (_cluster == cluster)
+            return;
+        _cluster = cluster;
+        _items.Clear();
+    }
+
+    void Toggle(LoanEquipmentDto q, bool on)
+    {
+        if (on)
+            _items[q.Id] = q.HirePerMonth is null && q.BuyPrice is not null;
+        else
+            _items.Remove(q.Id);
+    }
+
+    /// <summary>The same sum the server makes (FinanceService.Estimate), from today's prices.</summary>
+    LoanEstimateDto LocalEstimate()
+    {
+        var lines = new List<LoanEstimateLineDto>();
+        var chosen = _equipment.Where(q => _items.ContainsKey(q.Id)).OrderBy(q => q.Name, StringComparer.Ordinal).ToList();
+        var months = $"{_months} {(_months == 1 ? "month" : "months")}";
+        foreach (var q in chosen)
+            lines.Add(_items[q.Id] ? new($"{q.Name} (buy)", q.BuyPrice) : new($"{q.Name} hire × {months}", q.HirePerMonth * _months));
+        if (chosen.Count > 0)
+            lines.Add(new($"Running costs × {months}", chosen.All(q => q.RunningPerMonth is not null) ? chosen.Sum(q => q.RunningPerMonth!.Value) * _months : null));
+        return new LoanEstimateDto(lines, lines.Sum(l => l.Amount ?? 0m), FinanceContract.Currency, lines.All(l => l.Amount is not null));
+    }
+
+    async Task UploadAsync(string kind, InputFileChangeEventArgs e)
+    {
+        if (_id is not { } id)
+            return;
+        (_uploading, _error) = (kind, null);
+        try
+        {
+            if (e.File.Size > FinanceContract.MaxDocumentBytes)
+                throw new FinanceException($"Files can be up to {FinanceContract.MaxDocumentBytes / 1024 / 1024} MB. Try a smaller photo or PDF.");
+            using var buffer = new MemoryStream();
+            await e.File.OpenReadStream(FinanceContract.MaxDocumentBytes).CopyToAsync(buffer);
+            _app = await App.Api.UploadAsync(id, kind, e.File.Name, e.File.ContentType, buffer.ToArray());
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (IOException)
+        {
+            _error = "Couldn't read that file. Please try again.";
+        }
+        _uploading = null;
+    }
+
+    async Task ContinueAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            if (Step == 5)
+            {
+                var submitted = await App.Api.SendAsync<LoanApplicationDto>(HttpMethod.Post, $"{FinanceApi.Base}/applications/{_id}/submit", new SubmitLoanRequest(_declared));
+                App.Go(new FinanceView.Home());
+                App.Go(new FinanceView.Tracker(submitted!.Id));
+                return;
+            }
+            if (Step < 4)
+            {
+                if (_id is null)
+                {
+                    var created = await App.Api.SendAsync<LoanApplicationDto>(HttpMethod.Post, $"{FinanceApi.Base}/applications", Request());
+                    _id = created!.Id;
+                    // Back from step 2 should open this draft, not start another one.
+                    App.Replace(new FinanceView.Apply(_id, Step));
+                }
+                else
+                {
+                    await App.Api.SendAsync<LoanApplicationDto>(HttpMethod.Put, $"{FinanceApi.Base}/applications/{_id}", Request());
+                }
+            }
+            App.Go(new FinanceView.Apply(_id, Step + 1));
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task DeleteAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            await App.Api.SendAsync<object>(HttpMethod.Delete, $"{FinanceApi.Base}/applications/{id}", null);
+            App.Go(new FinanceView.Home());
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+            _busy = false;
+        }
+    }
+}

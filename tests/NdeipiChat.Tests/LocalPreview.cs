@@ -30,7 +30,7 @@ public sealed class LocalPreview
         app.StartServer();
         var site = new Uri($"http://localhost:{Port}/");
 
-        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole]);
+        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole]);
         var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test");
         var rudo = await app.CreateUserAsync("Rudo Moyo", "rudo@example.test");
 
@@ -120,6 +120,33 @@ public sealed class LocalPreview
             "Clean water for a village of 300.", null, "Chivi Community Trust", "💧", 2500, null));
         foreach (var (amount, anonymous, message) in new[] { (25m, false, "Go well!"), (10m, true, (string?)null) })
             await tendai.PostAsync<DonationDto>($"api/donations/campaigns/{campaign.Id}/donations", new DonateRequest(amount, anonymous, message));
+
+        // Finance: prices for two machines, committees for Mtenguleni (me on the village one), and an
+        // application from Tendai waiting on it, plus a draft of mine.
+        foreach (var (id, hire, buy, running) in new[] { (Guid.Parse("6a0f1c52-3f7e-4d0b-9a51-1d6f0c2b7a03"), 2000m, 45000m, 500m), (Guid.Parse("6a0f1c52-3f7e-4d0b-9a51-1d6f0c2b7a01"), 1500m, 30000m, 400m) })
+        {
+            var q = (await me.GetAsync<List<LoanEquipmentDto>>("api/finance/equipment?all=true")).Single(e => e.Id == id);
+            using var priced = await me.Http.PutAsJsonAsync($"api/finance/equipment/{id}", new SaveEquipmentRequest(q.Name, q.Description, q.ClusterType, q.Mtp, hire, buy, running, true, q.Order), ContractJson.Options);
+            priced.EnsureSuccessStatusCode();
+        }
+        foreach (var stage in LoanStages.Order)
+            await me.PostAsync<LoanCommitteeDto>("api/finance/committees", new SaveCommitteeRequest(stage,
+                stage == LoanStages.Absa ? "Absa Chipata branch" : $"Mtenguleni {LoanStages.Label(stage)}", "Eastern", "Kasenengwa", "Mtenguleni", null,
+                stage == LoanStages.Village ? [me.Id] : [rudo.Id]));
+        var loan = await tendai.PostAsync<LoanApplicationDto>("api/finance/applications", new SaveLoanApplicationRequest(
+            new EligibilityDto(true, RegistrationBodies.Cooperatives, LicenceTypes.Artisanal, true), "Mtenguleni Gold Cooperative", "cooperative", "COOP/EP/2291",
+            "Eastern", "Kasenengwa", "Mtenguleni", "Chimkoka", ClusterTypes.Processing,
+            [new LoanItemRequest(Guid.Parse("6a0f1c52-3f7e-4d0b-9a51-1d6f0c2b7a03"), false)], 3));
+        foreach (var (kind, _, _) in LoanDocumentKinds.All)
+        {
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(System.Text.Encoding.ASCII.GetBytes("%PDF-1.4\n% preview\n")), "file", $"{kind}.pdf");
+            (await tendai.Http.PostAsync($"api/finance/applications/{loan.Id}/documents/{kind}", form)).EnsureSuccessStatusCode();
+        }
+        await tendai.PostAsync<LoanApplicationDto>($"api/finance/applications/{loan.Id}/submit", new SubmitLoanRequest(true));
+        await me.PostAsync<LoanApplicationDto>("api/finance/applications", new SaveLoanApplicationRequest(
+            new EligibilityDto(true, RegistrationBodies.Pacra, LicenceTypes.SmallScale, true), "Kasenengwa Miners Club", "club", null,
+            "Eastern", null, null, null, null, null, null));
 
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };

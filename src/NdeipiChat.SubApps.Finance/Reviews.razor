@@ -1,0 +1,58 @@
+@* A committee member's queue: applications at their committee's stage, from their area, oldest first. *@
+
+<h2>To review</h2>
+@if (_queue is null)
+{
+    <p class="@(_error is null ? "muted" : "fin-bad")">@(_error ?? "Loading…")</p>
+}
+else if (_queue.Count == 0)
+{
+    <section class="fin-card"><p class="muted" style="margin: 0">Nothing is waiting on you.</p></section>
+}
+else
+{
+    @foreach (var a in _queue)
+    {
+        <button class="fin-list-item" @onclick="() => App.Go(new FinanceView.Tracker(a.Id))">
+            <span class="grow">
+                <b>@a.GroupName</b>
+                <small>@a.Reference · @a.Place · from @a.Applicant</small>
+                <small>@Format.Status(a.Status, a.Stage) · waiting since @Format.When(a.UpdatedAt)</small>
+            </span>
+            <span class="fin-badge">@Format.Money(a.Estimate)</span>
+        </button>
+    }
+}
+
+@if (App.Me is { Committees.Count: > 0 } me)
+{
+    <h3>Your committees</h3>
+    <section class="fin-card fin-rows">
+        @foreach (var c in me.Committees)
+        {
+            <div class="row"><span>@LoanStages.Label(c.Stage)</span><span>@c.Name · @Area(c)</span></div>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public FinanceApp App { get; set; } = null!;
+
+    List<LoanSummaryDto>? _queue;
+    string? _error;
+
+    public static string Area(LoanCommitteeDto c) =>
+        string.Join(", ", new[] { c.Village, c.Ward, c.Constituency, c.Province }.Where(p => !string.IsNullOrEmpty(p)));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _queue = await App.Api.GetAsync<List<LoanSummaryDto>>($"{FinanceApi.Base}/reviews");
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

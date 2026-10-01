@@ -1,0 +1,202 @@
+@* The Finance sub-app, starting with the Absa Artisanal Gold Mining Loan (FinanceContract): the
+   application form, the tracker, committees' review queue, and the admin's committees, prices and
+   constituencies. Styled after the loan's application screens: deep green, with gold. *@
+@attribute [SubAppRoot(FinanceContract.AppId)]
+
+<style>
+    .fin { --fin-ink: #12261E; --fin-green: #1D5C46; --fin-green-soft: #E3EDE8; --fin-gold: #D9A441; --fin-gold-soft: #FAF2E1;
+           --fin-card: #FFFFFF; --fin-line: #DCE3DF; --fin-muted: #5E6B66; --fin-text: #12261E; color: var(--fin-text); }
+    @@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fin { --fin-green: #3FA37C; --fin-green-soft: rgba(63, 163, 124, .16); --fin-gold-soft: rgba(217, 164, 65, .14); --fin-card: rgba(255, 255, 255, .05); --fin-line: rgba(255, 255, 255, .12); --fin-muted: #9FB0A8; --fin-text: #E8EFEB; } }
+    :root[data-theme="dark"] .fin { --fin-green: #3FA37C; --fin-green-soft: rgba(63, 163, 124, .16); --fin-gold-soft: rgba(217, 164, 65, .14); --fin-card: rgba(255, 255, 255, .05); --fin-line: rgba(255, 255, 255, .12); --fin-muted: #9FB0A8; --fin-text: #E8EFEB; }
+    .content.embedded header.fin-bar { display: none; }
+    .fin .page { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; padding-bottom: 32px; }
+    .fin h2 { font-size: 24px; font-weight: 800; letter-spacing: -.01em; margin: 4px 0 0; text-transform: none; color: var(--fin-text); }
+    .fin h3 { text-transform: none; letter-spacing: 0; color: var(--fin-text); }
+    .fin h3 { font-size: 16px; font-weight: 800; margin: 0; }
+    .fin .muted { color: var(--fin-muted); }
+    .fin .small { font-size: 13px; }
+    .fin-card { background: var(--fin-card); border: 1px solid var(--fin-line); border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .fin-hero { background: var(--fin-ink); color: #F1F5F3; border-radius: 18px; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+    .fin-hero h2 { color: #fff; }
+    .fin-hero p { margin: 0; color: #C9D6D0; line-height: 1.5; }
+    .fin-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .fin-chip { border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700; border: 1px solid rgba(255, 255, 255, .35); color: #E6EEEA; }
+    .fin-chip.new { background: var(--fin-gold); border-color: var(--fin-gold); color: #1B1405; }
+    .fin button.fin-gold, .fin a.fin-gold { background: var(--fin-gold); color: #1B1405; border: 0; border-radius: 12px; height: 48px; font-weight: 800; font-size: 16px; width: 100%; }
+    .fin button.fin-primary { background: var(--fin-green); color: #fff; border: 0; border-radius: 12px; height: 50px; font-weight: 700; font-size: 16px; width: 100%; }
+    .fin button.fin-primary:disabled, .fin button.fin-gold:disabled { opacity: .45; }
+    .fin button.fin-outline { background: transparent; color: var(--fin-green); border: 1.5px solid var(--fin-green); border-radius: 10px; padding: 8px 14px; font-weight: 700; }
+    .fin button.fin-link { background: none; border: 0; color: var(--fin-green); font-weight: 700; padding: 6px 4px; text-decoration: underline; }
+    .fin button.fin-danger { background: transparent; color: var(--danger, #C0392B); border: 1.5px solid currentColor; border-radius: 10px; padding: 8px 14px; font-weight: 700; }
+    .fin-steps { list-style: none; margin: 0; padding: 0; }
+    .fin-steps li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--fin-line); }
+    .fin-steps li:last-child { border-bottom: 0; }
+    .fin-steps .n { width: 30px; height: 30px; border-radius: 50%; flex: none; display: grid; place-items: center; background: var(--fin-green-soft); color: var(--fin-green); font-weight: 800; }
+    .fin-steps b { display: block; }
+    .fin-steps small { color: var(--fin-muted); }
+    .fin-wiz-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--fin-muted); }
+    .fin-progress { height: 5px; border-radius: 3px; background: var(--fin-line); overflow: hidden; }
+    .fin-progress div { height: 100%; background: var(--fin-green); border-radius: 3px; transition: width .3s ease; }
+    .fin-q { font-weight: 700; font-size: 14px; }
+    .fin-yesno { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .fin-yesno button, .fin-seg button { height: 44px; border-radius: 10px; border: 1.5px solid var(--fin-line); background: var(--fin-card); color: var(--fin-text); font-weight: 600; }
+    .fin-yesno button.on, .fin-seg button.on { border-color: var(--fin-green); background: var(--fin-green-soft); color: var(--fin-green); font-weight: 800; }
+    .fin-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+    .fin select, .fin input[type=text], .fin input[type=number], .fin input:not([type]), .fin textarea { width: 100%; border: 1px solid var(--fin-line); border-radius: 10px; padding: 10px 12px; background: var(--fin-card); color: var(--fin-text); font-size: 15px; box-sizing: border-box; }
+    .fin label.fin-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 700; }
+    .fin-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .fin-ok { display: flex; gap: 8px; align-items: flex-start; background: var(--fin-green-soft); color: var(--fin-green); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-weight: 600; }
+    .fin-warn { background: var(--fin-gold-soft); border-radius: 12px; padding: 12px 14px; font-size: 14px; display: flex; flex-direction: column; gap: 6px; }
+    .fin-bad { color: var(--danger, #C0392B); font-size: 14px; margin: 0; }
+    .fin-equip { display: flex; flex-direction: row; gap: 10px; align-items: flex-start; }
+    .fin-equip.on { border-color: var(--fin-green); box-shadow: 0 0 0 1px var(--fin-green); }
+    .fin-equip input[type=checkbox] { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--fin-green); flex: none; }
+    .fin-equip .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .fin-mtp { font-size: 11px; font-weight: 800; color: var(--fin-green); background: var(--fin-green-soft); border-radius: 8px; padding: 2px 7px; flex: none; }
+    .fin-estimate { background: var(--fin-ink); color: #DCE6E1; border-radius: 14px; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+    .fin-estimate .line { display: flex; justify-content: space-between; gap: 12px; }
+    .fin-estimate .total { border-top: 1px solid rgba(255, 255, 255, .15); padding-top: 8px; margin-top: 2px; font-weight: 800; color: #fff; }
+    .fin-estimate .total span:last-child { color: var(--fin-gold); font-size: 22px; }
+    .fin-doc { display: flex; flex-direction: row; gap: 12px; align-items: center; }
+    .fin-doc .ico { width: 26px; height: 26px; flex: none; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: var(--fin-green); border: 1.5px solid var(--fin-green); font-size: 13px; }
+    .fin-doc .ico.todo { border-style: dashed; color: var(--fin-muted); border-color: var(--fin-muted); }
+    .fin-doc .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .fin-doc .grow small { color: var(--fin-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fin-file { position: relative; overflow: hidden; display: inline-flex; align-items: center; cursor: pointer; }
+    .fin-file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .fin-rows { display: flex; flex-direction: column; }
+    .fin-rows .row { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--fin-line); font-size: 14px; }
+    .fin-rows .row:last-child { border-bottom: 0; }
+    .fin-rows .row span:first-child { color: var(--fin-muted); }
+    .fin-rows .row span:last-child { font-weight: 700; text-align: right; }
+    .fin-check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; }
+    .fin-check input { width: 20px; height: 20px; accent-color: var(--fin-green); flex: none; margin-top: 1px; }
+    .fin-timeline { list-style: none; margin: 0; padding: 0; }
+    .fin-timeline li { display: flex; gap: 12px; position: relative; padding-bottom: 14px; }
+    .fin-timeline li:not(:last-child)::before { content: ""; position: absolute; left: 10px; top: 22px; bottom: 0; width: 2px; background: var(--fin-line); }
+    .fin-timeline li.done:not(:last-child)::before { background: var(--fin-green); }
+    .fin-timeline .dot { width: 22px; height: 22px; border-radius: 50%; flex: none; border: 2px solid var(--fin-line); background: var(--fin-card); display: grid; place-items: center; font-size: 12px; color: #fff; z-index: 1; }
+    .fin-timeline li.done .dot { background: var(--fin-green); border-color: var(--fin-green); }
+    .fin-timeline li.current .dot { background: var(--fin-gold); border-color: var(--fin-green); }
+    .fin-timeline li.returned .dot { background: var(--fin-gold); border-color: var(--fin-gold); }
+    .fin-timeline li.declined .dot { background: var(--danger, #C0392B); border-color: var(--danger, #C0392B); }
+    .fin-timeline .what { display: flex; flex-direction: column; gap: 1px; font-size: 14px; }
+    .fin-timeline li.waiting .what b { color: var(--fin-muted); font-weight: 600; }
+    .fin-timeline .what small { color: var(--fin-muted); font-size: 12px; }
+    .fin-timeline .what em { color: var(--fin-green); font-style: normal; font-weight: 700; font-size: 12px; }
+    .fin-timeline .what q { font-size: 13px; color: var(--fin-text); background: var(--fin-gold-soft); border-radius: 8px; padding: 6px 8px; margin-top: 4px; quotes: none; }
+    .fin-repay { background: var(--fin-ink); border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+    .fin-repay div { display: flex; gap: 10px; align-items: center; color: #E6EEEA; font-size: 14px; }
+    .fin-repay b { width: 24px; height: 24px; border-radius: 6px; background: var(--fin-gold); color: #1B1405; display: grid; place-items: center; font-size: 13px; flex: none; }
+    .fin-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 12px; font-weight: 800; background: var(--fin-green-soft); color: var(--fin-green); }
+    .fin-badge.ok { background: rgba(31, 169, 113, .16); color: var(--success, #12875C); }
+    .fin-badge.bad { background: rgba(229, 72, 77, .14); color: var(--danger, #C0392B); }
+    .fin-badge.wait { background: var(--fin-gold-soft); color: #8A6100; }
+    .fin-list-item { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; background: var(--fin-card); border: 1px solid var(--fin-line); border-radius: 12px; padding: 12px 14px; color: var(--fin-text); font: inherit; cursor: pointer; }
+    .fin-list-item .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .fin-list-item .grow small { color: var(--fin-muted); }
+    .fin-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+    .fin-tabs button { border-radius: 18px; padding: 8px 14px; font-size: 14px; border: 1px solid var(--fin-line); background: var(--fin-card); color: var(--fin-text); }
+    .fin-tabs button.on { background: var(--fin-green); border-color: var(--fin-green); color: #fff; font-weight: 700; }
+    .fin-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .fin-people { display: flex; gap: 6px; flex-wrap: wrap; }
+    .fin-person { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 4px 6px 4px 10px; background: var(--fin-green-soft); font-size: 13px; font-weight: 600; }
+    .fin-person button { background: none; border: 0; padding: 0 4px; color: var(--fin-muted); font-size: 16px; line-height: 1; }
+    @@media (max-width: 420px) { .fin-two { grid-template-columns: 1fr; } }
+</style>
+
+<div class="fin">
+    <header class="bar fin-bar">
+        <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+        <h1>@Title</h1>
+    </header>
+
+    <div class="page">
+        <CascadingValue Value="this" IsFixed="true">
+            @switch (_view)
+            {
+                case FinanceView.Home:
+                    <Home />
+                    break;
+                case FinanceView.Apply a:
+                    <Wizard @key="a" Id="a.Id" Step="a.Step" />
+                    break;
+                case FinanceView.Tracker t:
+                    <Tracker @key="t.Id" Id="t.Id" />
+                    break;
+                case FinanceView.Reviews:
+                    <Reviews />
+                    break;
+                case FinanceView.Admin:
+                    <Admin />
+                    break;
+            }
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    FinanceView _view = new FinanceView.Home();
+    readonly Stack<FinanceView> _history = new();
+
+    public FinanceApi Api { get; private set; } = null!;
+
+    /// <summary>Whether they're an admin, and the committees they sit on.</summary>
+    public FinanceMeDto? Me { get; private set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new FinanceApi(Context.Api);
+        await RefreshMeAsync();
+    }
+
+    public async Task RefreshMeAsync()
+    {
+        try
+        {
+            Me = await Api.GetAsync<FinanceMeDto>($"{FinanceApi.Base}/me");
+            StateHasChanged();
+        }
+        catch (FinanceException)
+        {
+        }
+    }
+
+    string Title => _view switch
+    {
+        FinanceView.Apply or FinanceView.Tracker => "Gold Mining Loan",
+        FinanceView.Reviews => "To review",
+        FinanceView.Admin => "Manage",
+        _ => "Finance"
+    };
+
+    public void Go(FinanceView view)
+    {
+        if (view is FinanceView.Home)
+            _history.Clear();
+        else
+            _history.Push(_view);
+        _view = view;
+        StateHasChanged();
+    }
+
+    /// <summary>Replaces the current page, e.g. the form's next step, or the tracker once it's submitted.</summary>
+    public void Replace(FinanceView view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
+
+    public Task BackAsync()
+    {
+        if (_history.TryPop(out var previous))
+        {
+            _view = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return Context.NavigateToLauncher();
+    }
+}

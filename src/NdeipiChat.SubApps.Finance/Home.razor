@@ -1,0 +1,91 @@
+@* Screen 1, Finance home (FR-DIS-01 to 03): the loan card, how it works, and the person's applications;
+   for committee members, what's waiting on them; for admins, setting it all up. *@
+
+<div>
+    <div class="muted small">Ndeipi</div>
+    <h2 style="margin-top: 0">Finance</h2>
+</div>
+
+<section class="fin-hero">
+    <div class="fin-chips"><span class="fin-chip new">New</span><span class="fin-chip">with Absa Zambia</span></div>
+    <h2>Artisanal Gold Mining Loan</h2>
+    <p>For ASM cooperatives, clubs, associations and organised groups. Finance equipment hire, consumables or processing, and repay with your ore.</p>
+    <button class="fin-gold" @onclick="() => App.Go(new FinanceView.Apply(null))">Start application</button>
+</section>
+
+@if (App.Me is { } me && (me.IsAdmin || me.Committees.Count > 0))
+{
+    <section class="fin-card">
+        <h3>Committee work</h3>
+        <button class="fin-list-item" @onclick="() => App.Go(new FinanceView.Reviews())">
+            <span class="grow"><b>To review</b><small>@(me.ToReview == 0 ? "Nothing waiting on you" : $"{me.ToReview} application{(me.ToReview == 1 ? "" : "s")} waiting on you")</small></span>
+            @if (me.ToReview > 0)
+            {
+                <span class="fin-badge wait">@me.ToReview</span>
+            }
+            <span class="muted">›</span>
+        </button>
+        @if (me.IsAdmin)
+        {
+            <button class="fin-list-item" @onclick="() => App.Go(new FinanceView.Admin())">
+                <span class="grow"><b>Manage</b><small>Committees, equipment prices and constituencies</small></span>
+                <span class="muted">›</span>
+            </button>
+        }
+    </section>
+}
+
+@if (_mine.Count > 0)
+{
+    <section class="fin-card">
+        <h3>Your applications</h3>
+        @foreach (var a in _mine)
+        {
+            <button class="fin-list-item" @onclick="() => Open(a)">
+                <span class="grow">
+                    <b>@(a.GroupName ?? "Untitled application")</b>
+                    <small>@a.Reference · @Format.Status(a.Status, a.Stage)</small>
+                </span>
+                <span class="fin-badge @Format.Tone(a.Status)">@(a.Status == LoanStatuses.Draft ? "Draft" : Format.Money(a.Estimate))</span>
+            </button>
+        }
+    </section>
+}
+
+<h3>How it works</h3>
+<section class="fin-card">
+    <ol class="fin-steps">
+        <li><span class="n">1</span><span><b>Check eligibility</b><small>Zambian-owned, registered, licensed, banked</small></span></li>
+        <li><span class="n">2</span><span><b>Apply in the app</b><small>Or on paper at your Village Productivity Committee</small></span></li>
+        <li><span class="n">3</span><span><b>Committee approvals</b><small>Village → Ward → Chief → Constituency CDF → Provincial CDF</small></span></li>
+        <li><span class="n">4</span><span><b>Collect and repay</b><small>Nearest Absa branch or agency; repay with ore receipts</small></span></li>
+    </ol>
+</section>
+
+@if (_error is not null)
+{
+    <p class="fin-bad">@_error</p>
+}
+
+@code {
+    [CascadingParameter] public FinanceApp App { get; set; } = null!;
+
+    List<LoanSummaryDto> _mine = [];
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _mine = await App.Api.GetAsync<List<LoanSummaryDto>>($"{FinanceApi.Base}/applications");
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+        await App.RefreshMeAsync();
+    }
+
+    void Open(LoanSummaryDto a) =>
+        App.Go(a.Status == LoanStatuses.Draft ? new FinanceView.Apply(a.Id) : new FinanceView.Tracker(a.Id));
+}

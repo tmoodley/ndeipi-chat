@@ -7,6 +7,7 @@
     <Project Path="src/NdeipiChat.Desktop/NdeipiChat.Desktop.csproj" />
     <Project Path="src/NdeipiChat.SubApps.DevHost/NdeipiChat.SubApps.DevHost.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Donations/NdeipiChat.SubApps.Donations.csproj" />
+    <Project Path="src/NdeipiChat.SubApps.Finance/NdeipiChat.SubApps.Finance.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Events/NdeipiChat.SubApps.Events.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Gigs/NdeipiChat.SubApps.Gigs.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Pos/NdeipiChat.SubApps.Pos.csproj" />

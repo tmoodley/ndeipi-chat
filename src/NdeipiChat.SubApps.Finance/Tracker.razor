@@ -1,0 +1,239 @@
+@implements IAsyncDisposable
+
+@* Screen 7, the tracker (FR-WF, FR-DSB, FR-REP, FR-NTF): where the application is, each committee's
+   decision, and how the loan is repaid. It follows the application live. A committee member (or admin)
+   also sees the details and documents, and decides here. *@
+
+@if (_app is null)
+{
+    <p class="@(_error is null ? "muted" : "fin-bad")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var a = _app;
+    <div>
+        <div class="muted small">Reference @a.Reference</div>
+        <h2>@Headline(a)</h2>
+        @if (!a.IsMine)
+        {
+            <div class="muted small">@a.GroupName · applied by @a.Applicant.DisplayName</div>
+        }
+    </div>
+
+    @if (a is { Status: LoanStatuses.Returned, IsMine: true })
+    {
+        <section class="fin-warn">
+            <b>The @Format.ShortStage(a.Stage ?? "") sent it back</b>
+            <span>@a.ReturnedComment</span>
+            <button class="fin-primary" style="margin-top: 4px" @onclick="() => App.Go(new FinanceView.Apply(a.Id))">Change and submit again</button>
+        </section>
+    }
+    @if (a is { Status: LoanStatuses.Draft, IsMine: true })
+    {
+        <button class="fin-primary" @onclick="() => App.Go(new FinanceView.Apply(a.Id))">Continue the application</button>
+    }
+
+    <section class="fin-card">
+        <ol class="fin-timeline">
+            <li class="@(a.SubmittedAt is null ? "waiting" : "done")">
+                <span class="dot">@(a.SubmittedAt is null ? "" : "✓")</span>
+                <span class="what"><b>Application submitted</b><small>@(a.SubmittedAt is { } at ? $"Via Ndeipi app · {Format.When(at)}" : "Not yet")</small></span>
+            </li>
+            @foreach (var s in a.Stages)
+            {
+                <li class="@s.State">
+                    <span class="dot">@(s.State switch { "done" => "✓", "declined" => "✕", "returned" => "↩", _ => "" })</span>
+                    <span class="what">
+                        <b>@s.Label</b>
+                        @switch (s.State)
+                        {
+                            case "current":
+                                <em>@(s.Stage == LoanStages.Absa ? "Ready to collect" : "In review")@(s.Committee is { } c ? $" · {c}" : s.Hint.Length > 0 ? $" · {s.Hint.ToLowerInvariant()}" : "")</em>
+                                break;
+                            case "done" or "returned" or "declined":
+                                <small>@(s.State switch { "done" => s.Stage == LoanStages.Absa ? "Collected" : "Approved", "returned" => "Sent back", _ => "Declined" })@(s.DecidedBy is { } by ? $" by {by}" : "")@(s.DecidedAt is { } when ? $" · {Format.When(when)}" : "")</small>
+                                @if (s.Comment is { } comment)
+                                {
+                                    <q>@comment</q>
+                                }
+                                break;
+                            default:
+                                @if (s.Hint.Length > 0)
+                                {
+                                    <small>@s.Hint</small>
+                                }
+                                break;
+                        }
+                    </span>
+                </li>
+            }
+        </ol>
+        @if (a.CollectionReference is { } reference)
+        {
+            <div class="fin-ok">✓ Collected · Absa reference @reference</div>
+        }
+    </section>
+
+    @if (a.CanDecide)
+    {
+        <section class="fin-card">
+            <h3>@(a.Stage == LoanStages.Absa ? "Record the collection" : $"Your decision · {LoanStages.Label(a.Stage ?? "")}")</h3>
+            @if (a.Stage == LoanStages.Absa)
+            {
+                <label class="fin-field">Absa loan reference<input @bind="_reference" maxlength="60" /></label>
+            }
+            <label class="fin-field">Comment @(a.Stage == LoanStages.Absa ? "(optional)" : "(needed to send back or decline)")
+                <textarea rows="3" maxlength="@FinanceContract.MaxCommentLength" @bind="_comment"></textarea>
+            </label>
+            <div class="fin-actions">
+                <button class="fin-primary" style="width: auto; padding: 0 18px; height: 44px" disabled="@_busy" @onclick="() => DecideAsync(LoanDecisions.Approve)">@(a.Stage == LoanStages.Absa ? "Mark collected" : "Approve")</button>
+                @if (a.Stage != LoanStages.Absa)
+                {
+                    <button class="fin-outline" disabled="@_busy" @onclick="() => DecideAsync(LoanDecisions.Return)">Send back</button>
+                }
+                <button class="fin-danger" disabled="@_busy" @onclick="() => DecideAsync(LoanDecisions.Decline)">Decline</button>
+            </div>
+        </section>
+    }
+
+    @if (_error is not null)
+    {
+        <p class="fin-bad">@_error</p>
+    }
+
+    @if (a.SubmittedAt is not null)
+    {
+        <section class="fin-card">
+            <h3>Application</h3>
+            <div class="fin-rows">
+                <div class="row"><span>Group</span><span>@a.GroupName (@Format.Label(GroupTypes.All, a.GroupType))</span></div>
+                <div class="row"><span>Registered with</span><span>@Format.Label(RegistrationBodies.All, a.Eligibility.RegistrationBody) · @a.RegistrationNumber</span></div>
+                <div class="row"><span>Licence</span><span>@Format.Label(LicenceTypes.All, a.Eligibility.LicenceType)</span></div>
+                <div class="row"><span>Location</span><span>@string.Join(", ", new[] { a.Village, a.Ward, a.Constituency, a.Province }.Where(p => p is not null))</span></div>
+                <div class="row"><span>Loan type</span><span>@Format.Label(ClusterTypes.All, a.ClusterType) · @string.Join(", ", a.Items.Select(i => $"{i.Name} ({(i.Buy ? "buy" : "hire")})"))</span></div>
+                @foreach (var line in a.Estimate.Lines)
+                {
+                    <div class="row"><span>@line.Label</span><span>@Format.Money(line.Amount)</span></div>
+                }
+                <div class="row"><span>Est. loan value</span><span>@Format.Money(a.Estimate.Total)</span></div>
+            </div>
+            <h3>Documents</h3>
+            @foreach (var d in a.Documents)
+            {
+                <div class="fin-doc">
+                    <span class="ico @(d.FileName is null ? "todo" : "")">@(d.FileName is null ? "–" : "✓")</span>
+                    <span class="grow"><b>@d.Label</b><small>@(d.FileName is { } f ? $"{f} · {Format.Size(d.Size ?? 0)}" : "Not uploaded")</small></span>
+                    @if (_links.TryGetValue(d.Kind, out var url))
+                    {
+                        <a href="@url" target="_blank" rel="noopener" style="color: var(--fin-green); font-weight: 700">Open</a>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+    <h3>How you'll repay</h3>
+    <p class="muted small" style="margin: -8px 0 0">You receive an ore receipt at each Monetisation &amp; Traceability Point, managed by Swaptor Commodity Exchange with Absa Agencies.</p>
+    <section class="fin-repay">
+        @for (var i = 0; i < RepaymentPoints.All.Count; i++)
+        {
+            <div><b>@(i + 1)</b>@RepaymentPoints.All[i]</div>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public FinanceApp App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    LoanApplicationDto? _app;
+    readonly Dictionary<string, string> _links = [];
+    string? _error, _comment, _reference;
+    bool _busy;
+    IAsyncDisposable? _subscription;
+
+    static string Headline(LoanApplicationDto a) => a.Status switch
+    {
+        LoanStatuses.Draft => "Draft. Not submitted yet.",
+        LoanStatuses.InReview => "Submitted. Under review.",
+        LoanStatuses.Returned => "Sent back for changes.",
+        LoanStatuses.Declined => "Declined.",
+        LoanStatuses.Approved => "Approved. Ready to collect.",
+        LoanStatuses.Collected => "Collected. Repay with ore receipts.",
+        _ => a.Status
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        if (_app is not null && App.Context.Realtime is { } realtime)
+        {
+            try
+            {
+                _subscription = await realtime.SubscribeAsync(FinanceContract.ApplicationTopic(Id), _ => InvokeAsync(async () =>
+                {
+                    await LoadAsync();
+                    StateHasChanged();
+                }));
+            }
+            catch (Exception)
+            {
+                // Live updates are a nicety: the tracker still shows the latest when opened.
+            }
+        }
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _app = await App.Api.GetAsync<LoanApplicationDto>($"{FinanceApi.Base}/applications/{Id}");
+            _error = null;
+            await LinksAsync();
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>Short-lived links to open each uploaded document in a new tab.</summary>
+    async Task LinksAsync()
+    {
+        _links.Clear();
+        if (_app?.SubmittedAt is null)
+            return;
+        foreach (var d in _app.Documents.Where(d => d.FileName is not null))
+        {
+            var link = await App.Api.SendAsync<LoanDocumentLinkDto>(HttpMethod.Post, $"{FinanceApi.Base}/applications/{Id}/documents/{d.Kind}/link", new { });
+            if (link is not null)
+                _links[d.Kind] = link.Url;
+        }
+    }
+
+    async Task DecideAsync(string decision)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            _app = await App.Api.SendAsync<LoanApplicationDto>(HttpMethod.Post, $"{FinanceApi.Base}/applications/{Id}/decisions",
+                new LoanDecisionRequest(decision, _comment, _reference));
+            (_comment, _reference) = (null, null);
+            await App.RefreshMeAsync();
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+    }
+}

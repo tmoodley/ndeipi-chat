@@ -91,7 +91,8 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Livestock:Claude:ApiKey"] = "claude-test-key",
             ["Livestock:Claude:MaxAttempts"] = "1",
             ["Livestock:Muzzle:ModelPath"] = TinyMuzzleModel.Path,
-            ["Livestock:Muzzle:ModelId"] = "test-grid-pool"
+            ["Livestock:Muzzle:ModelId"] = "test-grid-pool",
+            ["Finance:DocumentsPath"] = Path.Combine(FilesDirectory, "finance-documents")
         }));
 
         builder.ConfigureTestServices(services =>

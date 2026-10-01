@@ -833,3 +833,141 @@ public sealed class PointsEntry
     public required string Description { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
+
+/// <summary>An Absa gold mining loan application, from a group, made by one Ndeipi user (Finance).</summary>
+public sealed class LoanApplication
+{
+    public Guid Id { get; set; }
+    public required string Reference { get; set; }
+    public Guid ApplicantId { get; set; }
+    public required string Status { get; set; }
+
+    /// <summary>The stage it's at (or was returned from); null as a draft and once collected or declined.</summary>
+    public string? Stage { get; set; }
+
+    // Eligibility (FR-ELG).
+    public bool? ZambianOwned { get; set; }
+    public string? RegistrationBody { get; set; }
+    public string? LicenceType { get; set; }
+    public bool? HasBankAccount { get; set; }
+
+    // The group (FR-GRP).
+    public string? GroupName { get; set; }
+    public string? GroupType { get; set; }
+
+    /// <summary>As on its certificate. One open application per registration number.</summary>
+    public string? RegistrationNumber { get; set; }
+
+    public string? Province { get; set; }
+    public string? Constituency { get; set; }
+    public string? Ward { get; set; }
+    public string? Village { get; set; }
+
+    // What it finances (FR-LTY, FR-TRM).
+    public string? ClusterType { get; set; }
+    public int RunningMonths { get; set; } = 3;
+
+    /// <summary>The estimate when it was last saved, for lists.</summary>
+    public decimal EstimateTotal { get; set; }
+
+    /// <summary>Their declaration that the group is Zambian-owned and the information true (FR-SUB-02).</summary>
+    public bool Declared { get; set; }
+
+    /// <summary>Absa's reference for the collected loan (FR-DSB).</summary>
+    public string? CollectionReference { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+    public DateTimeOffset? SubmittedAt { get; set; }
+
+    public List<LoanApplicationItem> Items { get; set; } = [];
+    public List<LoanDocument> Documents { get; set; } = [];
+    public List<LoanDecision> Decisions { get; set; } = [];
+}
+
+/// <summary>Equipment an application finances, with its prices when the application was last saved.</summary>
+public sealed class LoanApplicationItem
+{
+    public Guid ApplicationId { get; set; }
+    public Guid EquipmentId { get; set; }
+    public required string Name { get; set; }
+    public bool Buy { get; set; }
+    public decimal? HirePerMonth { get; set; }
+    public decimal? BuyPrice { get; set; }
+    public decimal? RunningPerMonth { get; set; }
+}
+
+/// <summary>An uploaded document; the file is kept on disk under Finance:DocumentsPath.</summary>
+public sealed class LoanDocument
+{
+    public Guid Id { get; set; }
+    public Guid ApplicationId { get; set; }
+    public required string Kind { get; set; }
+    public required string FileName { get; set; }
+    public required string ContentType { get; set; }
+    public long Size { get; set; }
+
+    /// <summary>Relative to the documents folder.</summary>
+    public required string StoredAs { get; set; }
+
+    public DateTimeOffset UploadedAt { get; set; }
+}
+
+/// <summary>A step in an application's history: submitted, or a committee's decision at a stage.</summary>
+public sealed class LoanDecision
+{
+    public Guid Id { get; set; }
+    public Guid ApplicationId { get; set; }
+
+    /// <summary>The stage decided at; "submitted" when the applicant (re)submitted.</summary>
+    public required string Stage { get; set; }
+
+    public required string Decision { get; set; }
+    public Guid DeciderId { get; set; }
+    public Guid? CommitteeId { get; set; }
+    public string? Comment { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A committee (or Absa branch) for one stage, covering an area (see LoanCommitteeDto).</summary>
+public sealed class LoanCommittee
+{
+    public Guid Id { get; set; }
+    public required string Stage { get; set; }
+    public required string Name { get; set; }
+    public required string Province { get; set; }
+    public string? Constituency { get; set; }
+    public string? Ward { get; set; }
+    public string? Village { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public List<LoanCommitteeMember> Members { get; set; } = [];
+}
+
+public sealed class LoanCommitteeMember
+{
+    public Guid CommitteeId { get; set; }
+    public Guid UserId { get; set; }
+}
+
+/// <summary>Equipment a loan can finance, with prices an admin keeps up to date (null: to be confirmed).</summary>
+public sealed class LoanEquipment
+{
+    public Guid Id { get; set; }
+    public required string Name { get; set; }
+    public string Description { get; set; } = "";
+    public required string ClusterType { get; set; }
+    public string? Mtp { get; set; }
+    public decimal? HirePerMonth { get; set; }
+    public decimal? BuyPrice { get; set; }
+    public decimal? RunningPerMonth { get; set; }
+    public bool Active { get; set; } = true;
+    public int Order { get; set; }
+}
+
+/// <summary>A constituency in a province, for the location step's list.</summary>
+public sealed class FinanceConstituency
+{
+    public Guid Id { get; set; }
+    public required string Province { get; set; }
+    public required string Name { get; set; }
+}

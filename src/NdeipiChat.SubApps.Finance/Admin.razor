@@ -1,0 +1,310 @@
+@* For Finance admins: the committees for each stage and area, and who sits on them; the equipment
+   catalogue and its prices; and each province's constituencies for the location step. *@
+
+<h2>Manage</h2>
+<nav class="fin-tabs">
+    <button class="@(_tab == "committees" ? "on" : "")" @onclick='() => Show("committees")'>Committees</button>
+    <button class="@(_tab == "equipment" ? "on" : "")" @onclick='() => Show("equipment")'>Equipment &amp; prices</button>
+    <button class="@(_tab == "places" ? "on" : "")" @onclick='() => Show("places")'>Constituencies</button>
+</nav>
+
+@if (_message is not null)
+{
+    <div class="fin-ok">@_message</div>
+}
+@if (_error is not null)
+{
+    <p class="fin-bad">@_error</p>
+}
+
+@switch (_tab)
+{
+    case "committees":
+        @if (_editing is null)
+        {
+            <button class="fin-primary" @onclick="() => Edit(null)">Add a committee</button>
+            <p class="muted small" style="margin: 0">
+                A committee handles one stage for an area: a province, narrowed by constituency, ward or village if you fill them in.
+                The most specific committee covering an application's place handles it. Where there's none, admins can act.
+            </p>
+            @foreach (var province in _committees.GroupBy(c => c.Province))
+            {
+                <h3>@province.Key</h3>
+                @foreach (var c in province)
+                {
+                    <button class="fin-list-item" @onclick="() => Edit(c)">
+                        <span class="grow">
+                            <b>@c.Name</b>
+                            <small>@LoanStages.Label(c.Stage) · @Reviews.Area(c)</small>
+                            <small>@(c.Members.Count == 0 ? "No members yet" : string.Join(", ", c.Members.Select(m => m.DisplayName)))</small>
+                        </span>
+                        <span class="muted">›</span>
+                    </button>
+                }
+            }
+        }
+        else
+        {
+            var e = _editing;
+            <section class="fin-card">
+                <h3>@(e.Id is null ? "New committee" : "Edit committee")</h3>
+                <label class="fin-field">Stage
+                    <select @bind="e.Stage">
+                        @foreach (var s in LoanStages.Order)
+                        {
+                            <option value="@s">@LoanStages.Label(s)</option>
+                        }
+                    </select>
+                </label>
+                <label class="fin-field">Name<input @bind="e.Name" maxlength="@FinanceContract.MaxNameLength" placeholder="e.g. Kasenengwa Village Productivity Committee" /></label>
+                <div class="fin-two">
+                    <label class="fin-field">Province
+                        <select @bind="e.Province">
+                            <option value="">Choose…</option>
+                            @foreach (var p in FinanceContract.Provinces)
+                            {
+                                <option value="@p">@p</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="fin-field">Constituency (optional)<input @bind="e.Constituency" maxlength="@FinanceContract.MaxPlaceLength" /></label>
+                    <label class="fin-field">Ward (optional)<input @bind="e.Ward" maxlength="@FinanceContract.MaxPlaceLength" /></label>
+                    <label class="fin-field">Village (optional)<input @bind="e.Village" maxlength="@FinanceContract.MaxPlaceLength" /></label>
+                </div>
+                <div class="fin-q">Members</div>
+                <div class="fin-people">
+                    @foreach (var m in e.Members)
+                    {
+                        <span class="fin-person">@m.DisplayName<button title="Remove" @onclick="() => e.Members.Remove(m)">×</button></span>
+                    }
+                    @if (e.Members.Count == 0)
+                    {
+                        <span class="muted small">Nobody yet.</span>
+                    }
+                </div>
+                <input placeholder="Find someone on Ndeipi by name, email or phone" @bind="_search" @bind:event="oninput" @bind:after="SearchAsync" />
+                @foreach (var u in _found.Where(u => e.Members.All(m => m.Id != u.Id)))
+                {
+                    <button class="fin-list-item" @onclick="() => { e.Members.Add(u); _found.Clear(); _search = null; }">
+                        <span class="grow"><b>@u.DisplayName</b>@if (u.Username is not null) {<small>@u.Username</small>}</span><span class="muted">Add</span>
+                    </button>
+                }
+                <div class="fin-actions">
+                    <button class="fin-primary" style="width: auto; padding: 0 18px; height: 44px" disabled="@_busy" @onclick="SaveCommitteeAsync">Save</button>
+                    <button class="fin-outline" @onclick="() => _editing = null">Cancel</button>
+                    @if (e.Id is { } id)
+                    {
+                        <button class="fin-danger" disabled="@_busy" @onclick="() => DeleteCommitteeAsync(id)">Delete</button>
+                    }
+                </div>
+            </section>
+        }
+        break;
+
+    case "equipment":
+        <p class="muted small" style="margin: 0">Prices in @FinanceContract.Currency. Leave a price empty while it's to be confirmed: applicants see "[TBC]" and it's left out of their estimate.</p>
+        @foreach (var q in _equipment)
+        {
+            <section class="fin-card">
+                <div class="fin-two">
+                    <label class="fin-field">Name<input @bind="q.Name" /></label>
+                    <label class="fin-field">Cluster type
+                        <select @bind="q.ClusterType">
+                            @foreach (var c in ClusterTypes.All)
+                            {
+                                <option value="@c.Code">@c.Label</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+                <label class="fin-field">Description<input @bind="q.Description" maxlength="300" /></label>
+                <div class="fin-two">
+                    <label class="fin-field">Hire per month<input type="number" min="0" step="0.01" @bind="q.HirePerMonth" /></label>
+                    <label class="fin-field">Buy price<input type="number" min="0" step="0.01" @bind="q.BuyPrice" /></label>
+                    <label class="fin-field">Running cost per month<input type="number" min="0" step="0.01" @bind="q.RunningPerMonth" /></label>
+                    <label class="fin-field">MTP label<input @bind="q.Mtp" maxlength="24" /></label>
+                </div>
+                <div class="fin-actions" style="align-items: center">
+                    <label class="fin-check" style="flex: 1"><input type="checkbox" @bind="q.Active" /><span>Offered to applicants</span></label>
+                    <button class="fin-outline" disabled="@_busy" @onclick="() => SaveEquipmentAsync(q)">@(q.Id is null ? "Add" : "Save")</button>
+                </div>
+            </section>
+        }
+        @if (_equipment.All(q => q.Id is not null))
+        {
+            <button class="fin-outline" @onclick="AddEquipment">Add equipment</button>
+        }
+        break;
+
+    case "places":
+        <p class="muted small" style="margin: 0">The constituencies applicants can pick for each province, one per line. Applicants can still type one that isn't listed.</p>
+        <label class="fin-field">Province
+            <select @bind="_placesProvince" @bind:after="LoadPlacesAsync">
+                @foreach (var p in FinanceContract.Provinces)
+                {
+                    <option value="@p">@p</option>
+                }
+            </select>
+        </label>
+        <textarea rows="14" @bind="_places" placeholder="One constituency per line"></textarea>
+        <button class="fin-primary" disabled="@_busy" @onclick="SavePlacesAsync">Save @_placesProvince's constituencies</button>
+        break;
+}
+
+@code {
+    [CascadingParameter] public FinanceApp App { get; set; } = null!;
+
+    sealed class CommitteeForm
+    {
+        public Guid? Id;
+        public string Stage = LoanStages.Village;
+        public string Name = "", Province = "";
+        public string? Constituency, Ward, Village;
+        public List<UserDto> Members = [];
+    }
+
+    sealed class EquipmentForm
+    {
+        public Guid? Id;
+        public string Name = "", Description = "", ClusterType = ClusterTypes.Processing;
+        public string? Mtp;
+        public decimal? HirePerMonth, BuyPrice, RunningPerMonth;
+        public bool Active = true;
+        public int Order;
+    }
+
+    string _tab = "committees";
+    List<LoanCommitteeDto> _committees = [];
+    CommitteeForm? _editing;
+    List<UserDto> _found = [];
+    List<EquipmentForm> _equipment = [];
+    string _placesProvince = FinanceContract.Provinces[0];
+    string? _places, _search, _message, _error;
+    bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    async Task Show(string tab)
+    {
+        (_tab, _message, _error, _editing) = (tab, null, null, null);
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        await Run(async () =>
+        {
+            switch (_tab)
+            {
+                case "committees":
+                    _committees = await App.Api.GetAsync<List<LoanCommitteeDto>>($"{FinanceApi.Base}/committees");
+                    break;
+                case "equipment":
+                    _equipment = (await App.Api.GetAsync<List<LoanEquipmentDto>>($"{FinanceApi.Base}/equipment?all=true"))
+                        .Select(q => new EquipmentForm
+                        {
+                            Id = q.Id, Name = q.Name, Description = q.Description, ClusterType = q.ClusterType, Mtp = q.Mtp,
+                            HirePerMonth = q.HirePerMonth, BuyPrice = q.BuyPrice, RunningPerMonth = q.RunningPerMonth, Active = q.Active, Order = q.Order
+                        }).ToList();
+                    break;
+                case "places":
+                    await LoadPlacesAsync();
+                    break;
+            }
+        }, null);
+    }
+
+    void Edit(LoanCommitteeDto? c)
+    {
+        (_message, _error, _found, _search) = (null, null, [], null);
+        _editing = c is null
+            ? new CommitteeForm()
+            : new CommitteeForm { Id = c.Id, Stage = c.Stage, Name = c.Name, Province = c.Province, Constituency = c.Constituency, Ward = c.Ward, Village = c.Village, Members = c.Members.ToList() };
+    }
+
+    async Task SearchAsync()
+    {
+        if (_search is not { Length: >= 2 } q)
+        {
+            _found = [];
+            return;
+        }
+        try
+        {
+            _found = await App.Api.GetAsync<List<UserDto>>($"api/users/search?q={Uri.EscapeDataString(q)}");
+        }
+        catch (FinanceException)
+        {
+            _found = [];
+        }
+    }
+
+    Task SaveCommitteeAsync() => Run(async () =>
+    {
+        var e = _editing!;
+        var request = new SaveCommitteeRequest(e.Stage, e.Name, e.Province, e.Constituency, e.Ward, e.Village, e.Members.Select(m => m.Id).ToList());
+        if (e.Id is { } id)
+            await App.Api.SendAsync<LoanCommitteeDto>(HttpMethod.Put, $"{FinanceApi.Base}/committees/{id}", request);
+        else
+            await App.Api.SendAsync<LoanCommitteeDto>(HttpMethod.Post, $"{FinanceApi.Base}/committees", request);
+        _editing = null;
+        _committees = await App.Api.GetAsync<List<LoanCommitteeDto>>($"{FinanceApi.Base}/committees");
+        await App.RefreshMeAsync();
+    }, "Committee saved.");
+
+    Task DeleteCommitteeAsync(Guid id) => Run(async () =>
+    {
+        await App.Api.SendAsync<object>(HttpMethod.Delete, $"{FinanceApi.Base}/committees/{id}", null);
+        _editing = null;
+        _committees = await App.Api.GetAsync<List<LoanCommitteeDto>>($"{FinanceApi.Base}/committees");
+    }, "Committee deleted.");
+
+    void AddEquipment() => _equipment.Add(new EquipmentForm { Order = _equipment.Count == 0 ? 1 : _equipment.Max(q => q.Order) + 1 });
+
+    Task SaveEquipmentAsync(EquipmentForm q) => Run(async () =>
+    {
+        var request = new SaveEquipmentRequest(q.Name, q.Description, q.ClusterType, q.Mtp, q.HirePerMonth, q.BuyPrice, q.RunningPerMonth, q.Active, q.Order);
+        var saved = q.Id is { } id
+            ? await App.Api.SendAsync<LoanEquipmentDto>(HttpMethod.Put, $"{FinanceApi.Base}/equipment/{id}", request)
+            : await App.Api.SendAsync<LoanEquipmentDto>(HttpMethod.Post, $"{FinanceApi.Base}/equipment", request);
+        q.Id = saved!.Id;
+    }, $"{q.Name} saved.");
+
+    async Task LoadPlacesAsync()
+    {
+        try
+        {
+            var names = await App.Api.GetAsync<List<string>>($"{FinanceApi.Base}/constituencies?province={Uri.EscapeDataString(_placesProvince)}");
+            _places = string.Join('\n', names);
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    Task SavePlacesAsync() => Run(async () =>
+    {
+        var names = (_places ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var saved = await App.Api.SendAsync<List<string>>(HttpMethod.Put, $"{FinanceApi.Base}/constituencies", new SaveConstituenciesRequest(_placesProvince, names));
+        _places = string.Join('\n', saved!);
+    }, $"{_placesProvince}'s constituencies saved.");
+
+    async Task Run(Func<Task> work, string? done)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            await work();
+            _message = done;
+        }
+        catch (FinanceException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
