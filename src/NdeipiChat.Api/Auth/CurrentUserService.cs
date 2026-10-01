@@ -15,6 +15,7 @@ public sealed class CurrentUserService(
     IClerkBackendApi clerk,
     IOptions<ClerkOptions> options,
     ShamwariService shamwaris,
+    IEnumerable<IUserProfileListener> profileListeners,
     TimeProvider clock,
     ILogger<CurrentUserService> log)
 {
@@ -78,7 +79,17 @@ public sealed class CurrentUserService(
         }
 
         if (profile is not null)
+        {
             await shamwaris.ClaimInvitesAsync(user, ct);
+            foreach (var listener in profileListeners)
+                await listener.ProfileSyncedAsync(user, profile, ct);
+        }
         return user;
     }
+}
+
+/// <summary>Told each time a user's profile is refreshed from Clerk: the Trust Score counts their sign-in accounts.</summary>
+public interface IUserProfileListener
+{
+    Task ProfileSyncedAsync(User user, ClerkUser profile, CancellationToken ct);
 }

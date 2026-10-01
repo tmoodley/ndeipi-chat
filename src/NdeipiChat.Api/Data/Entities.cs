@@ -971,3 +971,58 @@ public sealed class FinanceConstituency
     public required string Province { get; set; }
     public required string Name { get; set; }
 }
+
+/// <summary>
+/// An outside account someone linked for their Trust Score. Each outside account can back only one
+/// Ndeipi account (the anti-sybil rule): <see cref="ExternalId"/> is unique per platform.
+/// </summary>
+public sealed class TrustLink
+{
+    public Guid Id { get; set; }
+    public Guid UserId { get; set; }
+    public required string Platform { get; set; }
+
+    /// <summary>The platform's own id for the account.</summary>
+    public required string ExternalId { get; set; }
+
+    /// <summary>The name or handle to show its owner, e.g. "@tmoodley".</summary>
+    public string? Handle { get; set; }
+
+    /// <summary>X Premium: a paid, verified X account, which counts in tier 2.</summary>
+    public bool Premium { get; set; }
+
+    /// <summary>OAuth tokens, encrypted with Trust:TokenKey (TrustTokenProtector); null if there's no key.</summary>
+    public string? AccessTokenProtected { get; set; }
+    public string? RefreshTokenProtected { get; set; }
+    public DateTimeOffset? TokenExpiresAt { get; set; }
+
+    /// <summary>
+    /// It comes from an account they sign in to Ndeipi with (Clerk), not from the trust page: it is
+    /// confirmed each time their profile syncs, and goes when they remove it from their sign-in.
+    /// </summary>
+    public bool ViaSignIn { get; set; }
+
+    public DateTimeOffset LinkedAt { get; set; }
+
+    /// <summary>When the platform last confirmed the account is still theirs. Credit decays from here.</summary>
+    public DateTimeOffset LastConfirmedAt { get; set; }
+}
+
+/// <summary>Someone's Trust Score as last worked out, kept so it's quick to show and to broadcast changes.</summary>
+public sealed class TrustScoreRecord
+{
+    public Guid UserId { get; set; }
+    public int Score { get; set; }
+    public decimal Tier1 { get; set; }
+    public decimal Tier2 { get; set; }
+    public decimal Tier3 { get; set; }
+    public int Settlements { get; set; }
+    public decimal HistoryPoints { get; set; }
+    public int WorkReferences { get; set; }
+    public decimal WorkPoints { get; set; }
+
+    /// <summary>The platforms behind each tier, e.g. "bridge;linkedin;telegram".</summary>
+    public string Platforms { get; set; } = "";
+
+    public DateTimeOffset UpdatedAt { get; set; }
+}

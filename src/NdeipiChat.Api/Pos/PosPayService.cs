@@ -162,11 +162,11 @@ public sealed class PosPayService(ChatDbContext db, BankingService banking, IOpt
 
     async Task<PayRequestDto> ToRequestAsync(User me, PosQrPayment p, CancellationToken ct)
     {
-        var merchant = await db.PosMerchants.AsNoTracking().Where(m => m.Id == p.MerchantId).Select(m => m.Name).FirstAsync(ct);
+        var merchant = await db.PosMerchants.AsNoTracking().Where(m => m.Id == p.MerchantId).Select(m => new { m.Name, m.OwnerId }).FirstAsync(ct);
         var store = await db.PosStores.AsNoTracking().Where(s => s.Id == p.StoreId).Select(s => s.Name).FirstAsync(ct);
         // Someone else's payment: they can see it's been used, but not how it went for the payer.
         var mine = p.PayerId == me.Id;
-        return new PayRequestDto(p.Code, merchant, store, p.Amount, p.Currency, p.Status, mine ? p.Error : null, p.ExpiresAt, mine);
+        return new PayRequestDto(p.Code, merchant.Name, store, p.Amount, p.Currency, p.Status, mine ? p.Error : null, p.ExpiresAt, mine, merchant.OwnerId);
     }
 }
 

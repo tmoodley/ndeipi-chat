@@ -403,6 +403,7 @@ public sealed record PosQrPaymentDto(
 /// <summary>A payment request as the customer sees it after scanning.</summary>
 /// <param name="Currency">What their wallet pays in, e.g. "usdc".</param>
 /// <param name="IsMine">Whether the signed-in user is the one who confirmed it.</param>
+/// <param name="MerchantOwnerId">Who the money goes to, for their Trust Score.</param>
 public sealed record PayRequestDto(
     string Code,
     string MerchantName,
@@ -412,7 +413,8 @@ public sealed record PayRequestDto(
     string Status,
     string? Error,
     DateTimeOffset ExpiresAt,
-    bool IsMine);
+    bool IsMine,
+    Guid? MerchantOwnerId = null);
 
 // ---- Receipts in chat ----
 

@@ -73,6 +73,19 @@
                     </Grid>
                     <Grid Style="{StaticResource MenuRow}">
                         <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenTrustCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='blue', Converter={StaticResource ToneBrush}, x:DataType=x:String}">
+                            <Label Text="🛡" FontSize="20" HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" VerticalOptions="Center">
+                            <Label Text="Trust Score" FontAttributes="Bold" />
+                            <Label Text="Link accounts so people know it's really you" Style="{StaticResource Muted}" FontSize="12" />
+                        </VerticalStackLayout>
+                        <Label Grid.Column="2" Text="›" FontSize="24" Style="{StaticResource Muted}" VerticalOptions="Center" />
+                    </Grid>
+                    <Grid Style="{StaticResource MenuRow}">
+                        <Grid.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnShamwaris" />
                         </Grid.GestureRecognizers>
                         <Border Style="{StaticResource MenuIcon}" Background="{Binding Source='green', Converter={StaticResource ToneBrush}, x:DataType=x:String}">

@@ -106,7 +106,11 @@ public static class Routes
     public static readonly IReadOnlyDictionary<string, string> WebPages = new Dictionary<string, string>
     {
         [PosPay.PayPath] = "Scan to pay",
+        [TrustContract.PagePath] = "Trust Score",
     };
+
+    /// <summary>Your Trust Score and the accounts behind it: the web shell's "trust" page, in the WebView on the phone.</summary>
+    public const string Trust = "trust-score";
 
     /// <summary>The host shell's launcher grid.</summary>
     public const string Launcher = "launcher";

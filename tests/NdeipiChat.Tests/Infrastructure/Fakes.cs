@@ -62,6 +62,8 @@ public sealed class FakeClerk : IClerkBackendApi
 
     public void AddUser(ClerkUser user) => _users[user.Id] = user;
 
+    public ClerkUser GetUser(string userId) => _users[userId];
+
     public string StartSession(string userId)
     {
         var sessionId = "sess_" + Guid.NewGuid().ToString("N")[..16];

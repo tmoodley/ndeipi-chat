@@ -27,7 +27,7 @@
                 <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
             }
             <div class="who">
-                <strong>@Vm.Title</strong>
+                <strong>@Vm.Title @if (Other is { } person) {<TrustBadge UserId="person.Id" />}</strong>
                 @if (Vm.TypingText is not null)
                 {
                     <span class="typing" style="padding: 0">@Vm.TypingText</span>

@@ -1,0 +1,324 @@
+@page "/trust"
+@implements IAsyncDisposable
+@inject ChatApi Api
+@inject NavigationManager Navigation
+@inject WebEmbedding Embedding
+@inject ShellRealtime Realtime
+@inject IJSRuntime JS
+
+@* Your Trust Score (TrustContract): the dial, what each tier gives, and the accounts you can link to
+   raise it. Everyone sees the number on your profile; only you see which accounts are behind it. *@
+
+<PageTitle>Trust Score · Ndeipi</PageTitle>
+
+<header class="bar pay-bar">
+    <button class="bar-back link" title="Back" @onclick="Back">‹</button>
+    <h1>Trust Score</h1>
+</header>
+
+<div class="sc-page trust-page">
+    @if (_message is not null)
+    {
+        <p class="notice">@_message</p>
+    }
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+
+    @if (_me is null)
+    {
+        <p class="muted">@(_error is null ? "Loading…" : "")</p>
+    }
+    else
+    {
+        var s = _me.Score;
+        <section class="trust-hero glass">
+            <div class="trust-dial @TrustBadge.Tone(s.Score)" style="--pct:@s.Score">
+                <div><b>@s.Score</b><small>of 100</small></div>
+            </div>
+            <div class="trust-summary">
+                <div class="name">@s.Level</div>
+                <p class="muted">Everyone sees this number on your profile and when you pay or get paid. Link accounts that are hard to fake to raise it.</p>
+                <button class="secondary" disabled="@_busy" @onclick="RefreshAsync">@(_busy ? "Checking…" : "Check again")</button>
+            </div>
+        </section>
+
+        <section class="widget glass">
+            <div class="widget-head"><h3>What makes it up</h3></div>
+            @foreach (var tier in s.Tiers)
+            {
+                <div class="trust-bar">
+                    <span class="grow"><strong>@TierName(tier.Tier)</strong><small>@TierHint(tier.Tier)</small></span>
+                    <span class="meter"><span style="width:@Pct(tier.Earned, tier.Weight)%"></span></span>
+                    <span class="pts">@Num(tier.Earned)/@tier.Weight</span>
+                </div>
+            }
+            <div class="trust-bar">
+                <span class="grow"><strong>Payment history</strong><small>A point for each different person you've paid or been paid by this year</small></span>
+                <span class="meter"><span style="width:@Pct(s.HistoryPoints, TrustContract.MaxHistoryPoints)%"></span></span>
+                <span class="pts">@Num(s.HistoryPoints)/@TrustContract.MaxHistoryPoints</span>
+            </div>
+            <div class="trust-bar">
+                <span class="grow"><strong>Work record</strong><small>A point for each different client who approved your work in Gigs (rated @TrustContract.MinWorkStars★ or more)</small></span>
+                <span class="meter"><span style="width:@Pct(s.WorkPoints, TrustContract.MaxWorkPoints)%"></span></span>
+                <span class="pts">@Num(s.WorkPoints)/@TrustContract.MaxWorkPoints</span>
+            </div>
+        </section>
+
+        @foreach (var tier in new[] { 1, 2, 3 })
+        {
+            <section class="widget glass">
+                <div class="widget-head"><h3>@TierName(tier) · up to @Weight(tier)</h3></div>
+                @foreach (var link in Rows(tier))
+                {
+                    <div class="drawer-row trust-link @(link.Available || link.Linked ? "" : "unavailable")">
+                        <span class="tile-icon @(link.Linked ? "tone-green" : "tone-purple")">@Icon(link.Platform)</span>
+                        <span class="grow">
+                            @link.Label @if (link.Linked && link.Handle is not null) {<em class="muted"> · @link.Handle</em>}
+                            <small>@Detail(link)</small>
+                        </span>
+                        @Action(link)
+                    </div>
+                }
+                @if (tier == 3 && _telegramBot is not null && !IsLinked(TrustPlatforms.Telegram))
+                {
+                    <div class="trust-telegram" @ref="_telegramHost"></div>
+                }
+                @if (tier == 3)
+                {
+                    <p class="muted small trust-signin-hint">Accounts you sign in to Ndeipi with (Google, Apple, Microsoft…) and a verified phone number count here on their own.</p>
+                }
+            </section>
+        }
+
+        <p class="muted small">
+            Linked accounts count fully for @TrustContract.FullCreditDays days after they were last confirmed, then half until
+            @TrustContract.HalfCreditDays days. Ndeipi re-checks them for you where the platform allows; otherwise link them again.
+            Each outside account can back only one Ndeipi account.
+        </p>
+    }
+</div>
+
+@code {
+    MyTrustDto? _me;
+    string? _error, _message, _telegramBot, _working;
+    bool _busy, _telegramDrawn;
+    ElementReference _telegramHost;
+    IJSObjectReference? _js;
+    DotNetObjectReference<Trust>? _self;
+    IAsyncDisposable? _subscription;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var query = Navigation.ToAbsoluteUri(Navigation.Uri).Query;
+        var values = System.Web.HttpUtility.ParseQueryString(query);
+        if (values["error"] is { Length: > 0 } problem)
+            _error = problem;
+        else if (values["linked"] is { Length: > 0 } linked)
+            _message = $"{TrustPlatforms.Label(linked)} linked. ✓";
+
+        try
+        {
+            _me = await Api.GetMyTrustAsync();
+            TrustBadge.Remember(_me.Score);
+            _telegramBot = (await Api.GetTrustSettingsAsync()).TelegramBot;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+
+        if (_me is not null)
+        {
+            try
+            {
+                _subscription = await Realtime.SubscribeAsync(TrustContract.Topic(_me.Score.UserId), payload =>
+                {
+                    if (ContractJson.Read<TrustScoreDto>(payload) is { } score && _me is not null)
+                    {
+                        _me = _me with { Score = score };
+                        return InvokeAsync(StateHasChanged);
+                    }
+                    return Task.CompletedTask;
+                });
+            }
+            catch (Exception)
+            {
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_telegramBot is null || _telegramDrawn || _me is null || IsLinked(TrustPlatforms.Telegram))
+            return;
+        _telegramDrawn = true;
+        _js ??= await JS.InvokeAsync<IJSObjectReference>("import", "./js/trust.js");
+        _self ??= DotNetObjectReference.Create(this);
+        await _js.InvokeVoidAsync("telegram", _telegramHost, _telegramBot, _self);
+    }
+
+    [JSInvokable]
+    public async Task OnTelegramAsync(TelegramLoginRequest login) =>
+        await Run(async () =>
+        {
+            Show(await Api.LinkTelegramAsync(login));
+            _message = "Telegram linked. ✓";
+        });
+
+    RenderFragment Action(TrustLinkDto link) => __builder =>
+    {
+        if (link.Platform == TrustPlatforms.Bridge)
+        {
+            if (!link.Linked && link.Available)
+            {
+                <a class="button btn-a" href="wallet">Verify</a>
+            }
+            else if (link.Linked)
+            {
+                <span class="end">✓</span>
+            }
+        }
+        else if (link.ViaSignIn)
+        {
+            <span class="end" title="From your sign-in">✓</span>
+        }
+        else if (link.Platform == TrustPlatforms.Telegram && !link.Linked)
+        {
+            // Telegram's own button, below the list.
+        }
+        else if (link.Linked)
+        {
+            if (link.Credit < 1m && link.Available && link.Platform != TrustPlatforms.Telegram)
+            {
+                <button class="btn-a" disabled="@_busy" @onclick="() => LinkAsync(link.Platform)">Confirm</button>
+            }
+            <button class="secondary" disabled="@_busy" @onclick="() => UnlinkAsync(link)">Unlink</button>
+        }
+        else if (link.Available)
+        {
+            <button class="btn-a" disabled="@_busy" @onclick="() => LinkAsync(link.Platform)">@(_working == link.Platform ? "Opening…" : "Link")</button>
+        }
+    };
+
+    IEnumerable<TrustLinkDto> Rows(int tier) => (_me?.Links ?? []).Where(l => l.Platform == TrustPlatforms.X ? tier == (l.Linked ? l.Tier : 3) : l.Tier == tier);
+
+    bool IsLinked(string platform) => _me?.Links.Any(l => l.Platform == platform && l.Linked) == true;
+
+    static string Detail(TrustLinkDto link)
+    {
+        var parts = new List<string>();
+        if (link.Linked && link.Platform != TrustPlatforms.Bridge)
+            parts.Add(link.Credit switch { 1m => "Counts in full", > 0m => "Counts half", _ => "No longer counts" });
+        if (link is { Platform: TrustPlatforms.Telegram, Linked: false, Available: true })
+            parts.Add("Use the Telegram button below");
+        if (link.Note is { } note)
+            parts.Add(note);
+        if (link.LastConfirmedAt is { } at && link.Platform != TrustPlatforms.Bridge)
+            parts.Add($"confirmed {at.ToLocalTime():d MMM yyyy}");
+        return string.Join(" · ", parts);
+    }
+
+    static string TierName(int tier) => tier switch { 1 => "Identity", 2 => "Professional", _ => "Social" };
+
+    static string TierHint(int tier) => tier switch
+    {
+        1 => "A formal identity check",
+        2 => "LinkedIn, or X Premium",
+        _ => "Google, Apple, phone, Telegram, Facebook, X…"
+    };
+
+    static int Weight(int tier) => tier switch { 1 => TrustContract.Tier1Weight, 2 => TrustContract.Tier2Weight, _ => TrustContract.Tier3Weight };
+
+    static string Icon(string platform) => platform switch
+    {
+        TrustPlatforms.Bridge => "🪪",
+        TrustPlatforms.Mpost => "📮",
+        TrustPlatforms.LinkedIn => "in",
+        TrustPlatforms.X => "𝕏",
+        TrustPlatforms.Telegram => "✈️",
+        TrustPlatforms.Facebook => "f",
+        TrustPlatforms.WhatsApp => "💬",
+        TrustPlatforms.Google => "G",
+        TrustPlatforms.Apple => "🍎",
+        TrustPlatforms.Microsoft => "⊞",
+        TrustPlatforms.GitHub => "🐙",
+        TrustPlatforms.Phone => "📱",
+        _ => "•"
+    };
+
+    static string Pct(decimal earned, int weight) => weight == 0 ? "0" : Math.Round(earned * 100 / weight).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    static string Num(decimal value) => value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+
+    async Task LinkAsync(string platform)
+    {
+        _working = platform;
+        await Run(async () =>
+        {
+            var start = await Api.StartTrustLinkAsync(platform);
+            Navigation.NavigateTo(start.AuthorizeUrl, forceLoad: true);
+        });
+        _working = null;
+    }
+
+    Task UnlinkAsync(TrustLinkDto link) => Run(async () =>
+    {
+        Show(await Api.UnlinkTrustAsync(link.Platform));
+        _message = $"{link.Label} unlinked.";
+        if (link.Platform == TrustPlatforms.Telegram)
+            _telegramDrawn = false;
+    });
+
+    Task RefreshAsync() => Run(async () => Show(await Api.RefreshTrustAsync()));
+
+    void Show(MyTrustDto me)
+    {
+        _me = me;
+        TrustBadge.Remember(me.Score);
+    }
+
+    async Task Run(Func<Task> work)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            await work();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    void Back()
+    {
+        if (Embedding.IsEmbedded)
+            Embedding.Leave();
+        else
+            Navigation.NavigateTo("me");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+        _self?.Dispose();
+        if (_js is not null)
+        {
+            try
+            {
+                await _js.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
+}
