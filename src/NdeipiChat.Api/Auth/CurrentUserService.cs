@@ -26,11 +26,13 @@ public sealed class CurrentUserService(
         return GetByClerkIdAsync(clerkId, ct);
     }
 
-    public async Task<User> GetByClerkIdAsync(string clerkId, CancellationToken ct)
+    /// <param name="resync">Read the profile from Clerk now, however recently it was, e.g. when someone
+    /// asks for their Trust Score to be checked again after adding a sign-in account.</param>
+    public async Task<User> GetByClerkIdAsync(string clerkId, CancellationToken ct, bool resync = false)
     {
         var now = clock.GetUtcNow();
         var user = await db.Users.FirstOrDefaultAsync(u => u.ClerkUserId == clerkId, ct);
-        if (user is not null && now - user.ProfileSyncedAt < options.Value.ProfileRefreshInterval)
+        if (user is not null && !resync && now - user.ProfileSyncedAt < options.Value.ProfileRefreshInterval)
             return user;
 
         ClerkUser? profile = null;

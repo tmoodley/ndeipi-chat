@@ -10,9 +10,54 @@ using NdeipiChat.Contracts;
 namespace NdeipiChat.Client.ViewModels;
 
 /// <summary>Launch and sign-out: decides whether the app opens on sign-in or on the chats.</summary>
-public sealed class AppCoordinator(AuthService auth, ChatSession session, LivestockSync livestock, INavigator navigator, IUiDispatcher ui)
+public sealed class AppCoordinator(
+    AuthService auth,
+    ChatSession session,
+    LivestockSync livestock,
+    LauncherViewModel launcher,
+    ChatsViewModel chats,
+    ContactsViewModel contacts,
+    INavigator navigator,
+    IUiDispatcher ui)
 {
-    bool _started;
+    bool _started, _catchingUp;
+
+    /// <summary>
+    /// The phone is back online, or the app is back in front: whatever couldn't reach the server
+    /// (typically because the phone was waking up and its Wi-Fi wasn't back yet) loads again, so
+    /// Home doesn't stay "offline" until the app is restarted. Call it on the UI thread.
+    /// </summary>
+    public async Task BackOnlineAsync()
+    {
+        if (_catchingUp || !await auth.IsSignedInAsync())
+            return;
+        _catchingUp = true;
+        try
+        {
+            if (session.Me is null)
+            {
+                try
+                {
+                    await session.RefreshMeAsync();
+                }
+                catch (ApiException)
+                {
+                    // Still unreachable: the next connectivity change tries again.
+                }
+            }
+            if (launcher.IsOffline || !launcher.IsLoaded)
+                await launcher.LoadCommand.ExecuteAsync(null);
+            if (chats.LoadFailed)
+                await chats.RefreshCommand.ExecuteAsync(null);
+            if (contacts.LoadFailed)
+                await contacts.LoadCommand.ExecuteAsync(null);
+            await SendWaitingCapturesAsync();
+        }
+        finally
+        {
+            _catchingUp = false;
+        }
+    }
 
     public async Task StartAsync()
     {

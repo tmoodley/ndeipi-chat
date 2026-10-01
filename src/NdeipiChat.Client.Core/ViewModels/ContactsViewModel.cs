@@ -68,6 +68,9 @@ public sealed partial class ContactsViewModel : ObservableObject
     public bool HasOutgoing => Outgoing.Count > 0;
     public bool HasRecent => Recent.Count > 0;
 
+    /// <summary>The last load didn't reach the server.</summary>
+    public bool LoadFailed { get; private set; }
+
     [RelayCommand]
     async Task LoadAsync()
     {
@@ -88,10 +91,15 @@ public sealed partial class ContactsViewModel : ObservableObject
             foreach (var person in people)
                 Recent.Add(new ContactItemViewModel(person) { IsSelected = _selected.Contains(person.Id) });
             OnPropertyChanged(nameof(HasRecent));
+            LoadFailed = false;
         }
         catch (ApiException ex)
         {
-            await _dialogs.AlertAsync("Couldn't load contacts", ex.Message);
+            // Unreachable (often the phone still waking up) isn't worth a dialog: they load again
+            // once it's back online (AppCoordinator.BackOnlineAsync).
+            LoadFailed = true;
+            if (ex.StatusCode is not null)
+                await _dialogs.AlertAsync("Couldn't load contacts", ex.Message);
         }
     }
 

@@ -20,11 +20,12 @@ public partial class App : Application
         _coordinator = coordinator;
         ColorTabBar(shell);
 
-        // Livestock captures taken out of signal upload the moment the phone is back online.
+        // Back online: whatever didn't load (Home, chats, contacts) loads again, and livestock
+        // captures taken out of signal upload.
         Connectivity.Current.ConnectivityChanged += async (_, e) =>
         {
             if (e.NetworkAccess == NetworkAccess.Internet)
-                await _coordinator.SendWaitingCapturesAsync();
+                await MainThread.InvokeOnMainThreadAsync(_coordinator.BackOnlineAsync);
         };
     }
 
@@ -54,6 +55,12 @@ public partial class App : Application
     {
         var window = new Window(_shell);
         window.Created += async (_, _) => await _coordinator.StartAsync();
+        // Back in front (say, after the phone slept): catch up if something couldn't load before.
+        window.Resumed += async (_, _) =>
+        {
+            if (Connectivity.Current.NetworkAccess == NetworkAccess.Internet)
+                await _coordinator.BackOnlineAsync();
+        };
         return window;
     }
 }

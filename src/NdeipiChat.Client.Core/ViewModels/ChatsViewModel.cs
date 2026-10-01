@@ -37,6 +37,9 @@ public sealed partial class ChatsViewModel : ObservableObject
 
     public bool IsEmpty => Conversations.Count == 0;
 
+    /// <summary>The last load didn't reach the server.</summary>
+    public bool LoadFailed { get; private set; }
+
     [RelayCommand]
     async Task RefreshAsync()
     {
@@ -46,10 +49,15 @@ public sealed partial class ChatsViewModel : ObservableObject
             Conversations.Clear();
             foreach (var conversation in conversations)
                 Conversations.Add(new ConversationItemViewModel(conversation, PreviewOf(conversation), _clock));
+            LoadFailed = false;
         }
         catch (ApiException ex)
         {
-            await _dialogs.AlertAsync("Couldn't load chats", ex.Message);
+            // Unreachable (often the phone still waking up) isn't worth a dialog: they load again once
+            // it's back online (AppCoordinator.BackOnlineAsync).
+            LoadFailed = true;
+            if (ex.StatusCode is not null)
+                await _dialogs.AlertAsync("Couldn't load chats", ex.Message);
         }
         finally
         {
