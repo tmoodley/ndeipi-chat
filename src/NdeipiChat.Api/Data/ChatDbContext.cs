@@ -42,6 +42,8 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<DonationCampaign> DonationCampaigns => Set<DonationCampaign>();
     public DbSet<Donation> Donations => Set<Donation>();
     public DbSet<PointsEntry> Points => Set<PointsEntry>();
+    public DbSet<TrustLink> TrustLinks => Set<TrustLink>();
+    public DbSet<TrustScoreRecord> TrustScores => Set<TrustScoreRecord>();
     public DbSet<InventoryItem> InventoryItems => Set<InventoryItem>();
     public DbSet<EventListing> Events => Set<EventListing>();
     public DbSet<TicketTier> TicketTiers => Set<TicketTier>();
@@ -244,6 +246,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
 
         NdeipiChat.Api.Pos.PosModel.Configure(model);
         NdeipiChat.Api.Donations.DonationsModel.Configure(model);
+        NdeipiChat.Api.Trust.TrustModel.Configure(model);
 
         model.Entity<PostComment>(e =>
         {

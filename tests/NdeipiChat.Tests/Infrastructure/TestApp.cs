@@ -40,6 +40,10 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     public FakeClerk Clerk { get; } = new();
     public StubBridge Bridge { get; } = new();
     public StubClaude Claude { get; } = new();
+    public StubPlatforms Platforms { get; } = new();
+
+    /// <summary>The test Telegram bot's token, for signing login widget data.</summary>
+    public const string TelegramBotToken = "123456:telegram-test-token";
 
     /// <summary>Photos the API stores, and the app's capture queue in client tests.</summary>
     public string FilesDirectory { get; } = Path.Combine(Path.GetTempPath(), "ndeipi-tests", Guid.NewGuid().ToString("N"));
@@ -91,7 +95,14 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Livestock:Claude:ApiKey"] = "claude-test-key",
             ["Livestock:Claude:MaxAttempts"] = "1",
             ["Livestock:Muzzle:ModelPath"] = TinyMuzzleModel.Path,
-            ["Livestock:Muzzle:ModelId"] = "test-grid-pool"
+            ["Livestock:Muzzle:ModelId"] = "test-grid-pool",
+            ["Trust:TokenKey"] = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()),
+            ["Trust:LinkedIn:ClientId"] = "li-client",
+            ["Trust:LinkedIn:ClientSecret"] = "li-secret",
+            ["Trust:X:ClientId"] = "x-client",
+            ["Trust:X:ClientSecret"] = "x-secret",
+            ["Trust:Telegram:BotUsername"] = "ndeipi_test_bot",
+            ["Trust:Telegram:BotToken"] = TelegramBotToken
         }));
 
         builder.ConfigureTestServices(services =>
@@ -99,6 +110,9 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             services.AddSingleton<IClerkBackendApi>(Clerk);
             services.AddHttpClient<BridgeClient>()
                 .ConfigurePrimaryHttpMessageHandler(() => Bridge)
+                .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+            services.AddHttpClient<NdeipiChat.Api.Trust.TrustOAuthClient>()
+                .ConfigurePrimaryHttpMessageHandler(() => Platforms)
                 .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
             services.AddHttpClient<ICattleVisionAssessor, ClaudeCattleAssessor>()
                 .ConfigurePrimaryHttpMessageHandler(() => Claude)
@@ -138,7 +152,9 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
 
     /// <summary>A Clerk user who has signed in once, so the API knows them.</summary>
     /// <param name="roles">Set in Clerk as public_metadata.roles.</param>
-    public async Task<TestUser> CreateUserAsync(string name, string? email = null, string? phone = null, bool verified = true, string[]? roles = null)
+    /// <param name="signIns">Accounts they sign in to Clerk with (Google, Apple…).</param>
+    public async Task<TestUser> CreateUserAsync(string name, string? email = null, string? phone = null, bool verified = true, string[]? roles = null,
+        List<ClerkExternalAccount>? signIns = null)
     {
         var clerkId = "user_" + Guid.NewGuid().ToString("N")[..16];
         var parts = name.Split(' ', 2);
@@ -147,7 +163,8 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             [new ClerkEmailAddress("idn_1", email ?? $"{clerkId}@example.test", verification)],
             phone is null ? null : "idn_2",
             phone is null ? null : [new ClerkPhoneNumber("idn_2", phone, verification)],
-            roles is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(new { roles })));
+            roles is null ? null : System.Text.Json.JsonSerializer.SerializeToElement(new { roles }),
+            signIns));
 
         var sessionId = Clerk.StartSession(clerkId);
         var http = ClientWithToken(TestTokens.Create(clerkId, sessionId));

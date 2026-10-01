@@ -15,6 +15,7 @@
             <div class="sc-identity">
                 <div class="name">@Profile.User.DisplayName</div>
                 <div class="sub">@SubLine</div>
+                <TrustBadge UserId="Profile.User.Id" Large Live Href="@(Profile.IsMe ? TrustContract.PagePath : null)" />
             </div>
         </div>
         <div class="sc-actions">

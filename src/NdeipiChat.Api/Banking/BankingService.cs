@@ -18,6 +18,7 @@ public sealed class BankingService(
     ChatNotifier notifier,
     MessageStateService messageState,
     IEnumerable<IBankTransferListener> listeners,
+    IEnumerable<IBankingStatusListener> statusListeners,
     TimeProvider clock,
     ILogger<BankingService> log)
 {
@@ -229,6 +230,8 @@ public sealed class BankingService(
         {
             var clerkId = await db.Users.Where(u => u.Id == profile.UserId).Select(u => u.ClerkUserId).FirstAsync(ct);
             await notifier.ToUser(clerkId).BankingStatusChanged(after);
+            foreach (var listener in statusListeners)
+                await listener.BankingStatusChangedAsync(profile.UserId, after, ct);
         }
     }
 
@@ -257,4 +260,10 @@ public sealed class BankingService(
 public interface IBankTransferListener
 {
     Task TransferChangedAsync(BankTransfer transfer, CancellationToken ct);
+}
+
+/// <summary>Told when someone's verification or wallet changes: the Trust Score counts Bridge's KYC.</summary>
+public interface IBankingStatusListener
+{
+    Task BankingStatusChangedAsync(Guid userId, BankingStatusDto status, CancellationToken ct);
 }

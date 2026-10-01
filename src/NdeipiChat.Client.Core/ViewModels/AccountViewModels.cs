@@ -142,6 +142,9 @@ public sealed partial class MeViewModel : ObservableObject
     [RelayCommand]
     Task OpenWalletAsync() => _navigator.GoToAsync(Routes.Wallet);
 
+    [RelayCommand]
+    Task OpenTrustAsync() => _navigator.GoToAsync(Routes.Trust);
+
     /// <summary>AuthService raises SignedOut; <see cref="AppCoordinator"/> takes it from there.</summary>
     [RelayCommand]
     Task SignOutAsync() => _auth.SignOutAsync();

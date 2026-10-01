@@ -60,7 +60,8 @@ public partial class WebSubAppPage : ViewModelPage
             _ = Launcher.Default.TryOpenAsync(target);
             return;
         }
-        if (!string.Equals(target.GetLeftPart(UriPartial.Authority), site.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(target.GetLeftPart(UriPartial.Authority), site.GetLeftPart(UriPartial.Authority), StringComparison.OrdinalIgnoreCase)
+            && !IsAccountLinkSite(target))
         {
             // Another website: the system browser, not this WebView.
             e.Cancel = true;
@@ -80,6 +81,14 @@ public partial class WebSubAppPage : ViewModelPage
             _ = _viewModel.SignInAgainAsync();
         }
     }
+
+    /// <summary>
+    /// Linking an account for the Trust Score: the platform's approve page stays in here, so its
+    /// callback lands back on the trust page rather than in the system browser.
+    /// </summary>
+    static bool IsAccountLinkSite(Uri target) =>
+        target.Scheme == "https" && new[] { "linkedin.com", "x.com", "twitter.com", "facebook.com", "telegram.org" }
+            .Any(d => target.Host.Equals(d, StringComparison.OrdinalIgnoreCase) || target.Host.EndsWith("." + d, StringComparison.OrdinalIgnoreCase));
 
     void OnNavigated(object? sender, WebNavigatedEventArgs e)
     {

@@ -62,7 +62,7 @@
             <div class="pay-shop">
                 <span class="pay-icon">🛒</span>
                 <div>
-                    <strong>@r.MerchantName</strong>
+                    <strong>@r.MerchantName @if (r.MerchantOwnerId is { } owner) {<TrustBadge UserId="owner" />}</strong>
                     <small>@r.StoreName</small>
                 </div>
             </div>
