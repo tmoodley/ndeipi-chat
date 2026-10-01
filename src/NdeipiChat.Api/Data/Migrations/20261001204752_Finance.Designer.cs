@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using NdeipiChat.Api.Data;
 
@@ -11,9 +12,11 @@ using NdeipiChat.Api.Data;
 namespace NdeipiChat.Api.Data.Migrations
 {
     [DbContext(typeof(ChatDbContext))]
-    partial class ChatDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001204752_Finance")]
+    partial class Finance
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2675,110 +2678,6 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.HasAnnotation("SqlServer:UseSqlOutputClause", false);
                 });
 
-            modelBuilder.Entity("NdeipiChat.Api.Data.TrustLink", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("AccessTokenProtected")
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<string>("ExternalId")
-                        .IsRequired()
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<string>("Handle")
-                        .HasMaxLength(120)
-                        .HasColumnType("nvarchar(120)");
-
-                    b.Property<DateTimeOffset>("LastConfirmedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<DateTimeOffset>("LinkedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<string>("Platform")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("nvarchar(16)");
-
-                    b.Property<bool>("Premium")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("RefreshTokenProtected")
-                        .HasMaxLength(4000)
-                        .HasColumnType("nvarchar(4000)");
-
-                    b.Property<DateTimeOffset?>("TokenExpiresAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool>("ViaSignIn")
-                        .HasColumnType("bit");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("Platform", "ExternalId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "Platform")
-                        .IsUnique();
-
-                    b.ToTable("TrustLinks");
-                });
-
-            modelBuilder.Entity("NdeipiChat.Api.Data.TrustScoreRecord", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<decimal>("HistoryPoints")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<string>("Platforms")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("Score")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Settlements")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("Tier1")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<decimal>("Tier2")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<decimal>("Tier3")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<DateTimeOffset>("UpdatedAt")
-                        .HasColumnType("datetimeoffset");
-
-                    b.Property<decimal>("WorkPoints")
-                        .HasPrecision(6, 2)
-                        .HasColumnType("decimal(6,2)");
-
-                    b.Property<int>("WorkReferences")
-                        .HasColumnType("int");
-
-                    b.HasKey("UserId");
-
-                    b.ToTable("TrustScores");
-                });
-
             modelBuilder.Entity("NdeipiChat.Api.Data.User", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3406,24 +3305,6 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.HasOne("NdeipiChat.Api.Data.EventListing", null)
                         .WithMany("Tiers")
                         .HasForeignKey("EventId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("NdeipiChat.Api.Data.TrustLink", b =>
-                {
-                    b.HasOne("NdeipiChat.Api.Data.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("NdeipiChat.Api.Data.TrustScoreRecord", b =>
-                {
-                    b.HasOne("NdeipiChat.Api.Data.User", null)
-                        .WithMany()
-                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

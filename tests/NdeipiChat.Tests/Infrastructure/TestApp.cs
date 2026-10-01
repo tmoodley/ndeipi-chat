@@ -96,6 +96,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Livestock:Claude:MaxAttempts"] = "1",
             ["Livestock:Muzzle:ModelPath"] = TinyMuzzleModel.Path,
             ["Livestock:Muzzle:ModelId"] = "test-grid-pool",
+            ["Finance:DocumentsPath"] = Path.Combine(FilesDirectory, "finance-documents"),
             ["Trust:TokenKey"] = Convert.ToBase64String(Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()),
             ["Trust:LinkedIn:ClientId"] = "li-client",
             ["Trust:LinkedIn:ClientSecret"] = "li-secret",
