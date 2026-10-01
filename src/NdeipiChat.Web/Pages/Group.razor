@@ -16,7 +16,12 @@
         var g = _group.Group;
         var canSee = !g.IsPrivate || g.IsMember;
         <section class="sc-hero glass">
-            <div class="sc-cover @(g.CoverUrl is null ? "tone-" + g.Tone : "has-image")" style="@(g.CoverUrl is { } cover ? $"background-image: url('{cover}')" : "")"></div>
+            <div class="sc-cover tone-@g.Tone @(g.CoverUrl is null ? "" : "has-image")">
+                @if (g.CoverUrl is { } cover)
+                {
+                    <img class="cover-img" src="@cover" alt="" onload="this.classList.add('ready')" />
+                }
+            </div>
             <div class="sc-hero-body">
                 <div class="sc-stats">
                     <button class="sc-stat" @onclick='() => _tab = "members"'><b>@g.MemberCount</b><span>Members</span></button>

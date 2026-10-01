@@ -2,17 +2,12 @@
 <span class="hex @Class" style="--size:@(Size)px">
     <span class="hex-ring"></span>
     <span class="hex-inner">
+        @* Initials (or the icon) first, then the photo over them, faded in once it has arrived: the
+           avatar is never an empty hole while the photo downloads. *@
+        <span class="initials @Tone">@(Icon ?? Initials)</span>
         @if (Url is not null)
         {
-            <img src="@Url" alt="" />
-        }
-        else if (Icon is not null)
-        {
-            <span class="initials @Tone">@Icon</span>
-        }
-        else
-        {
-            <span class="initials @Tone">@Initials</span>
+            <img src="@Url" alt="" onload="this.classList.add('ready')" />
         }
     </span>
     @if (Badge is not null)
