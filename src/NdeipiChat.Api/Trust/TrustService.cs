@@ -3,6 +3,7 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using NdeipiChat.Api.Auth;
 using NdeipiChat.Api.Banking;
 using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Data;
@@ -20,6 +21,7 @@ public sealed class TrustService(
     TrustOAuthClient oauth,
     TrustTokenProtector tokens,
     BankingService banking,
+    CurrentUserService users,
     IOptions<TrustOptions> options,
     IOptions<BridgeOptions> bridge,
     IMemoryCache cache,
@@ -167,19 +169,26 @@ public sealed class TrustService(
         return await MeAsync(user, ct);
     }
 
-    /// <summary>Re-reads the identity check from Bridge (at most every 30 seconds), then the score.</summary>
+    /// <summary>
+    /// Checks again (at most every 30 seconds): the sign-in accounts and phone from Clerk, so one added
+    /// since the last profile sync counts now, and the identity check from Bridge; then the score.
+    /// </summary>
     public async Task<MyTrustDto> RefreshAsync(User user, CancellationToken ct)
     {
-        if (bridge.Value.IsConfigured && !cache.TryGetValue(RefreshKey(user.Id), out _))
+        if (!cache.TryGetValue(RefreshKey(user.Id), out _))
         {
             cache.Set(RefreshKey(user.Id), true, RefreshCooldown);
-            try
+            user = await users.GetByClerkIdAsync(user.ClerkUserId, ct, resync: true);
+            if (bridge.Value.IsConfigured)
             {
-                await banking.RefreshAsync(user.Id, ct);
-            }
-            catch (Exception ex) when (ex is BridgeApiException or HttpRequestException)
-            {
-                log.LogWarning(ex, "Couldn't refresh KYC for {UserId} for the Trust Score", user.Id);
+                try
+                {
+                    await banking.RefreshAsync(user.Id, ct);
+                }
+                catch (Exception ex) when (ex is BridgeApiException or HttpRequestException)
+                {
+                    log.LogWarning(ex, "Couldn't refresh KYC for {UserId} for the Trust Score", user.Id);
+                }
             }
         }
         return await MeAsync(user, ct);

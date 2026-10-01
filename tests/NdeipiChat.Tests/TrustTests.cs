@@ -310,6 +310,22 @@ public sealed class TrustTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
+    public async Task Checking_again_reads_a_sign_in_account_added_since_the_last_profile_sync()
+    {
+        var user = await app.CreateUserAsync("Late Google Adder");
+        Assert.Equal(0, (await user.GetAsync<MyTrustDto>($"{Base}/me")).Score.Score);
+
+        // They add Google to their sign-in in Clerk; the profile isn't due a sync for hours.
+        var clerk = app.Clerk.GetUser(user.ClerkId);
+        app.Clerk.AddUser(clerk with { ExternalAccounts = [SignIn("oauth_google", "g-" + NewCode(), "late@gmail.com")] });
+        Assert.DoesNotContain((await user.GetAsync<MyTrustDto>($"{Base}/me")).Links, l => l.Platform == TrustPlatforms.Google);
+
+        var checkedAgain = await user.PostAsync<MyTrustDto>($"{Base}/refresh", new { });
+        Assert.Equal(20, checkedAgain.Score.Score);
+        Assert.True(checkedAgain.Links.Single(l => l.Platform == TrustPlatforms.Google).ViaSignIn);
+    }
+
+    [Fact]
     public async Task Signing_in_with_LinkedIn_counts_as_professional_and_a_sign_in_account_backs_only_one_Ndeipi_account()
     {
         var linkedInId = "li-" + NewCode();

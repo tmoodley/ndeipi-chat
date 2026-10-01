@@ -120,7 +120,8 @@
 
         try
         {
-            _me = await Api.GetMyTrustAsync();
+            // Checks again on opening (at most every 30 seconds): a sign-in account added since counts now.
+            _me = await Api.RefreshTrustAsync();
             TrustBadge.Remember(_me.Score);
             _telegramBot = (await Api.GetTrustSettingsAsync()).TelegramBot;
         }
