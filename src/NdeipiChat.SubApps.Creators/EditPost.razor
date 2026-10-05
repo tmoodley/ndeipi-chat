@@ -1,0 +1,209 @@
+@inject IJSRuntime JS
+
+@* Writing a post (FR-CR-05, 08, 10): title, text (Markdown), photos, audio and video, who can see it
+   (everyone, a tier and up, or pay-per-view), and when it goes out. *@
+
+<section class="cr-card">
+    <h3>@(PostId is null ? "New post" : "Edit post")</h3>
+    <label class="cr-field">Title<input @bind="_title" maxlength="@CreatorsContract.MaxTitleLength" /></label>
+    <label class="cr-field">Text<textarea rows="10" maxlength="@CreatorsContract.MaxBodyLength" @bind="_body" placeholder="Write here. Markdown works for **bold** and headings."></textarea></label>
+
+    <div class="cr-field">Photos, audio and video
+        <div class="cr-thumbs">
+            @foreach (var m in _media)
+            {
+                <div class="cr-thumb">
+                    @if (m.ThumbUrl is { } thumb)
+                    {
+                        <img src="@thumb" alt="" />
+                    }
+                    else
+                    {
+                        <span>@(m.Type == MediaTypes.Video ? "▶" : "🎧")</span>
+                    }
+                    <button title="Remove" @onclick="() => _media.Remove(m)">✕</button>
+                </div>
+            }
+            @if (_media.Count < CreatorsContract.MaxMediaPerPost)
+            {
+                <label class="cr-add" title="Add">@(_uploading ? "…" : "＋")
+                    <InputFile OnChange="AddAsync" multiple accept="image/*,audio/*,video/*" disabled="@_uploading" />
+                </label>
+            }
+        </div>
+        <span class="muted small" style="font-weight: 500">Photos up to @(CreatorsContract.MaxImageBytes / 1024 / 1024) MB; audio and video up to @(CreatorsContract.MaxAudioVideoBytes / 1024 / 1024) MB.</span>
+    </div>
+
+    <div class="cr-field">Who can see it
+        <div class="cr-chips">
+            <button class="@(_access == PostAccess.Public ? "on" : "")" @onclick="() => _access = PostAccess.Public">Everyone</button>
+            <button class="@(_access == PostAccess.Tier ? "on" : "")" @onclick="() => _access = PostAccess.Tier" disabled="@(_tiers.Count == 0)">Subscribers</button>
+            <button class="@(_access == PostAccess.PayPerView ? "on" : "")" @onclick="() => _access = PostAccess.PayPerView">Pay-per-view</button>
+        </div>
+        @if (_tiers.Count == 0 && _access != PostAccess.PayPerView)
+        {
+            <span class="muted small" style="font-weight: 500">Add a tier in the studio to post for subscribers.</span>
+        }
+    </div>
+    @if (_access != PostAccess.Public)
+    {
+        <div class="cr-two">
+            <label class="cr-field">@(_access == PostAccess.Tier ? "Tier (and up)" : "Also free for (optional)")
+                <select @bind="_tier">
+                    @if (_access == PostAccess.PayPerView)
+                    {
+                        <option value="">No tier: everyone pays</option>
+                    }
+                    @foreach (var t in _tiers)
+                    {
+                        <option value="@t.Id">@t.Name and up</option>
+                    }
+                </select>
+            </label>
+            @if (_access == PostAccess.PayPerView)
+            {
+                <label class="cr-field">Price ($)<input type="number" min="0.5" step="0.01" @bind="_price" /></label>
+            }
+        </div>
+        <label class="cr-field">Teaser for those who can't see it (optional)<input @bind="_teaser" maxlength="@CreatorsContract.MaxTeaserLength" placeholder="The start of the text, if left empty" /></label>
+    }
+
+    <label class="cr-field">Publish
+        <input type="datetime-local" @bind="_publishAt" />
+    </label>
+    <span class="muted small">Leave it empty to publish now, or pick a time to schedule it.</span>
+
+    @if (_error is not null)
+    {
+        <p class="error" style="margin: 0">@_error</p>
+    }
+    <div class="cr-actions">
+        <button class="primary" disabled="@(_busy || _uploading || string.IsNullOrWhiteSpace(_title))" @onclick="SaveAsync">
+            @(_busy ? "Saving…" : _publishAt is { } at && at > DateTime.Now ? "Schedule" : PostId is null ? "Publish" : "Save")
+        </button>
+        @if (PostId is not null)
+        {
+            <button class="secondary" disabled="@_busy" @onclick="DeleteAsync">Delete</button>
+        }
+    </div>
+</section>
+
+@code {
+    [CascadingParameter] public CreatorsApp App { get; set; } = null!;
+    [Parameter] public Guid? PostId { get; set; }
+
+    List<CreatorTierDto> _tiers = [];
+    readonly List<CreatorMediaDto> _media = [];
+    string? _title, _body, _teaser, _tier, _error;
+    string _access = PostAccess.Public;
+    decimal? _price;
+    DateTime? _publishAt;
+    bool _busy, _uploading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _tiers = (await App.Api.GetAsync<List<CreatorTierDto>>($"{CreatorsApi.Base}/studio/tiers")).Where(t => t.Active).ToList();
+            if (PostId is { } id)
+            {
+                var p = await App.Api.GetAsync<CreatorPostDto>($"{CreatorsApi.Base}/posts/{id}");
+                (_title, _body, _access, _tier, _price) = (p.Title, p.Body, p.Access, p.TierId?.ToString(), p.Price);
+                _media.AddRange(p.Media);
+                if (p.IsScheduled)
+                    _publishAt = p.PublishAt.ToLocalTime().DateTime;
+            }
+            _tier ??= _tiers.FirstOrDefault()?.Id.ToString();
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task AddAsync(InputFileChangeEventArgs e)
+    {
+        (_uploading, _error) = (true, null);
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(CreatorsContract.MaxMediaPerPost).Take(CreatorsContract.MaxMediaPerPost - _media.Count))
+            {
+                CreatorMediaDto uploaded;
+                if (file.ContentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+                {
+                    using var original = new MemoryStream();
+                    await file.OpenReadStream(CreatorsContract.MaxImageBytes).CopyToAsync(original);
+                    var bytes = original.ToArray();
+                    try
+                    {
+                        bytes = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", bytes, 2048, 0.85);
+                    }
+                    catch (JSException)
+                    {
+                    }
+                    uploaded = await App.Api.UploadAsync<CreatorMediaDto>($"{CreatorsApi.Base}/studio/media", new MemoryStream(bytes), "photo.jpg", "image/jpeg");
+                }
+                else
+                {
+                    if (file.Size > CreatorsContract.MaxAudioVideoBytes)
+                        throw new CreatorsException($"Audio and video can be up to {CreatorsContract.MaxAudioVideoBytes / 1024 / 1024} MB.");
+                    await using var stream = file.OpenReadStream(CreatorsContract.MaxAudioVideoBytes);
+                    uploaded = await App.Api.UploadAsync<CreatorMediaDto>($"{CreatorsApi.Base}/studio/media", stream, file.Name, file.ContentType);
+                }
+                _media.Add(uploaded);
+                StateHasChanged();
+            }
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (IOException)
+        {
+            _error = "Couldn't read that file. Please try again.";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    async Task SaveAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            DateTimeOffset? publishAt = _publishAt is { } local ? new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local)) : null;
+            var tier = _access == PostAccess.Public ? null : Guid.TryParse(_tier, out var t) ? t : (Guid?)null;
+            var request = new SaveCreatorPostRequest(_title!, _body, _media.Select(m => m.Id).ToList(), _access, tier,
+                _access == PostAccess.PayPerView ? _price : null, publishAt, _teaser);
+            if (PostId is { } id)
+                await App.Api.SendAsync<CreatorPostDto>(HttpMethod.Put, $"{CreatorsApi.Base}/studio/posts/{id}", request);
+            else
+                await App.Api.SendAsync<CreatorPostDto>(HttpMethod.Post, $"{CreatorsApi.Base}/studio/posts", request);
+            App.Replace(new CreatorsView.Studio("posts"));
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task DeleteAsync()
+    {
+        _busy = true;
+        try
+        {
+            await App.Api.SendAsync<object>(HttpMethod.Delete, $"{CreatorsApi.Base}/studio/posts/{PostId}", null);
+            App.Replace(new CreatorsView.Studio("posts"));
+        }
+        catch (CreatorsException ex)
+        {
+            (_error, _busy) = (ex.Message, false);
+        }
+    }
+}

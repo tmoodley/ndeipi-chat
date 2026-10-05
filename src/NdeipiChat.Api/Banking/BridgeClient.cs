@@ -60,6 +60,10 @@ public sealed class BridgeClient(HttpClient http)
     public Task<BridgeTransfer> CreateTransferAsync(BridgeTransferRequest request, string idempotencyKey, CancellationToken ct) =>
         SendAsync<BridgeTransfer>(HttpMethod.Post, "transfers", request, idempotencyKey, ct);
 
+    /// <summary>Saves a bank account with Bridge (US account and routing number, or an IBAN), to withdraw to.</summary>
+    public Task<BridgeExternalAccount> CreateExternalAccountAsync(string customerId, object account, string idempotencyKey, CancellationToken ct) =>
+        SendAsync<BridgeExternalAccount>(HttpMethod.Post, $"customers/{Uri.EscapeDataString(customerId)}/external_accounts", account, idempotencyKey, ct);
+
     public Task<BridgeTransfer> GetTransferAsync(string transferId, CancellationToken ct) =>
         SendAsync<BridgeTransfer>(HttpMethod.Get, $"transfers/{Uri.EscapeDataString(transferId)}", null, null, ct);
 
@@ -106,17 +110,25 @@ public sealed record BridgeWallet(string Id, string? Chain, string? Address, Lis
 
 public sealed record BridgeBalance(string? Balance, string? Currency, string? Chain, string? ContractAddress);
 
+/// <param name="DeveloperFee">Bridge keeps this much of <see cref="Amount"/> for the platform (its developer fee), so the
+/// destination gets the rest: how creator payments split off the platform fee in one transfer.</param>
 public sealed record BridgeTransferRequest(
     string Amount,
     string OnBehalfOf,
     BridgeTransferEndpoint Source,
-    BridgeTransferEndpoint Destination);
+    BridgeTransferEndpoint Destination,
+    string? DeveloperFee = null);
 
+/// <param name="ExternalAccountId">A bank account saved with Bridge: a withdrawal to the bank.</param>
 public sealed record BridgeTransferEndpoint(
     string PaymentRail,
     string Currency,
     string? BridgeWalletId = null,
-    string? ToAddress = null);
+    string? ToAddress = null,
+    string? ExternalAccountId = null);
+
+/// <summary>A bank account Bridge holds for a customer, to withdraw to. Only its id and last digits come back.</summary>
+public sealed record BridgeExternalAccount(string Id, string? Last4, string? BankName, string? Currency);
 
 public sealed record BridgeTransfer(string Id, string? State, string? Amount);
 

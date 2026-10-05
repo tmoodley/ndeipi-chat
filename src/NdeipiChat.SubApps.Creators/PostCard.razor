@@ -1,0 +1,40 @@
+@* A post in a creator's list: its cover (blurred when locked), title, teaser, and who can see it. *@
+
+<section class="cr-card">
+    <button class="cr-post" style="background: none; box-shadow: none; padding: 0" @onclick="() => App.Go(new CreatorsView.Post(Post.Id))">
+        @if (Post.Media.FirstOrDefault() is { } first)
+        {
+            <div class="cover @(Post.Locked ? "locked" : "")">
+                @if (first.ThumbUrl is { } thumb)
+                {
+                    <img src="@thumb" alt="" loading="lazy" />
+                }
+                else if (Post.Locked)
+                {
+                    <span>🔒</span>
+                }
+                else
+                {
+                    <span>@(first.Type == MediaTypes.Video ? "▶" : "🎧")</span>
+                }
+            </div>
+        }
+        <div class="cr-row">
+            <span class="grow">
+                <b style="font-size: 17px">@(Pinned ? "📌 " : "")@Post.Title</b>
+                <small>@(Post.IsScheduled ? $"Scheduled for {Format.WhenTime(Post.PublishAt)}" : Format.When(Post.PublishAt))@(Post.Views is { } v ? $" · {v} view{(v == 1 ? "" : "s")}" : "")</small>
+            </span>
+            <span class="cr-lock @(Post.Locked ? "" : "open")">@(Post.Locked ? "🔒" : Post.Unlocked ? "🔓" : "") @Format.Access(Post)</span>
+        </div>
+        @if (Post.Teaser is { } teaser)
+        {
+            <span class="muted" style="font-size: 15px">@teaser</span>
+        }
+    </button>
+</section>
+
+@code {
+    [CascadingParameter] public CreatorsApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public CreatorPostDto Post { get; set; } = null!;
+    [Parameter] public bool Pinned { get; set; }
+}

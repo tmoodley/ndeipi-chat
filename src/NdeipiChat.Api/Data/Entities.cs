@@ -197,6 +197,10 @@ public sealed class BankTransfer
     public decimal Amount { get; set; }
     public required string Currency { get; set; }
     public string? Memo { get; set; }
+
+    /// <summary>The platform's cut, kept by Bridge as its developer fee (creator payments); the recipient gets the rest.</summary>
+    public decimal? FeeAmount { get; set; }
+
     public string? BridgeTransferId { get; set; }
     public string Status { get; set; } = TransferStatuses.Pending;
     public string? ProviderState { get; set; }

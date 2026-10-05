@@ -175,6 +175,25 @@ public sealed class LocalPreview
             ContractJson.ToElement(new MarketOfferPayload(Guid.Empty, goatListing, "", Guid.Empty, OfferKinds.Barter, null, null,
                 "Exchange with 6 better crossbreed females acceptable (small ones?)")), Guid.NewGuid()));
 
+        // Creators: my page with two tiers and a public, a members-only and a pay-per-view post;
+        // Tendai subscribes (and shares who he is). My wallet shows $120 for the earnings page.
+        app.Bridge.On(HttpMethod.Get, $"/v0/customers/cust_{me.Id:N}/wallets/wal_{me.Id:N}", _ => new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { id = $"wal_{me.Id:N}", chain = "solana", address = "So1ana", balances = new[] { new { balance = "120.00", currency = "usdc", chain = "solana" } } })
+        });
+        using (var page = await me.Http.PutAsJsonAsync("api/creators/profile", new SaveCreatorRequest("Ty's Farm Lab", "farming",
+            "Practical lessons on goats, poultry and small-scale farming in Zambia and Zimbabwe.", [new CreatorLink("YouTube", "https://youtube.com/@ndeipi")]), ContractJson.Options))
+            page.EnsureSuccessStatusCode();
+        var supporter = await me.PostAsync<CreatorTierDto>("api/creators/studio/tiers", new SaveCreatorTierRequest("Supporter", "Members-only posts", 3m, 30m, 1));
+        var insider = await me.PostAsync<CreatorTierDto>("api/creators/studio/tiers", new SaveCreatorTierRequest("Insider", "Everything, plus monthly Q&A", 10m, null, 2));
+        await me.PostAsync<CreatorPostDto>("api/creators/studio/posts", new SaveCreatorPostRequest("Welcome to the Farm Lab",
+            "Every week: one practical lesson you can use on your farm.", null, PostAccess.Public, null, null, null));
+        await me.PostAsync<CreatorPostDto>("api/creators/studio/posts", new SaveCreatorPostRequest("Feeding Boer kids for faster growth",
+            "The feeding plan we use from week 2 to week 12, with costs in kwacha.", null, PostAccess.Tier, supporter.Id, null, null));
+        await me.PostAsync<CreatorPostDto>("api/creators/studio/posts", new SaveCreatorPostRequest("Live Q&A recording",
+            "An hour of your questions on poultry disease.", null, PostAccess.PayPerView, insider.Id, 2m, null));
+        await tendai.PostAsync<CreatorSubscriptionDto>($"api/creators/{me.Id}/subscribe", new CreatorSubscribeRequest(supporter.Id, BillingPeriods.Monthly, ShareProfile: true));
+
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };
         foreach (var (user, file) in new[] { (me, tokensFile), (tendai, tokensFile + ".tendai") })
