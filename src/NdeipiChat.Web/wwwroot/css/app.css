@@ -1257,3 +1257,52 @@ textarea { resize: vertical; min-height: 90px; }
 }
 .recipient-trust { align-self: flex-start; }
 .trust-signin-hint { margin: 6px 8px 2px; }
+
+/* ---- Chat media, hashtags, forwarding and the livestock market (SRS phase 1) ---- */
+.forwarded { font-size: 12px; color: var(--muted); font-style: italic; padding: 0 6px; }
+.hashtag { color: var(--brand); font-weight: 600; text-decoration: none; }
+.message.mine .bubble .hashtag { color: #fff; text-decoration: underline; }
+.message .forward { align-self: center; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 1px solid var(--divider); background: var(--surface); color: var(--muted); box-shadow: none; font-size: 15px; flex-shrink: 0; opacity: .75; }
+.message .forward:hover { opacity: 1; color: var(--brand); border-color: var(--brand); }
+.composer .attach { position: relative; overflow: hidden; display: grid; place-items: center; cursor: pointer; font-size: 18px; }
+.composer .attach input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.composer .attach.busy { opacity: .5; pointer-events: none; }
+.upload-status { margin: 0 14px 6px; font-size: 13px; color: var(--muted); }
+.upload-status.failed { color: var(--danger); }
+.media-bubble { width: 300px; max-width: 100%; border-radius: 18px; overflow: hidden; background: var(--glass-strong); border: 1px solid var(--glass-border); box-shadow: var(--shadow); }
+.media-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.media-grid.one { grid-template-columns: 1fr; }
+.media-photo, .media-video { position: relative; display: block; aspect-ratio: 1; background: #1b1f2a; overflow: hidden; }
+.media-grid.one .media-photo, .media-grid.one .media-video { aspect-ratio: 4 / 3; }
+.media-photo img, .media-video video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.media-video .play { position: absolute; inset: 0; margin: auto; width: 58px; height: 58px; border-radius: 50%; padding: 0 0 0 5px; border: 0; background: rgba(0, 0, 0, .55); color: #fff; font-size: 24px; box-shadow: 0 4px 18px rgba(0, 0, 0, .35); }
+.media-caption { padding: 8px 12px 10px; font-size: 15px; line-height: 1.4; white-space: pre-wrap; color: var(--text); }
+.mk-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 12px; font-weight: 800; background: var(--secondary); color: var(--muted); white-space: nowrap; }
+.mk-badge.ok { background: rgba(31, 169, 113, .16); color: var(--success); }
+.mk-badge.wait { background: rgba(255, 196, 0, .2); color: #8A6100; }
+.mk-badge.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
+.listing-card { width: 300px; max-width: 100%; border-radius: 18px; overflow: hidden; background: var(--glass-strong); border: 1px solid var(--glass-border); box-shadow: var(--shadow); color: var(--text); }
+.listing-card.closed .listing-cover img { filter: grayscale(.7); opacity: .7; }
+.listing-cover { position: relative; display: block; aspect-ratio: 16 / 10; background: #1b1f2a; }
+.listing-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.listing-cover .more { position: absolute; right: 8px; bottom: 8px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 12px; font-weight: 700; border-radius: 10px; padding: 2px 8px; }
+.listing-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.listing-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.listing-kicker { font-size: 12px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.listing-title { font-size: 17px; font-weight: 800; line-height: 1.25; }
+.listing-price { font-size: 22px; font-weight: 800; color: var(--success); font-variant-numeric: tabular-nums; }
+.listing-details, .listing-barter { font-size: 13px; color: var(--muted); }
+.listing-desc { font-size: 14px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.listing-actions { display: flex; gap: 8px; margin-top: 4px; }
+.listing-actions .button { flex: 1; text-align: center; padding: 8px 10px; font-size: 14px; }
+.offer-card { width: 280px; max-width: 100%; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--glass-border); box-shadow: var(--shadow); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; color: var(--text); }
+.offer-head { font-size: 13px; font-weight: 700; color: var(--muted); }
+.offer-amount { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.offer-text { font-size: 14px; line-height: 1.4; white-space: pre-wrap; }
+.offer-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.offer-actions { display: flex; gap: 6px; }
+.offer-actions button { padding: 6px 12px; font-size: 13px; }
+.forward-sheet { width: min(420px, calc(100vw - 32px)); max-height: 80vh; display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 20px; }
+.forward-list { overflow-y: auto; display: flex; flex-direction: column; }
+.forward-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--divider); cursor: pointer; }
+.forward-row input { width: 20px; height: 20px; }

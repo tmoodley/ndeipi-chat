@@ -29,9 +29,9 @@ public sealed class LauncherTests(TestApp app) : IClassFixture<TestApp>
 
         var manifest = await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
 
-        // Built-in apps, then the runtime-loaded sub-apps appsettings.json adds (Events, Gigs, POS, Donations, Finance, Inventory).
-        Assert.Equal([BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Shamwaris, BuiltInApps.Herd, BuiltInApps.Wallet, EventsContract.AppId, GigsContract.AppId, PosContract.AppId, DonationsContract.AppId, FinanceContract.AppId, InventoryContract.AppId], manifest.Apps.Select(a => a.Id));
-        Assert.Equal([true, true, true, true, false, false, false, false, false, false, false], manifest.Apps.Select(a => a.Pinned));
+        // Built-in apps, then the runtime-loaded sub-apps appsettings.json adds (Market, Events, Gigs, POS, Donations, Finance, Inventory).
+        Assert.Equal([BuiltInApps.Chats, BuiltInApps.Feed, BuiltInApps.Shamwaris, BuiltInApps.Herd, BuiltInApps.Wallet, MarketContract.AppId, EventsContract.AppId, GigsContract.AppId, PosContract.AppId, DonationsContract.AppId, FinanceContract.AppId, InventoryContract.AppId], manifest.Apps.Select(a => a.Id));
+        Assert.Equal([true, true, true, true, false, false, false, false, false, false, false, false], manifest.Apps.Select(a => a.Pinned));
         var herd = manifest.Apps.Single(a => a.Id == BuiltInApps.Herd);
         Assert.Equal(("Herd", "herd", "1.0.0", (string?)null, (string?)null), (herd.Title, herd.Route, herd.Version, herd.BundleUri, herd.Sha256));
         Assert.Contains("livestock", herd.Scopes);

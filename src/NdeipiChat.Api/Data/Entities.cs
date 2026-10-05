@@ -1026,3 +1026,80 @@ public sealed class TrustScoreRecord
 
     public DateTimeOffset UpdatedAt { get; set; }
 }
+
+/// <summary>
+/// A photo or video uploaded to a chat. Its id is random and unguessable; the files are served by
+/// it without sign-in (as Social's photos are), so a chat's media is as private as its link.
+/// </summary>
+public sealed class ChatMedia
+{
+    public Guid Id { get; set; }
+    public Guid UploaderId { get; set; }
+
+    /// <summary>The chat it was uploaded for; it can only be sent there (or forwarded on by its members).</summary>
+    public Guid ConversationId { get; set; }
+
+    /// <summary>The message it was first sent in, once sent.</summary>
+    public Guid? MessageId { get; set; }
+
+    public required string Type { get; set; }
+    public required string ContentType { get; set; }
+    public int? Width { get; set; }
+    public int? Height { get; set; }
+    public long Size { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>Livestock for sale (Market), first posted in a chat by its seller.</summary>
+public sealed class MarketListing
+{
+    public Guid Id { get; set; }
+    public Guid SellerId { get; set; }
+    public required string Title { get; set; }
+    public required string Species { get; set; }
+    public string? Breed { get; set; }
+    public int Quantity { get; set; } = 1;
+    public decimal? Price { get; set; }
+    public required string Currency { get; set; }
+    public string? Location { get; set; }
+    public string? Age { get; set; }
+    public string? Description { get; set; }
+    public bool OpenToBarter { get; set; }
+    public string? BarterTerms { get; set; }
+    public required string Status { get; set; }
+
+    /// <summary>Its photos and videos (ChatMedia ids), in order, comma-separated.</summary>
+    public string MediaIds { get; set; } = "";
+
+    /// <summary>Its hashtags, each between semicolons (";goats;boer;") so one can be searched for exactly.</summary>
+    public string Tags { get; set; } = "";
+
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>A message showing a listing: where it was first posted, or forwarded to.</summary>
+public sealed class MarketListingPost
+{
+    public Guid MessageId { get; set; }
+    public Guid ListingId { get; set; }
+    public Guid ConversationId { get; set; }
+    public DateTimeOffset PostedAt { get; set; }
+}
+
+/// <summary>An offer on a listing, cash or barter, posted as a message in one of its chats.</summary>
+public sealed class MarketOffer
+{
+    public Guid Id { get; set; }
+    public Guid ListingId { get; set; }
+    public Guid BuyerId { get; set; }
+    public Guid MessageId { get; set; }
+    public Guid ConversationId { get; set; }
+    public required string Kind { get; set; }
+    public decimal? Amount { get; set; }
+    public string? Currency { get; set; }
+    public string? Text { get; set; }
+    public required string Status { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? DecidedAt { get; set; }
+}

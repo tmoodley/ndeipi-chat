@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Photos and videos sent together (media): a gallery in one bubble, two to a row (one wide tile for
+     a single item), videos dark with a play button; tap opens it full size. The caption sits below. -->
+<views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:views="clr-namespace:NdeipiChat.App.Views"
+                  xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                  x:Class="NdeipiChat.App.Views.MediaMessageView"
+                  x:DataType="ext:MediaMessageViewModel">
+    <views:MessageRow.Bubble>
+        <VerticalStackLayout Spacing="3">
+            <Label Text="↪ Forwarded" FontSize="12" FontAttributes="Italic" IsVisible="{Binding IsForwarded}"
+                   TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+            <Border StrokeThickness="1"
+                    Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
+                    StrokeShape="RoundRectangle 18"
+                    Padding="0"
+                    WidthRequest="262"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}"
+                    Shadow="{StaticResource SoftShadow}">
+                <VerticalStackLayout>
+                    <FlexLayout x:Name="Gallery" Wrap="Wrap" JustifyContent="Start" BindableLayout.ItemsSource="{Binding Items}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="ext:MediaItemViewModel">
+                                <Grid Margin="1" BackgroundColor="#1B1F2A" Loaded="OnTileLoaded">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnTileTapped" />
+                                    </Grid.GestureRecognizers>
+                                    <Image Source="{Binding ThumbUrl}" Aspect="AspectFill" IsVisible="{Binding IsVideo, Converter={StaticResource Not}}" />
+                                    <Border IsVisible="{Binding IsVideo}" WidthRequest="54" HeightRequest="54" StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 27" BackgroundColor="#8C000000"
+                                            HorizontalOptions="Center" VerticalOptions="Center">
+                                        <Label Text="▶" TextColor="White" FontSize="22" Margin="4,0,0,0"
+                                               HorizontalOptions="Center" VerticalOptions="Center" />
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </FlexLayout>
+                    <Label Text="{Binding Caption}" IsVisible="{Binding HasCaption}" FontSize="15" Margin="12,8,12,10" LineBreakMode="WordWrap"
+                           TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </views:MessageRow.Bubble>
+</views:MessageRow>

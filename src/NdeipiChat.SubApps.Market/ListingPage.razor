@@ -1,0 +1,309 @@
+@* A listing: its photos and videos, price and details, and the chats it's in. Others make an offer,
+   cash or a trade, which is posted in the chat they pick (§3.4); the seller answers offers here or in
+   the chat, and marks the listing sold. *@
+
+@if (_listing is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var l = _listing;
+    @if (l.Media.Count > 0)
+    {
+        <div class="mk-gallery @(l.Media.Count == 1 ? "one" : "")">
+            @foreach (var m in l.Media)
+            {
+                @if (m.Type == MediaTypes.Video)
+                {
+                    <div><video src="@m.Url" controls preload="metadata" playsinline></video></div>
+                }
+                else
+                {
+                    <a href="@m.Url" target="_blank" rel="noopener"><img src="@(m.ThumbUrl ?? m.Url)" alt="" /></a>
+                }
+            }
+        </div>
+    }
+
+    <section class="mk-card">
+        <div class="mk-row">
+            <span class="grow">
+                <span class="muted small">@MarketContract.SpeciesIcon(l.Species) @MarketContract.SpeciesLabel(l.Species)</span>
+                <h2>@l.Title</h2>
+            </span>
+            <span class="mk-badge @Format.Tone(l.Status)">@ListingStatuses.Label(l.Status)</span>
+        </div>
+        <div class="mk-price">@MarketContract.Price(l.Price, l.Currency)</div>
+        <dl class="mk-facts">
+            @if (l.Quantity > 1)
+            {
+                <dt>How many</dt><dd>@l.Quantity.ToString("N0", CultureInfo.InvariantCulture)</dd>
+            }
+            @if (l.Breed is not null)
+            {
+                <dt>Breed</dt><dd>@l.Breed</dd>
+            }
+            @if (l.Age is not null)
+            {
+                <dt>Age</dt><dd>@l.Age</dd>
+            }
+            @if (l.Location is not null)
+            {
+                <dt>Where</dt><dd>📍 @l.Location</dd>
+            }
+            @if (l.OpenToBarter)
+            {
+                <dt>Swaps</dt><dd>🔁 @(l.BarterTerms ?? "Open to swaps")</dd>
+            }
+            <dt>Seller</dt><dd>@(l.IsMine ? "You" : l.Seller.DisplayName)</dd>
+            <dt>Listed</dt><dd>@Format.Ago(l.CreatedAt)</dd>
+        </dl>
+        @if (l.Description is { } description)
+        {
+            <div class="mk-desc">
+                @foreach (var (text, tag) in Hashtags.Split(description))
+                {
+                    @if (tag is not null)
+                    {
+                        <button class="mk-tag" @onclick="() => App.Go(new MarketView.Feed(tag))">@text</button>
+                    }
+                    else
+                    {
+                        @text
+                    }
+                }
+            </div>
+        }
+        @if (l.Tags.Count > 0)
+        {
+            <div class="mk-chips">
+                @foreach (var tag in l.Tags)
+                {
+                    <button @onclick="() => App.Go(new MarketView.Feed(tag))">#@tag</button>
+                }
+            </div>
+        }
+    </section>
+
+    @if (l.Chats.Count > 0)
+    {
+        <section class="mk-card">
+            <h3>In your chats</h3>
+            @foreach (var c in l.Chats)
+            {
+                <a class="mk-row" href="chat/@c.ConversationId" style="text-decoration: none; color: inherit">
+                    <span class="grow"><b>💬 @c.Title</b><small>Open the chat to talk it through</small></span><span class="muted">›</span>
+                </a>
+            }
+        </section>
+    }
+
+    @if (_message is not null)
+    {
+        <div class="notice">@_message</div>
+    }
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+
+    @if (l.IsMine)
+    {
+        <section class="mk-card">
+            <h3>Your listing</h3>
+            <div class="mk-actions">
+                @if (ListingStatuses.IsOpen(l.Status))
+                {
+                    <button class="primary" disabled="@_busy" @onclick="() => StatusAsync(ListingStatuses.Sold)">Mark sold</button>
+                    @if (l.Status == ListingStatuses.Upcoming)
+                    {
+                        <button class="secondary" disabled="@_busy" @onclick="() => StatusAsync(ListingStatuses.Available)">Now for sale</button>
+                    }
+                    <button class="secondary" disabled="@_busy" @onclick="() => StatusAsync(ListingStatuses.Withdrawn)">Withdraw</button>
+                }
+                else
+                {
+                    <button class="primary" disabled="@_busy" @onclick="() => StatusAsync(ListingStatuses.Available)">For sale again</button>
+                }
+            </div>
+            <p class="muted small" style="margin: 0">Marking it sold or withdrawn declines the offers still waiting, and shows on every chat it's in.</p>
+        </section>
+    }
+    else if (ListingStatuses.IsOpen(l.Status) && l.Chats.Count > 0)
+    {
+        <section class="mk-card">
+            <h3>Make an offer</h3>
+            <div class="mk-seg">
+                <button class="@(_kind == OfferKinds.Cash ? "on" : "")" @onclick="() => _kind = OfferKinds.Cash">💵 Cash</button>
+                <button class="@(_kind == OfferKinds.Barter ? "on" : "")" @onclick="() => _kind = OfferKinds.Barter">🔁 Trade</button>
+            </div>
+            @if (_kind == OfferKinds.Cash)
+            {
+                <div class="mk-two">
+                    <label class="mk-field">Your offer<input type="number" min="1" step="any" inputmode="decimal" @bind="_amount" placeholder="@(l.Price?.ToString("0", CultureInfo.InvariantCulture) ?? "Amount")" /></label>
+                    <label class="mk-field">Currency
+                        <select @bind="_currency">
+                            @foreach (var c in MarketContract.Currencies)
+                            {
+                                <option value="@c">@(c == "ZMW" ? "Kwacha (K)" : "US dollars ($)")</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+            }
+            <label class="mk-field">@(_kind == OfferKinds.Cash ? "Note (optional)" : "What you'd trade")
+                <textarea rows="2" maxlength="@MarketContract.MaxOfferLength" @bind="_text"
+                          placeholder="@(_kind == OfferKinds.Cash ? "e.g. I can collect on Saturday" : "e.g. 6 crossbreed females (small ones)")"></textarea>
+            </label>
+            @if (l.Chats.Count > 1)
+            {
+                <label class="mk-field">Post it in
+                    <select @bind="_offerChat">
+                        @foreach (var c in l.Chats)
+                        {
+                            <option value="@c.ConversationId">@c.Title</option>
+                        }
+                    </select>
+                </label>
+            }
+            else
+            {
+                <span class="muted small">It's posted in @l.Chats[0].Title, where the seller sees it.</span>
+            }
+            <button class="primary" disabled="@_busy" @onclick="OfferAsync">@(_busy ? "Sending…" : "Send offer")</button>
+        </section>
+    }
+
+    @if (_offers.Count > 0)
+    {
+        <section class="mk-card">
+            <h3>@(l.IsMine ? "Offers" : "Your offers")</h3>
+            @foreach (var o in _offers)
+            {
+                <div class="mk-row" style="border-top: 1px solid var(--divider); padding-top: 8px">
+                    <span class="grow">
+                        <b>@Format.OfferAmount(o) @(l.IsMine ? $"from {o.Buyer.DisplayName}" : "")</b>
+                        @if (o.Text is not null)
+                        {
+                            <small>@o.Text</small>
+                        }
+                        <small>@Format.Ago(o.CreatedAt)</small>
+                    </span>
+                    @if (o.Status == OfferStatuses.Pending && l.IsMine)
+                    {
+                        <span class="mk-actions">
+                            <button class="primary" disabled="@_busy" @onclick='() => AnswerAsync(o, "accept")'>Accept</button>
+                            <button class="secondary" disabled="@_busy" @onclick='() => AnswerAsync(o, "decline")'>Decline</button>
+                        </span>
+                    }
+                    else if (o.Status == OfferStatuses.Pending)
+                    {
+                        <button class="link" disabled="@_busy" @onclick='() => AnswerAsync(o, "withdraw")'>Withdraw</button>
+                    }
+                    else
+                    {
+                        <span class="mk-badge @Format.Tone(o.Status)">@OfferStatuses.Label(o.Status)</span>
+                    }
+                </div>
+            }
+        </section>
+    }
+}
+
+@code {
+    [CascadingParameter] public MarketApp App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    /// <summary>Opened from a chat's listing card to make an offer there.</summary>
+    [Parameter] public Guid? OfferIn { get; set; }
+
+    ListingDto? _listing;
+    List<OfferDto> _offers = [];
+    string? _error, _message, _text;
+    string _kind = OfferKinds.Cash, _currency = MarketContract.DefaultCurrency;
+    decimal? _amount;
+    Guid _offerChat;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        if (_listing is { } l)
+        {
+            _currency = l.Currency;
+            _offerChat = OfferIn is { } chat && l.Chats.Any(c => c.ConversationId == chat) ? chat : l.Chats.FirstOrDefault()?.ConversationId ?? Guid.Empty;
+        }
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _listing = await App.Api.GetAsync<ListingDto>($"{MarketApi.Base}/listings/{Id}");
+            _offers = await App.Api.GetAsync<List<OfferDto>>($"{MarketApi.Base}/listings/{Id}/offers");
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task OfferAsync()
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            await App.Api.PostMessageAsync(_offerChat, MessageKinds.MarketOffer,
+                new MarketOfferPayload(Guid.Empty, Id, "", Guid.Empty, _kind, _kind == OfferKinds.Cash ? _amount : null, _kind == OfferKinds.Cash ? _currency : null, _text));
+            (_amount, _text) = (null, null);
+            _message = "Offer sent. The seller sees it in the chat.";
+            await LoadAsync();
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task StatusAsync(string status)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            _listing = await App.Api.SendAsync<ListingDto>(HttpMethod.Put, $"{MarketApi.Base}/listings/{Id}/status", new SetListingStatusRequest(status));
+            _offers = await App.Api.GetAsync<List<OfferDto>>($"{MarketApi.Base}/listings/{Id}/offers");
+            _message = $"Marked {ListingStatuses.Label(status).ToLowerInvariant()}.";
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task AnswerAsync(OfferDto offer, string answer)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            await App.Api.SendAsync<OfferDto>(HttpMethod.Post, $"{MarketApi.Base}/offers/{offer.Id}/{answer}", null);
+            await LoadAsync();
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

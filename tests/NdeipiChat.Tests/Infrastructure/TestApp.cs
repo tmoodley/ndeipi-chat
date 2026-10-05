@@ -88,6 +88,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Bridge:Currency"] = "usdc",
             ["Bridge:PollInterval"] = "00:00:00",
             ["Livestock:ImageStoragePath"] = Path.Combine(FilesDirectory, "livestock-images"),
+            ["ChatMedia:Path"] = Path.Combine(FilesDirectory, "chat-media"),
             ["Social:MediaPath"] = Path.Combine(FilesDirectory, "post-media"),
             ["Social:PublicBaseUrl"] = "",
             ["Social:Nft:Chain"] = "ndeipi",

@@ -1,0 +1,208 @@
+@inject IJSRuntime JS
+
+@* The listings in the chats you're in: search, filter by animal or hashtag, newest first. The last
+   page is kept on this device, so it still shows (with sellers' chats) without a connection (§4.2). *@
+
+<div class="mk-search">
+    <input type="search" placeholder="Search goats, Boer, Monze…" @bind="_q" @bind:event="onchange" @bind:after="ReloadAsync" />
+</div>
+
+<div class="mk-chips">
+    <button class="@(_species is null ? "on" : "")" @onclick="() => SpeciesAsync(null)">All animals</button>
+    @foreach (var s in MarketContract.Species)
+    {
+        <button class="@(_species == s.Code ? "on" : "")" @onclick="() => SpeciesAsync(s.Code)">@MarketContract.SpeciesIcon(s.Code) @s.Label</button>
+    }
+</div>
+
+@if (_tags.Count > 0 || Tag is not null)
+{
+    <div class="mk-chips">
+        @if (Tag is { } current && _tags.All(t => t.Tag != current))
+        {
+            <button class="on" @onclick="() => TagAsync(null)">#@current ✕</button>
+        }
+        @foreach (var t in _tags)
+        {
+            <button class="@(Tag == t.Tag ? "on" : "")" @onclick="() => TagAsync(Tag == t.Tag ? null : t.Tag)">#@t.Tag @(Tag == t.Tag ? "✕" : "")</button>
+        }
+    </div>
+}
+
+@if (_offline)
+{
+    <div class="mk-offline">You're offline. These are the listings from @(_cachedAt is { } at ? Format.Ago(at) : "last time").</div>
+}
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+
+@if (_listings is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_listings.Count == 0)
+{
+    <section class="mk-card">
+        <p class="muted" style="margin: 0">
+            @(Tag is not null || _species is not null || !string.IsNullOrEmpty(_q)
+                ? "Nothing matches that yet."
+                : "No livestock for sale in your groups yet. Sell some with ＋ Sell, or from a group chat's ＋.")
+        </p>
+    </section>
+}
+else
+{
+    <div class="mk-grid">
+        @foreach (var l in _listings)
+        {
+            <button class="mk-item" @key="l.Id" @onclick="() => App.Go(new MarketView.Listing(l.Id))">
+                <div class="cover">
+                    @if (Format.Cover(l) is { } cover)
+                    {
+                        <img src="@cover" alt="" loading="lazy" />
+                    }
+                    else
+                    {
+                        <span>@MarketContract.SpeciesIcon(l.Species)</span>
+                    }
+                    @if (l.Status != ListingStatuses.Available)
+                    {
+                        <span class="mk-badge @Format.Tone(l.Status)">@ListingStatuses.Label(l.Status)</span>
+                    }
+                </div>
+                <div class="body">
+                    <span class="title">@l.Title</span>
+                    <span class="price">@MarketContract.Price(l.Price, l.Currency)</span>
+                    <span class="meta">@Format.Details(l)</span>
+                    <span class="meta">@l.Seller.DisplayName · @Format.Ago(l.UpdatedAt)</span>
+                </div>
+            </button>
+        }
+    </div>
+    @if (_before is not null)
+    {
+        <button class="secondary" disabled="@_loading" @onclick="MoreAsync">@(_loading ? "Loading…" : "Show more")</button>
+    }
+}
+
+@code {
+    [CascadingParameter] public MarketApp App { get; set; } = null!;
+    [Parameter] public string? InitialTag { get; set; }
+
+    string? Tag;
+
+    List<ListingDto>? _listings;
+    List<TagCountDto> _tags = [];
+    string? _species, _q, _error;
+    DateTimeOffset? _before, _cachedAt;
+    bool _loading, _offline;
+
+    sealed record Cached(DateTimeOffset At, List<ListingDto> Listings);
+
+    string CacheKey => $"ndeipi.market.{App.Context.UserId:N}";
+    bool Unfiltered => Tag is null && _species is null && string.IsNullOrEmpty(_q);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Tag = InitialTag;
+        await ReloadAsync();
+        try
+        {
+            _tags = await App.Api.GetAsync<List<TagCountDto>>($"{MarketApi.Base}/tags");
+        }
+        catch (MarketException)
+        {
+        }
+    }
+
+    string Query(DateTimeOffset? before)
+    {
+        var parts = new List<string>();
+        if (_species is { } s) parts.Add($"species={s}");
+        if (Tag is { } t) parts.Add($"tag={Uri.EscapeDataString(t)}");
+        if (!string.IsNullOrWhiteSpace(_q)) parts.Add($"q={Uri.EscapeDataString(_q.Trim())}");
+        if (before is { } b) parts.Add($"before={Uri.EscapeDataString(b.ToString("O"))}");
+        return parts.Count == 0 ? "" : "?" + string.Join('&', parts);
+    }
+
+    async Task ReloadAsync()
+    {
+        (_loading, _error) = (true, null);
+        try
+        {
+            var page = await App.Api.GetAsync<ListingPageDto>($"{MarketApi.Base}/listings{Query(null)}");
+            (_listings, _before, _offline) = (page.Listings.ToList(), page.Before, false);
+            if (Unfiltered)
+                await SaveAsync(_listings);
+        }
+        catch (MarketException ex)
+        {
+            if (ex.Offline && Unfiltered && await LoadCachedAsync() is { } cached)
+                (_listings, _cachedAt, _offline, _before) = (cached.Listings, cached.At, true, null);
+            else
+                (_error, _listings) = (ex.Message, _listings ?? []);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    async Task MoreAsync()
+    {
+        _loading = true;
+        try
+        {
+            var page = await App.Api.GetAsync<ListingPageDto>($"{MarketApi.Base}/listings{Query(_before)}");
+            _listings!.AddRange(page.Listings.Where(l => _listings.All(x => x.Id != l.Id)));
+            _before = page.Before;
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    Task SpeciesAsync(string? species)
+    {
+        _species = species;
+        return ReloadAsync();
+    }
+
+    Task TagAsync(string? tag)
+    {
+        Tag = tag;
+        return ReloadAsync();
+    }
+
+    async Task SaveAsync(List<ListingDto> listings)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", CacheKey, JsonSerializer.Serialize(new Cached(DateTimeOffset.UtcNow, listings), ContractJson.Options));
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        {
+            // Storage full or blocked: the Market still works, just not offline.
+        }
+    }
+
+    async Task<Cached?> LoadCachedAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", CacheKey);
+            return json is null ? null : JsonSerializer.Deserialize<Cached>(json, ContractJson.Options);
+        }
+        catch (Exception ex) when (ex is JSException or JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+}

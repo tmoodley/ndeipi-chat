@@ -172,6 +172,25 @@ public sealed class ChatApi(HttpClient http)
         return SendContentAsync<T>(HttpMethod.Post, path, form, ct);
     }
 
+    /// <summary>A photo or video for a chat; send it next in a "media" message (or a listing) by its id.</summary>
+    public Task<MediaItem> UploadChatMediaAsync(Guid conversationId, Stream file, string fileName, string contentType, CancellationToken ct = default)
+    {
+        var form = new MultipartFormDataContent();
+        var part = new StreamContent(file);
+        part.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(contentType, out var type)
+            ? type
+            : new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+        form.Add(part, "file", string.IsNullOrWhiteSpace(fileName) ? "media" : fileName);
+        return SendContentAsync<MediaItem>(HttpMethod.Post, $"api/conversations/{conversationId}/media", form, ct);
+    }
+
+    public Task<List<MessageDto>> ForwardAsync(Guid messageId, IReadOnlyList<Guid> conversationIds, CancellationToken ct = default) =>
+        SendAsync<List<MessageDto>>(HttpMethod.Post, $"api/messages/{messageId}/forward", new ForwardRequest(conversationIds), ct);
+
+    /// <summary>The seller answers an offer, or the buyer withdraws it: "accept", "decline" or "withdraw".</summary>
+    public Task<OfferDto> AnswerOfferAsync(Guid offerId, string answer, CancellationToken ct = default) =>
+        SendAsync<OfferDto>(HttpMethod.Post, $"{MarketContract.BasePath}/offers/{offerId}/{answer}", null, ct);
+
     Task<T> GetAsync<T>(string path, CancellationToken ct) => SendAsync<T>(HttpMethod.Get, path, null, ct);
 
     Task<T> SendAsync<T>(HttpMethod method, string path, object? body, CancellationToken ct) =>

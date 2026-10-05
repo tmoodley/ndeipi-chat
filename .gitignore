@@ -490,3 +490,6 @@ contracts/typechain-types/
 
 # Desktop app builds
 dist/
+
+# Uploaded files when running locally (chat media, documents, images)
+src/NdeipiChat.Api/App_Data/

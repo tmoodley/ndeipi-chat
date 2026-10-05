@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- An offer on a listing (market.offer): money or a trade, and where it stands. The seller accepts
+     or declines it here; the buyer can withdraw it while it's waiting. -->
+<views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:views="clr-namespace:NdeipiChat.App.Views"
+                  xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                  x:Class="NdeipiChat.App.Views.OfferMessageView"
+                  x:DataType="ext:OfferMessageViewModel">
+    <views:MessageRow.Bubble>
+        <Border StrokeThickness="1"
+                Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
+                StrokeShape="RoundRectangle 18"
+                Padding="14,12"
+                WidthRequest="262"
+                BackgroundColor="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}"
+                Shadow="{StaticResource SoftShadow}">
+            <VerticalStackLayout Spacing="6">
+                <Label FontSize="13" FontAttributes="Bold" LineBreakMode="WordWrap"
+                       TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="🤝 " />
+                            <Span Text="{Binding Headline}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+                <Label Text="{Binding AmountText}" FontSize="22" FontAttributes="Bold"
+                       TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Label Text="{Binding Text}" IsVisible="{Binding HasText}" FontSize="14" LineBreakMode="WordWrap"
+                       TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                <Label Text="{Binding StatusText}" FontSize="13" FontAttributes="Bold" TextColor="#8A6100">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label" Binding="{Binding StatusTone}" Value="ok">
+                            <Setter Property="TextColor" Value="{StaticResource Success}" />
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" Binding="{Binding StatusTone}" Value="bad">
+                            <Setter Property="TextColor" Value="{StaticResource Danger}" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="8" IsVisible="{Binding CanAnswer}">
+                    <Button Text="Accept" Clicked="OnAccept" HeightRequest="40" FontSize="14" CornerRadius="12" BackgroundColor="{StaticResource Brand}" TextColor="White" />
+                    <Button Grid.Column="1" Text="Decline" Clicked="OnDecline" HeightRequest="40" FontSize="14" CornerRadius="12"
+                            BackgroundColor="{AppThemeBinding Light={StaticResource SecondaryLight}, Dark={StaticResource SecondaryDark}}"
+                            TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                </Grid>
+                <Button Text="Withdraw" Clicked="OnWithdraw" IsVisible="{Binding CanWithdraw}" HeightRequest="38" FontSize="14" CornerRadius="12"
+                        BackgroundColor="Transparent" TextColor="{StaticResource Brand}" />
+            </VerticalStackLayout>
+        </Border>
+    </views:MessageRow.Bubble>
+</views:MessageRow>

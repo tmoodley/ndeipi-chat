@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Livestock for sale (market.listing): the first photo, price in green, the details, swaps, and the
+     status (sold ones fade). Tap opens it in the Market; "Make an offer" opens the offer form there. -->
+<views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:views="clr-namespace:NdeipiChat.App.Views"
+                  xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                  x:Class="NdeipiChat.App.Views.ListingMessageView"
+                  x:DataType="ext:ListingMessageViewModel">
+    <views:MessageRow.Bubble>
+        <VerticalStackLayout Spacing="3">
+            <Label Text="↪ Forwarded" FontSize="12" FontAttributes="Italic" IsVisible="{Binding IsForwarded}"
+                   TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+            <Border StrokeThickness="1"
+                    Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
+                    StrokeShape="RoundRectangle 18"
+                    Padding="0"
+                    WidthRequest="270"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}"
+                    Shadow="{StaticResource SoftShadow}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnOpen" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout>
+                    <Image Source="{Binding CoverUrl}" IsVisible="{Binding HasCover}" HeightRequest="165" Aspect="AspectFill">
+                        <Image.Triggers>
+                            <DataTrigger TargetType="Image" Binding="{Binding IsOpen}" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </DataTrigger>
+                        </Image.Triggers>
+                    </Image>
+                    <VerticalStackLayout Padding="14,12" Spacing="5">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label FontSize="12" FontAttributes="Bold" VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}">
+                                <Label.FormattedText>
+                                    <FormattedString>
+                                        <Span Text="{Binding Icon}" />
+                                        <Span Text=" FOR SALE" />
+                                    </FormattedString>
+                                </Label.FormattedText>
+                            </Label>
+                            <Border Grid.Column="1" StrokeThickness="0" StrokeShape="RoundRectangle 10" Padding="9,2" BackgroundColor="{StaticResource Success}">
+                                <Border.Triggers>
+                                    <DataTrigger TargetType="Border" Binding="{Binding StatusTone}" Value="wait">
+                                        <Setter Property="BackgroundColor" Value="#F5B324" />
+                                    </DataTrigger>
+                                    <DataTrigger TargetType="Border" Binding="{Binding StatusTone}" Value="bad">
+                                        <Setter Property="BackgroundColor" Value="{StaticResource Danger}" />
+                                    </DataTrigger>
+                                </Border.Triggers>
+                                <Label Text="{Binding StatusText}" TextColor="White" FontSize="12" FontAttributes="Bold" />
+                            </Border>
+                        </Grid>
+                        <Label Text="{Binding Title}" FontSize="17" FontAttributes="Bold" LineBreakMode="WordWrap"
+                               TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                        <Label Text="{Binding PriceText}" FontSize="22" FontAttributes="Bold" TextColor="{StaticResource Success}" />
+                        <Label Text="{Binding Details}" FontSize="13" LineBreakMode="WordWrap"
+                               TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                        <Label Text="{Binding BarterText}" IsVisible="{Binding HasBarter}" FontSize="13" LineBreakMode="WordWrap"
+                               TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                        <Label Text="{Binding Description}" IsVisible="{Binding HasDescription}" FontSize="14" MaxLines="4" LineBreakMode="TailTruncation"
+                               TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8" Margin="0,4,0,0">
+                            <Button Text="View" Clicked="OnOpen" HeightRequest="40" Padding="6,0" FontSize="14" CornerRadius="12"
+                                    BackgroundColor="{AppThemeBinding Light={StaticResource SecondaryLight}, Dark={StaticResource SecondaryDark}}"
+                                    TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                            <Button Grid.Column="1" Text="Make an offer" Clicked="OnOffer" IsVisible="{Binding CanOffer}" HeightRequest="40" Padding="6,0"
+                                    FontSize="14" CornerRadius="12" BackgroundColor="{StaticResource Brand}" TextColor="White" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </views:MessageRow.Bubble>
+</views:MessageRow>

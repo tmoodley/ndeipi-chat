@@ -7,6 +7,9 @@
                   x:Class="NdeipiChat.App.Views.TextMessageView"
                   x:DataType="ext:TextMessageViewModel">
     <views:MessageRow.Bubble>
+        <VerticalStackLayout Spacing="3">
+        <Label Text="↪ Forwarded" FontSize="12" FontAttributes="Italic" IsVisible="{Binding IsForwarded}"
+               TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
         <Border StrokeThickness="1"
                 Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
                 StrokeShape="RoundRectangle 20,20,6,20"
@@ -30,5 +33,6 @@
                 </Label.Triggers>
             </Label>
         </Border>
+        </VerticalStackLayout>
     </views:MessageRow.Bubble>
 </views:MessageRow>

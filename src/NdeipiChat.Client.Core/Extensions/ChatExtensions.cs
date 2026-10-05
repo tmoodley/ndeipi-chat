@@ -111,6 +111,19 @@ public abstract partial class MessageViewModel : ObservableObject
     /// <summary>One line for the chat list.</summary>
     public abstract string Preview { get; }
 
+    /// <summary>Shows "Forwarded" above it.</summary>
+    public virtual bool IsForwarded => false;
+
+    /// <summary>It can be forwarded to another chat: a text, gallery or listing that has been sent.</summary>
+    public bool CanForward => Delivery == DeliveryStatus.Sent && MessageKinds.Forwardable.Contains(Kind);
+
+    partial void OnDeliveryChanged(DeliveryStatus value) => OnPropertyChanged(nameof(CanForward));
+
+    /// <summary>After the server's copy replaces the one sent from here: refresh anything read from the payload.</summary>
+    protected virtual void OnConfirmed()
+    {
+    }
+
     /// <summary>Called with the message's state when it arrives and each time it changes.</summary>
     public virtual void ApplyState(JsonElement state)
     {
@@ -125,6 +138,7 @@ public abstract partial class MessageViewModel : ObservableObject
         OnPropertyChanged(nameof(Id));
         OnPropertyChanged(nameof(SentAt));
         OnPropertyChanged(nameof(TimeText));
+        OnConfirmed();
         if (message.State is { } state)
             ApplyState(state);
     }
