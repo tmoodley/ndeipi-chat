@@ -49,8 +49,12 @@ public static class ClientServiceCollectionExtensions
             .AddMessageRenderer<AssetTransferRenderer>()
             .AddMessageRenderer<BankTransferRenderer>()
             .AddMessageRenderer<PosReceiptRenderer>()
+            .AddMessageRenderer<MediaMessageRenderer>()
+            .AddMessageRenderer<ListingMessageRenderer>()
+            .AddMessageRenderer<OfferMessageRenderer>()
             .AddComposerAction<SendTokenAction>()
             .AddComposerAction<SendMoneyAction>()
+            .AddComposerAction<SellLivestockAction>()
             .AddComposerAction<StartGigAction>();
 
         services.AddTransient<SignInViewModel>();

@@ -13,6 +13,7 @@ using NdeipiChat.Api.Donations;
 using NdeipiChat.Api.Finance;
 using NdeipiChat.Api.Launcher;
 using NdeipiChat.Api.Livestock;
+using NdeipiChat.Api.Market;
 using NdeipiChat.Api.Points;
 using NdeipiChat.Api.Shamwaris;
 using NdeipiChat.Api.Social;
@@ -47,6 +48,7 @@ builder.Services.AddFinance(builder.Configuration);
 builder.Services.AddPoints();
 builder.Services.AddTrust(builder.Configuration);
 builder.Services.AddLivestock(builder.Configuration);
+builder.Services.AddMarket(builder.Configuration);
 
 var app = builder.Build();
 
@@ -81,6 +83,7 @@ app.MapTrust();
 app.MapTokenTransfers();
 app.MapBanking();
 app.MapLivestock();
+app.MapMarket();
 
 // The web app (NdeipiChat.Web): Blazor WebAssembly, served from the same origin as the API.
 // MapStaticAssets, not UseStaticFiles: it fills index.html's fingerprinted file names

@@ -75,4 +75,16 @@ public static class MessageKinds
 
     /// <summary>A shop's receipt, sent from its POS till (<see cref="PosReceiptPayload"/>).</summary>
     public const string PosReceipt = "pos.receipt";
+
+    /// <summary>Photos and videos, shown together as a gallery, with an optional caption (<see cref="MediaPayload"/>).</summary>
+    public const string Media = "media";
+
+    /// <summary>Livestock for sale in a chat (<see cref="MarketListingPayload"/>), also shown in the Market app.</summary>
+    public const string MarketListing = "market.listing";
+
+    /// <summary>An offer on a listing: cash or a barter (<see cref="MarketOfferPayload"/>).</summary>
+    public const string MarketOffer = "market.offer";
+
+    /// <summary>The kinds that can be forwarded to another chat.</summary>
+    public static readonly IReadOnlyList<string> Forwardable = [Text, Media, MarketListing];
 }

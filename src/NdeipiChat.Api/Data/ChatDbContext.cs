@@ -42,6 +42,10 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<DonationCampaign> DonationCampaigns => Set<DonationCampaign>();
     public DbSet<Donation> Donations => Set<Donation>();
     public DbSet<PointsEntry> Points => Set<PointsEntry>();
+    public DbSet<ChatMedia> ChatMedia => Set<ChatMedia>();
+    public DbSet<MarketListing> MarketListings => Set<MarketListing>();
+    public DbSet<MarketListingPost> MarketListingPosts => Set<MarketListingPost>();
+    public DbSet<MarketOffer> MarketOffers => Set<MarketOffer>();
     public DbSet<LoanApplication> LoanApplications => Set<LoanApplication>();
     public DbSet<LoanApplicationItem> LoanApplicationItems => Set<LoanApplicationItem>();
     public DbSet<LoanDocument> LoanDocuments => Set<LoanDocument>();
@@ -254,6 +258,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
 
         NdeipiChat.Api.Pos.PosModel.Configure(model);
         NdeipiChat.Api.Donations.DonationsModel.Configure(model);
+        NdeipiChat.Api.Market.MarketModel.Configure(model);
         NdeipiChat.Api.Finance.FinanceModel.Configure(model);
         NdeipiChat.Api.Trust.TrustModel.Configure(model);
 

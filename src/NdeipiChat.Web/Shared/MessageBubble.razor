@@ -1,4 +1,7 @@
-@* One message, drawn by kind. A kind this build doesn't know shows as a placeholder. *@
+@inject ChatApi Api
+
+@* One message, drawn by kind. A kind this build doesn't know shows as a placeholder. Texts, galleries
+   and listings can be forwarded (the ↪ beside them); hashtags open the Market at that tag. *@
 @if (Message.ShowTimestamp)
 {
     <div class="stamp">@Message.SentAt.ToLocalTime().ToString("ddd d MMM, HH:mm")</div>
@@ -9,10 +12,117 @@
         <Avatar Url="@Message.SenderAvatarUrl" Initials="@Message.SenderInitials" Size="36" />
     }
     <div class="message-body">
+        @if (Message.IsForwarded)
+        {
+            <div class="forwarded">↪ Forwarded</div>
+        }
         @switch (Message)
         {
             case TextMessageViewModel text:
-                <div class="bubble">@text.Text</div>
+                <div class="bubble">@Parts(text.Parts)</div>
+                break;
+
+            case MediaMessageViewModel media:
+                <div class="media-bubble">
+                    <div class="media-grid @(media.Columns == 1 ? "one" : "")">
+                        @foreach (var item in media.Items)
+                        {
+                            @if (item.IsVideo)
+                            {
+                                <div class="media-video">
+                                    @if (_playing.Contains(item.Item.Id))
+                                    {
+                                        <video src="@item.Url" controls autoplay playsinline></video>
+                                    }
+                                    else
+                                    {
+                                        <video src="@item.Url" preload="metadata" muted playsinline></video>
+                                        <button class="play" title="Play video" @onclick="() => _playing.Add(item.Item.Id)">▶</button>
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <a class="media-photo" href="@item.Url" target="_blank" rel="noopener"><img src="@item.ThumbUrl" alt="" loading="lazy" /></a>
+                            }
+                        }
+                    </div>
+                    @if (media.HasCaption)
+                    {
+                        <div class="media-caption">@Parts(media.CaptionParts)</div>
+                    }
+                </div>
+                break;
+
+            case ListingMessageViewModel listing:
+                <div class="listing-card @(listing.IsOpen ? "" : "closed")">
+                    @if (listing.HasCover)
+                    {
+                        <a class="listing-cover" href="@MarketLink($"listing={listing.ListingId:N}")">
+                            <img src="@listing.CoverUrl" alt="" loading="lazy" />
+                            @if (listing.MoreMedia > 0)
+                            {
+                                <span class="more">+@listing.MoreMedia</span>
+                            }
+                        </a>
+                    }
+                    <div class="listing-body">
+                        <div class="listing-top">
+                            <span class="listing-kicker">@listing.Icon @(listing.Status == ListingStatuses.Upcoming ? "Coming soon" : "For sale")</span>
+                            <span class="mk-badge @listing.StatusTone">@listing.StatusText</span>
+                        </div>
+                        <div class="listing-title">@listing.Title</div>
+                        <div class="listing-price">@listing.PriceText</div>
+                        @if (listing.Details.Length > 0)
+                        {
+                            <div class="listing-details">@listing.Details</div>
+                        }
+                        @if (listing.HasBarter)
+                        {
+                            <div class="listing-barter">@listing.BarterText</div>
+                        }
+                        @if (listing.HasDescription)
+                        {
+                            <div class="listing-desc">@Parts(listing.DescriptionParts)</div>
+                        }
+                        <div class="listing-actions">
+                            <a class="button secondary" href="@MarketLink($"listing={listing.ListingId:N}")">@(listing.IsSeller ? "Manage" : "View")</a>
+                            @if (listing.CanOffer)
+                            {
+                                <a class="button primary" href="@MarketLink($"listing={listing.ListingId:N}&chat={listing.Message.ConversationId:N}&offer=1")">Make an offer</a>
+                            }
+                        </div>
+                    </div>
+                </div>
+                break;
+
+            case OfferMessageViewModel offer:
+                <div class="offer-card">
+                    <div class="offer-head">🤝 @offer.Headline</div>
+                    <div class="offer-amount">@offer.AmountText</div>
+                    @if (offer.HasText)
+                    {
+                        <div class="offer-text">@offer.Text</div>
+                    }
+                    <div class="offer-foot">
+                        <span class="mk-badge @offer.StatusTone">@offer.StatusText</span>
+                        @if (offer.CanAnswer)
+                        {
+                            <span class="offer-actions">
+                                <button class="primary" disabled="@_busy" @onclick='() => AnswerAsync(offer, "accept")'>Accept</button>
+                                <button class="secondary" disabled="@_busy" @onclick='() => AnswerAsync(offer, "decline")'>Decline</button>
+                            </span>
+                        }
+                        else if (offer.CanWithdraw)
+                        {
+                            <button class="link" disabled="@_busy" @onclick='() => AnswerAsync(offer, "withdraw")'>Withdraw</button>
+                        }
+                    </div>
+                    @if (_error is not null)
+                    {
+                        <div class="transfer-error">@_error</div>
+                    }
+                </div>
                 break;
 
             case TransferMessageViewModel transfer:
@@ -92,9 +202,56 @@
             </button>
         }
     </div>
+    @if (Message.CanForward && Forward.HasDelegate)
+    {
+        <button class="forward" title="Forward" @onclick="() => Forward.InvokeAsync(Message)">↪</button>
+    }
 </div>
 
 @code {
     [Parameter, EditorRequired] public MessageViewModel Message { get; set; } = null!;
     [Parameter] public EventCallback<MessageViewModel> Retry { get; set; }
+
+    /// <summary>Asks to forward this message; the page picks the chats.</summary>
+    [Parameter] public EventCallback<MessageViewModel> Forward { get; set; }
+
+    readonly HashSet<Guid> _playing = [];
+    bool _busy;
+    string? _error;
+
+    static string MarketLink(string query) => $"apps/{MarketContract.AppId}?{query}";
+
+    /// <summary>Text with its hashtags as links to the Market at that tag.</summary>
+    RenderFragment Parts(IReadOnlyList<TextPart> parts) => __builder =>
+    {
+        foreach (var part in parts)
+        {
+            if (part.Tag is { } tag)
+            {
+                <a class="hashtag" href="@MarketLink($"tag={Uri.EscapeDataString(tag)}")">@part.Text</a>
+            }
+            else
+            {
+                @part.Text
+            }
+        }
+    };
+
+    async Task AnswerAsync(OfferMessageViewModel offer, string answer)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var result = await Api.AnswerOfferAsync(offer.OfferId, answer);
+            offer.Status = result.Status;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 }

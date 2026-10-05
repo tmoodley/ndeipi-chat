@@ -1,0 +1,210 @@
+@inject IJSRuntime JS
+
+@* Selling (§3.4): the animals, the asking price (kwacha by default), where and how old, whether
+   you'd swap, and photos or videos; posted as a listing card in one of your group chats. Hashtags
+   in the title or description (#QualityGenetics) make it easy to find. *@
+
+<section class="mk-card">
+    <label class="mk-field">Post in
+        <select @bind="_chat" @bind:after="ChatChanged">
+            <option value="@Guid.Empty">Choose a group…</option>
+            @foreach (var c in _chats)
+            {
+                <option value="@c.Id">@c.Title (@c.MemberCount)</option>
+            }
+        </select>
+    </label>
+    @if (_chats.Count == 0 && _loaded)
+    {
+        <span class="muted small">You're not in any group chats yet. Start one in Chats, then sell there.</span>
+    }
+
+    <label class="mk-field">Title<input @bind="_title" maxlength="@MarketContract.MaxTitleLength" placeholder="e.g. Boer goat bucks #QualityGenetics" /></label>
+
+    <div class="mk-two">
+        <label class="mk-field">Animal
+            <select @bind="_species">
+                @foreach (var s in MarketContract.Species)
+                {
+                    <option value="@s.Code">@MarketContract.SpeciesIcon(s.Code) @s.Label</option>
+                }
+            </select>
+        </label>
+        <label class="mk-field">Breed (optional)<input @bind="_breed" maxlength="60" placeholder="e.g. Boer, Pekin" /></label>
+        <label class="mk-field">How many<input type="number" min="1" @bind="_quantity" /></label>
+        <label class="mk-field">Age (optional)<input @bind="_age" maxlength="40" placeholder="e.g. 5 years old" /></label>
+    </div>
+
+    <div class="mk-two">
+        <label class="mk-field">Asking price (optional)<input type="number" min="1" step="any" inputmode="decimal" @bind="_price" placeholder="e.g. 12000" /></label>
+        <label class="mk-field">Currency
+            <select @bind="_currency">
+                @foreach (var c in MarketContract.Currencies)
+                {
+                    <option value="@c">@(c == "ZMW" ? "Kwacha (K)" : "US dollars ($)")</option>
+                }
+            </select>
+        </label>
+    </div>
+    <label class="mk-field">Where (optional)<input @bind="_location" maxlength="80" placeholder="e.g. Monze" /></label>
+
+    <div class="mk-seg">
+        <button class="@(_status == ListingStatuses.Available ? "on" : "")" @onclick="() => _status = ListingStatuses.Available">For sale now</button>
+        <button class="@(_status == ListingStatuses.Upcoming ? "on" : "")" @onclick="() => _status = ListingStatuses.Upcoming">Coming soon</button>
+    </div>
+
+    <label class="mk-row" style="cursor: pointer">
+        <input type="checkbox" @bind="_barter" style="width: 20px; height: 20px" />
+        <span class="grow"><b>Open to swaps</b><small>Say what you'd take instead of money</small></span>
+    </label>
+    @if (_barter)
+    {
+        <label class="mk-field">What you'd take<input @bind="_barterTerms" maxlength="200" placeholder="e.g. 6 better crossbreed females" /></label>
+    }
+
+    <label class="mk-field">Description (optional)
+        <textarea rows="4" maxlength="@MarketContract.MaxDescriptionLength" @bind="_description"
+                  placeholder="Health, feeding, why you're selling… Add hashtags like #PurePekinPoultry"></textarea>
+    </label>
+
+    <div class="mk-field">Photos and videos (up to @MarketContract.MaxMedia)
+        <div class="mk-thumbs">
+            @foreach (var m in _media)
+            {
+                <div class="mk-thumb">
+                    @if (m.Type == MediaTypes.Video)
+                    {
+                        <span>▶</span>
+                    }
+                    else
+                    {
+                        <img src="@m.ThumbUrl" alt="" />
+                    }
+                    <button title="Remove" @onclick="() => _media.Remove(m)">✕</button>
+                </div>
+            }
+            @if (_media.Count < MarketContract.MaxMedia)
+            {
+                <label class="mk-add" title="Add photos or videos">@(_uploading ? "…" : "＋")
+                    <InputFile OnChange="AddMediaAsync" multiple accept="image/*,video/*" disabled="@(_uploading || _chat == Guid.Empty)" />
+                </label>
+            }
+        </div>
+        @if (_chat == Guid.Empty)
+        {
+            <span class="muted small" style="font-weight: 500">Choose the group first: photos go to its chat.</span>
+        }
+    </div>
+
+    @if (_error is not null)
+    {
+        <p class="error" style="margin: 0">@_error</p>
+    }
+    <button class="primary" disabled="@(_busy || _uploading || _chat == Guid.Empty || string.IsNullOrWhiteSpace(_title))" @onclick="PostAsync">
+        @(_busy ? "Posting…" : "Post listing")
+    </button>
+</section>
+
+@code {
+    [CascadingParameter] public MarketApp App { get; set; } = null!;
+
+    /// <summary>The chat it was opened from (its "+" panel), to post there.</summary>
+    [Parameter] public Guid? ChatId { get; set; }
+
+    List<MarketChatDto> _chats = [];
+    readonly List<MediaItem> _media = [];
+    Guid _chat;
+    string? _title, _breed, _age, _location, _description, _barterTerms, _error;
+    string _species = "goats", _currency = MarketContract.DefaultCurrency, _status = ListingStatuses.Available;
+    int _quantity = 1;
+    decimal? _price;
+    bool _barter, _busy, _uploading, _loaded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _chats = await App.Api.GetAsync<List<MarketChatDto>>($"{MarketApi.Base}/chats");
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        _loaded = true;
+        // Opened from a chat: that one. It may be a direct chat, which isn't in the group list.
+        _chat = ChatId ?? (_chats.Count == 1 ? _chats[0].Id : Guid.Empty);
+        if (ChatId is { } id && _chats.All(c => c.Id != id))
+            _chats.Insert(0, new MarketChatDto(id, "This chat", 2));
+    }
+
+    /// <summary>Uploads belong to the chat they were made for, so a new chat starts the photos over.</summary>
+    void ChatChanged() => _media.Clear();
+
+    async Task AddMediaAsync(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(MarketContract.MaxMedia).Take(MarketContract.MaxMedia - _media.Count).ToList();
+        (_uploading, _error) = (true, null);
+        try
+        {
+            foreach (var file in files)
+            {
+                if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (file.Size > MarketContract.MaxVideoBytes)
+                        throw new MarketException($"Videos can be up to {MarketContract.MaxVideoBytes / 1024 / 1024} MB. Try a shorter one.");
+                    await using var video = file.OpenReadStream(MarketContract.MaxVideoBytes);
+                    _media.Add(await App.Api.UploadAsync(_chat, video, file.Name, file.ContentType));
+                }
+                else
+                {
+                    using var original = new MemoryStream();
+                    await file.OpenReadStream(MarketContract.MaxImageBytes).CopyToAsync(original);
+                    var bytes = original.ToArray();
+                    try
+                    {
+                        // Smaller before it leaves the phone (§4.1); the server recompresses it too.
+                        bytes = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", bytes, 1600, 0.82);
+                    }
+                    catch (JSException)
+                    {
+                    }
+                    _media.Add(await App.Api.UploadAsync(_chat, new MemoryStream(bytes), "photo.jpg", "image/jpeg"));
+                }
+                StateHasChanged();
+            }
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (IOException)
+        {
+            _error = "Couldn't read that file. Please try again.";
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    async Task PostAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var message = await App.Api.PostMessageAsync(_chat, MessageKinds.MarketListing, new MarketListingPayload(
+                Guid.Empty, Guid.Empty, _title ?? "", _species, _breed, _quantity, _price, _currency, _location, _age, _description,
+                _barter, _barter ? _barterTerms : null, _status, _media.ToList(), []));
+            var listing = ContractJson.Read<MarketListingPayload>(message.Payload)!;
+            App.Replace(new MarketView.Listing(listing.ListingId));
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

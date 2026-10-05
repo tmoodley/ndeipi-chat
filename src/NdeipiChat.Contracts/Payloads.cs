@@ -1,6 +1,7 @@
 namespace NdeipiChat.Contracts;
 
-public sealed record TextPayload(string Text);
+/// <param name="Forwarded">Forwarded from another chat (shown as "Forwarded").</param>
+public sealed record TextPayload(string Text, bool Forwarded = false);
 
 /// <summary>
 /// Identifies any token on any chain. Fungible tokens are sent by amount; non-fungible ones

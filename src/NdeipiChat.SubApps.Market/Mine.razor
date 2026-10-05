@@ -1,0 +1,77 @@
+@* Your side of the market: what you're selling (with offers waiting), offers on your listings, and
+   the offers you've made. *@
+
+@if (_me is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var waiting = _me.OffersReceived.Where(o => o.Status == OfferStatuses.Pending).ToList();
+    @if (waiting.Count > 0)
+    {
+        <section class="mk-card">
+            <h3>Offers waiting for you</h3>
+            @foreach (var o in waiting)
+            {
+                <button class="mk-row" style="text-align: left; background: none; box-shadow: none; padding: 6px 0; color: inherit"
+                        @onclick="() => App.Go(new MarketView.Listing(o.ListingId))">
+                    <span class="grow"><b>@Format.OfferAmount(o) from @o.Buyer.DisplayName</b><small>@o.ListingTitle@(o.Text is { } t ? $" · {t}" : "")</small></span>
+                    <span class="muted">›</span>
+                </button>
+            }
+        </section>
+    }
+
+    <section class="mk-card">
+        <h3>Selling</h3>
+        @if (_me.Selling.Count == 0)
+        {
+            <p class="muted" style="margin: 0">Nothing yet. Tap ＋ Sell to list livestock in one of your groups.</p>
+        }
+        @foreach (var l in _me.Selling)
+        {
+            <button class="mk-row" style="text-align: left; background: none; box-shadow: none; padding: 6px 0; color: inherit"
+                    @onclick="() => App.Go(new MarketView.Listing(l.Id))">
+                <span style="font-size: 26px">@MarketContract.SpeciesIcon(l.Species)</span>
+                <span class="grow"><b>@l.Title</b><small>@MarketContract.Price(l.Price, l.Currency)@(l.OfferCount > 0 ? $" · {l.OfferCount} offer{(l.OfferCount == 1 ? "" : "s")} waiting" : "")</small></span>
+                <span class="mk-badge @Format.Tone(l.Status)">@ListingStatuses.Label(l.Status)</span>
+            </button>
+        }
+    </section>
+
+    <section class="mk-card">
+        <h3>Offers you've made</h3>
+        @if (_me.OffersMade.Count == 0)
+        {
+            <p class="muted" style="margin: 0">None yet. Open a listing to make an offer, in cash or a trade.</p>
+        }
+        @foreach (var o in _me.OffersMade)
+        {
+            <button class="mk-row" style="text-align: left; background: none; box-shadow: none; padding: 6px 0; color: inherit"
+                    @onclick="() => App.Go(new MarketView.Listing(o.ListingId))">
+                <span class="grow"><b>@Format.OfferAmount(o) for @o.ListingTitle</b><small>To @o.Seller.DisplayName · @Format.Ago(o.CreatedAt)</small></span>
+                <span class="mk-badge @Format.Tone(o.Status)">@OfferStatuses.Label(o.Status)</span>
+            </button>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public MarketApp App { get; set; } = null!;
+
+    MyMarketDto? _me;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _me = await App.Api.GetAsync<MyMarketDto>($"{MarketApi.Base}/me");
+        }
+        catch (MarketException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+}

@@ -49,6 +49,8 @@ public static class MauiProgram
             DeviceName = DeviceInfo.Current.Name
         });
 
+        builder.Services.AddComposerAction<NdeipiChat.App.Platform.MediaComposerAction>();
+
         builder.Services.AddSingleton<ITokenStore, SecureTokenStore>();
         builder.Services.AddSingleton<IBrowserAuthenticator, MauiBrowserAuthenticator>();
         builder.Services.AddSingleton<INavigator, ShellNavigator>();
@@ -65,6 +67,9 @@ public static class MauiProgram
             .AddMessageTemplate<AssetTransferMessageViewModel, AssetTransferMessageView>()
             .AddMessageTemplate<BankTransferMessageViewModel, BankTransferMessageView>()
             .AddMessageTemplate<PosReceiptMessageViewModel, PosReceiptMessageView>()
+            .AddMessageTemplate<MediaMessageViewModel, MediaMessageView>()
+            .AddMessageTemplate<ListingMessageViewModel, ListingMessageView>()
+            .AddMessageTemplate<OfferMessageViewModel, OfferMessageView>()
             .AddMessageTemplate<UnsupportedMessageViewModel, UnsupportedMessageView>();
         builder.Services.AddSingleton<MessageTemplateSelector>();
 

@@ -124,6 +124,16 @@ public sealed partial class ChatViewModel : ObservableObject, INavigationAware, 
         await SendAsync(MessageKinds.Text, new TextPayload(text), Guid.NewGuid());
     }
 
+    /// <summary>Photos and videos already uploaded to this chat, sent together as one gallery with the draft as caption.</summary>
+    public async Task SendMediaAsync(IReadOnlyList<MediaItem> items)
+    {
+        if (items.Count == 0 || _conversation is null)
+            return;
+        var caption = Draft?.Trim();
+        Draft = "";
+        await SendAsync(MessageKinds.Media, new MediaPayload(items, string.IsNullOrEmpty(caption) ? null : caption), Guid.NewGuid());
+    }
+
     /// <summary>Resends a failed message with its original client id, so it can never land twice.</summary>
     [RelayCommand]
     async Task RetryAsync(MessageViewModel message)

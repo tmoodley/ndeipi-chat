@@ -6,10 +6,22 @@ namespace NdeipiChat.Client.Extensions;
 
 public sealed class TextMessageViewModel : MessageViewModel
 {
-    public TextMessageViewModel(MessageDto message, MessageRenderContext context) : base(message, context) =>
-        Text = ContractJson.Read<TextPayload>(message.Payload)?.Text ?? "";
+    public TextMessageViewModel(MessageDto message, MessageRenderContext context) : base(message, context)
+    {
+        var payload = ContractJson.Read<TextPayload>(message.Payload);
+        Text = payload?.Text ?? "";
+        Forwarded = payload?.Forwarded == true;
+        Parts = Hashtags.Split(Text).Select(p => new TextPart(p.Text, p.Tag)).ToList();
+    }
 
     public string Text { get; }
+    public bool Forwarded { get; }
+    public override bool IsForwarded => Forwarded;
+
+    /// <summary>The text in runs, with its hashtags apart so they can be shown as links (SRS §3.2).</summary>
+    public IReadOnlyList<TextPart> Parts { get; }
+    public bool HasHashtags => Parts.Any(p => p.Tag is not null);
+
     public override string Preview => Text;
 }
 

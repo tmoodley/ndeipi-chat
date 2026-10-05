@@ -81,12 +81,13 @@ public sealed class TextMessageHandler : IMessageKindHandler
 
     public Task<PreparedMessage> PrepareAsync(MessageContext context, JsonElement payload, CancellationToken ct)
     {
-        var text = MessagePayload.Read<TextPayload>(payload).Text?.Trim();
+        var sent = MessagePayload.Read<TextPayload>(payload);
+        var text = sent.Text?.Trim();
         if (string.IsNullOrEmpty(text))
             throw new ChatRejectedException("The message is empty.");
         if (text.Length > MaxLength)
             throw new ChatRejectedException($"Messages are limited to {MaxLength} characters.");
 
-        return Task.FromResult(new PreparedMessage(ContractJson.ToElement(new TextPayload(text))));
+        return Task.FromResult(new PreparedMessage(ContractJson.ToElement(new TextPayload(text, sent.Forwarded))));
     }
 }

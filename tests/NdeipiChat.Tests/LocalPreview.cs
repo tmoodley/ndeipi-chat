@@ -148,6 +148,33 @@ public sealed class LocalPreview
             new EligibilityDto(true, RegistrationBodies.Pacra, LicenceTypes.SmallScale, true), "Kasenengwa Miners Club", "club", null,
             "Eastern", null, null, null, null, null, null));
 
+        // Market: a "Hooves & Feathers" group with a photo, my goat listing (with a hashtag) and
+        // Tendai's barter offer on it.
+        var hooves = await me.PostAsync<ConversationDto>("api/conversations",
+            new CreateConversationRequest(ConversationType.Group, [tendai.Id, rudo.Id], "Hooves & Feathers Network"));
+        async Task<MediaItem> PhotoAsync(TestUser who, SkiaSharp.SKColor color)
+        {
+            using var bitmap = new SkiaSharp.SKBitmap(1200, 900);
+            using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+                canvas.Clear(color);
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(SkiaSharp.SKImage.FromBitmap(bitmap).Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 80).ToArray()), "file", "photo.jpg");
+            using var uploaded = await who.Http.PostAsync($"api/conversations/{hooves.Id}/media", form);
+            return (await uploaded.Content.ReadFromJsonAsync<MediaItem>(ContractJson.Options))!;
+        }
+        var pen = await PhotoAsync(rudo, new SkiaSharp.SKColor(0x8B, 0x6B, 0x3D));
+        await rudo.PostAsync<MessageDto>($"api/conversations/{hooves.Id}/messages", new SendMessageRequest(hooves.Id, MessageKinds.Media,
+            ContractJson.ToElement(new MediaPayload([pen], "Our upcoming Pekin parent flock for Maposa area #PurePekinPoultry")), Guid.NewGuid()));
+        var goat = await PhotoAsync(me, new SkiaSharp.SKColor(0x6B, 0x8E, 0x23));
+        var listed = await me.PostAsync<MessageDto>($"api/conversations/{hooves.Id}/messages", new SendMessageRequest(hooves.Id, MessageKinds.MarketListing,
+            ContractJson.ToElement(new MarketListingPayload(Guid.Empty, Guid.Empty, "Boer goat buck #QualityGenetics", "goats", "Boer", 1, 12000m, "ZMW",
+                "Monze", "5 years old", "Strong, healthy buck from our #QualityGenetics line. Vaccinated.", true, "6 better crossbreed females",
+                ListingStatuses.Available, [goat], [])), Guid.NewGuid()));
+        var goatListing = ContractJson.Read<MarketListingPayload>(listed.Payload)!.ListingId;
+        await tendai.PostAsync<MessageDto>($"api/conversations/{hooves.Id}/messages", new SendMessageRequest(hooves.Id, MessageKinds.MarketOffer,
+            ContractJson.ToElement(new MarketOfferPayload(Guid.Empty, goatListing, "", Guid.Empty, OfferKinds.Barter, null, null,
+                "Exchange with 6 better crossbreed females acceptable (small ones?)")), Guid.NewGuid()));
+
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };
         foreach (var (user, file) in new[] { (me, tokensFile), (tendai, tokensFile + ".tendai") })

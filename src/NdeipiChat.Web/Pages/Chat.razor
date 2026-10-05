@@ -4,6 +4,8 @@
 @inject NavigationManager Navigation
 @inject ChatSession Session
 @inject LauncherViewModel Launcher
+@inject ChatApi Api
+@inject ChatsViewModel Chats
 
 @* The messenger: your chats, this conversation, and the exchange panel for sending money and
    tokens here. On a phone, one pane at a time; the exchange panel slides over the conversation. *@
@@ -48,7 +50,7 @@
             }
             @foreach (var message in Vm.Messages)
             {
-                <MessageBubble @key="message.ClientMessageId" Message="message" Retry="m => Vm.RetryCommand.ExecuteAsync(m)" />
+                <MessageBubble @key="message.ClientMessageId" Message="message" Retry="m => Vm.RetryCommand.ExecuteAsync(m)" Forward="StartForward" />
             }
         </div>
 
@@ -65,12 +67,47 @@
             </div>
         }
 
+        @if (_upload is not null)
+        {
+            <div class="upload-status @(_uploadFailed ? "failed" : "")">@_upload</div>
+        }
+
         <form class="composer" @onsubmit="() => Vm.SendTextCommand.ExecuteAsync(null)">
             <button type="button" class="round" title="Send money, tokens and more" @onclick="() => Vm.ToggleExtensionPanelCommand.Execute(null)">＋</button>
+            <label class="round attach @(_uploading ? "busy" : "")" title="Photos and videos">📎<InputFile OnChange="AttachAsync" multiple accept="image/*,video/*" disabled="@_uploading" /></label>
             <input @bind="Vm.Draft" @bind:event="oninput" placeholder="Write your message…" maxlength="4000" autocomplete="off" />
             <button type="submit" class="primary send" title="Send" disabled="@string.IsNullOrWhiteSpace(Vm.Draft)">➤</button>
         </form>
     </section>
+
+    @if (_forwarding is { } forwarding)
+    {
+        <div class="modal-scrim" @onclick="() => _forwarding = null">
+            <div class="forward-sheet glass" @onclick:stopPropagation="true">
+                <div class="widget-head"><h3>Forward to…</h3><button class="link" @onclick="() => _forwarding = null">Cancel</button></div>
+                <div class="forward-list">
+                    @foreach (var chat in Chats.Conversations.Where(c => c.Id != Id))
+                    {
+                        <label class="forward-row">
+                            <input type="checkbox" checked="@_forwardTo.Contains(chat.Id)" @onchange="e => ToggleTarget(chat.Id, (bool)e.Value!)" />
+                            <span class="grow">@chat.Title</span>
+                        </label>
+                    }
+                    @if (!Chats.Conversations.Any(c => c.Id != Id))
+                    {
+                        <p class="muted">No other chats to forward to yet.</p>
+                    }
+                </div>
+                @if (_forwardError is not null)
+                {
+                    <p class="error">@_forwardError</p>
+                }
+                <button class="primary wide" disabled="@(_forwardTo.Count == 0 || _busyForward)" @onclick="() => ForwardAsync(forwarding)">
+                    @(_busyForward ? "Forwarding…" : _forwardTo.Count > 1 ? $"Forward to {_forwardTo.Count} chats" : "Forward")
+                </button>
+            </div>
+        </div>
+    }
 
     <ExchangePanel ConversationId="Id" Messages="Vm.Messages" @bind-Tab="_tab"
                    CssClass="@((_open ? "open" : "") + (_hidden ? " hidden" : ""))" OnClose="ClosePanel" />
@@ -153,6 +190,103 @@
             return;
         _lastMessage = last;
         await JS.InvokeVoidAsync("ndeipi.scrollToBottom", _scroller);
+    }
+
+    // ---- Photos and videos (SRS §3.3) ----
+
+    string? _upload;
+    bool _uploading, _uploadFailed;
+
+    /// <summary>
+    /// Uploads the chosen photos and videos, then sends them as one gallery with the draft as caption.
+    /// Photos shrink in the browser first (§4.1, slow connections); the server recompresses them too.
+    /// </summary>
+    async Task AttachAsync(InputFileChangeEventArgs e)
+    {
+        var files = e.GetMultipleFiles(MarketContract.MaxMedia + 1);
+        if (files.Count > MarketContract.MaxMedia)
+        {
+            (_upload, _uploadFailed) = ($"Send up to {MarketContract.MaxMedia} photos or videos at a time.", true);
+            return;
+        }
+        (_uploading, _uploadFailed) = (true, false);
+        var items = new List<MediaItem>();
+        try
+        {
+            for (var i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                _upload = files.Count == 1 ? "Uploading…" : $"Uploading {i + 1} of {files.Count}…";
+                StateHasChanged();
+                if (file.ContentType.StartsWith("video/", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (file.Size > MarketContract.MaxVideoBytes)
+                        throw new ApiException(null, $"Videos can be up to {MarketContract.MaxVideoBytes / 1024 / 1024} MB. Try a shorter one.");
+                    await using var video = file.OpenReadStream(MarketContract.MaxVideoBytes);
+                    items.Add(await Api.UploadChatMediaAsync(Id, video, file.Name, file.ContentType));
+                }
+                else
+                {
+                    using var original = new MemoryStream();
+                    await file.OpenReadStream(MarketContract.MaxImageBytes).CopyToAsync(original);
+                    var shrunk = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", original.ToArray(), 1600, 0.82);
+                    items.Add(await Api.UploadChatMediaAsync(Id, new MemoryStream(shrunk), "photo.jpg", "image/jpeg"));
+                }
+            }
+            _upload = null;
+            await Vm.SendMediaAsync(items);
+        }
+        catch (Exception ex) when (ex is ApiException or IOException or JSException)
+        {
+            (_upload, _uploadFailed) = (ex is ApiException ? ex.Message : "Couldn't read that file. Please try again.", true);
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    // ---- Forwarding (SRS §3.2) ----
+
+    MessageViewModel? _forwarding;
+    readonly HashSet<Guid> _forwardTo = [];
+    bool _busyForward;
+    string? _forwardError;
+
+    async Task StartForward(MessageViewModel message)
+    {
+        (_forwarding, _forwardError) = (message, null);
+        _forwardTo.Clear();
+        if (Chats.Conversations.Count == 0)
+            await Chats.RefreshCommand.ExecuteAsync(null);
+    }
+
+    void ToggleTarget(Guid id, bool on)
+    {
+        if (on)
+            _forwardTo.Add(id);
+        else
+            _forwardTo.Remove(id);
+    }
+
+    async Task ForwardAsync(MessageViewModel message)
+    {
+        (_busyForward, _forwardError) = (true, null);
+        try
+        {
+            await Api.ForwardAsync(message.Id, _forwardTo.ToList());
+            _forwarding = null;
+            _upload = _forwardTo.Count == 1 ? "Forwarded." : $"Forwarded to {_forwardTo.Count} chats.";
+            _uploadFailed = false;
+        }
+        catch (ApiException ex)
+        {
+            _forwardError = ex.Message;
+        }
+        finally
+        {
+            _busyForward = false;
+        }
     }
 
     public override void Dispose()
