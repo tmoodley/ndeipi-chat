@@ -1,0 +1,232 @@
+@implements IDisposable
+
+@* A creator's storefront (FR-CR-03): banner, bio and links, the tiers to subscribe to (monthly or
+   annual, from the Ndeipi wallet), your subscription, the pinned post and the rest of the posts;
+   locked ones show their teaser and how to unlock them. *@
+
+@if (_creator is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var c = _creator;
+    <section class="cr-hero">
+        <div class="banner" style="@(c.BannerUrl is { } b ? $"background: url('{b}') center / cover" : "background: linear-gradient(135deg, #7750F8, #1FC98A)")"></div>
+        <div class="body">
+            <div class="top">
+                <span class="cr-avatar" style="@(c.AvatarUrl is { } a ? $"background-image: url('{a}')" : "")">@(c.AvatarUrl is null ? c.Name[..1] : "")</span>
+                <span style="flex: 1; min-width: 0; padding-bottom: 4px">
+                    <h2>@c.Name</h2>
+                    <span class="muted small">@CreatorsContract.CategoryLabel(c.Category) · @c.SubscriberCount subscriber@(c.SubscriberCount == 1 ? "" : "s") · @c.PostCount post@(c.PostCount == 1 ? "" : "s")</span>
+                </span>
+            </div>
+            @if (c.Bio is not null)
+            {
+                <div class="cr-body" style="font-size: 15px">@c.Bio</div>
+            }
+            @if (c.Links.Count > 0)
+            {
+                <div class="cr-actions">
+                    @foreach (var l in c.Links)
+                    {
+                        <a class="cr-badge" href="@l.Url" target="_blank" rel="noopener nofollow">🔗 @l.Label</a>
+                    }
+                </div>
+            }
+            @if (c.IsMe)
+            {
+                <button class="secondary" @onclick='() => App.Go(new CreatorsView.Studio())'>🎛 Open your studio</button>
+            }
+        </div>
+    </section>
+
+    @if (c.MySubscription is { } mine)
+    {
+        <section class="cr-card">
+            <div class="cr-row">
+                <span class="grow"><b>You're subscribed: @mine.TierName</b><small>@Format.Money(mine.Price) a @Format.Period(mine.Period) · since @Format.When(mine.StartedAt)</small></span>
+                <span class="cr-badge @Format.Tone(mine.Status)">@Format.Status(mine)</span>
+            </div>
+            @if (mine.LastPaymentStatus == TransferStatuses.Failed && mine.LastPaymentError is { } why)
+            {
+                <span class="error small">@why</span>
+            }
+            <div class="cr-actions">
+                @if (mine.CancelAtPeriodEnd)
+                {
+                    <button class="primary" disabled="@_busy" @onclick='() => SubscriptionAsync(mine.Id, "resume")'>Keep it going</button>
+                }
+                else
+                {
+                    <button class="secondary" disabled="@_busy" @onclick='() => SubscriptionAsync(mine.Id, "cancel")'>Cancel</button>
+                }
+            </div>
+        </section>
+    }
+
+    @if (_message is not null)
+    {
+        <div class="notice">@_message</div>
+    }
+
+    @if (c.Tiers.Count > 0 && !c.IsMe)
+    {
+        <section class="cr-card">
+            <h3>Subscribe</h3>
+            <div class="cr-chips">
+                <button class="@(_period == BillingPeriods.Monthly ? "on" : "")" @onclick="() => _period = BillingPeriods.Monthly">Monthly</button>
+                @if (c.Tiers.Any(t => t.AnnualPrice is not null))
+                {
+                    <button class="@(_period == BillingPeriods.Annual ? "on" : "")" @onclick="() => _period = BillingPeriods.Annual">Annual</button>
+                }
+            </div>
+            <div class="cr-tiers">
+                @foreach (var t in c.Tiers)
+                {
+                    var price = _period == BillingPeriods.Annual ? t.AnnualPrice : t.MonthlyPrice;
+                    var current = c.MySubscription is { } s && s.TierId == t.Id;
+                    <div class="cr-tier @(current ? "mine" : "")">
+                        <b>@t.Name</b>
+                        <span class="price">@(price is { } p ? Format.Money(p) : "—")<small class="muted" style="font-size: 13px; font-weight: 500">/@Format.Period(_period)</small></span>
+                        @if (t.Description is not null)
+                        {
+                            <span class="small muted" style="white-space: pre-wrap">@t.Description</span>
+                        }
+                        @if (current)
+                        {
+                            <span class="cr-badge ok">Your tier</span>
+                        }
+                        else if (price is not null)
+                        {
+                            <button class="primary" disabled="@_busy" @onclick="() => SubscribeAsync(t)">@(c.MySubscription is null ? "Subscribe" : "Switch to this tier")</button>
+                        }
+                    </div>
+                }
+            </div>
+            <label class="cr-row small" style="cursor: pointer">
+                <input type="checkbox" @bind="_share" style="width: 18px; height: 18px" />
+                <span class="grow">Show @c.Name who I am (otherwise you're anonymous to them)</span>
+            </label>
+            <span class="muted small">Paid from your Ndeipi wallet and renewed each @Format.Period(_period) until you cancel. If a renewal fails, you keep access for @CreatorsContract.GraceDays days while it's retried.</span>
+        </section>
+    }
+    @if (_error is not null)
+    {
+        <p class="error">@_error</p>
+    }
+
+    @if (_posts is { } posts)
+    {
+        <h3>Posts</h3>
+        @if (posts.Count == 0)
+        {
+            <section class="cr-card"><p class="muted" style="margin: 0">No posts yet.</p></section>
+        }
+        @foreach (var p in posts.OrderByDescending(p => p.Id == c.PinnedPostId))
+        {
+            <PostCard @key="p.Id" Post="p" Pinned="p.Id == c.PinnedPostId" />
+        }
+        @if (_before is not null)
+        {
+            <button class="secondary" @onclick="MoreAsync">Show more</button>
+        }
+    }
+}
+
+@code {
+    [CascadingParameter] public CreatorsApp App { get; set; } = null!;
+    [Parameter] public Guid CreatorId { get; set; }
+
+    CreatorDto? _creator;
+    List<CreatorPostDto>? _posts;
+    DateTimeOffset? _before;
+    string _period = BillingPeriods.Monthly;
+    string? _error, _message;
+    bool _busy, _share;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _creator = await App.Api.GetAsync<CreatorDto>($"{CreatorsApi.Base}/{CreatorId}");
+            var page = await App.Api.GetAsync<CreatorPostPageDto>($"{CreatorsApi.Base}/{CreatorId}/posts");
+            (_posts, _before) = (page.Posts.ToList(), page.Before);
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task MoreAsync()
+    {
+        try
+        {
+            var page = await App.Api.GetAsync<CreatorPostPageDto>($"{CreatorsApi.Base}/{CreatorId}/posts?before={Uri.EscapeDataString(_before!.Value.ToString("O"))}");
+            _posts!.AddRange(page.Posts);
+            _before = page.Before;
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task SubscribeAsync(CreatorTierDto tier)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            var s = await App.Api.SendAsync<CreatorSubscriptionDto>(HttpMethod.Post, $"{CreatorsApi.Base}/{CreatorId}/subscribe",
+                new CreatorSubscribeRequest(tier.Id, _period, _share));
+            _message = s!.LastPaymentStatus == TransferStatuses.Failed
+                ? null
+                : $"Subscribed to {tier.Name}. Welcome!";
+            if (s.LastPaymentStatus == TransferStatuses.Failed)
+                _error = s.LastPaymentError ?? "The payment didn't go through. Check your wallet balance.";
+            await LoadAsync();
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task SubscriptionAsync(Guid id, string action)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            await App.Api.SendAsync<CreatorSubscriptionDto>(HttpMethod.Post, $"{CreatorsApi.Base}/subscriptions/{id}/{action}", null);
+            _message = action == "cancel" ? "Cancelled: you keep access until the end of what you've paid for." : "It'll keep renewing.";
+            await LoadAsync();
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

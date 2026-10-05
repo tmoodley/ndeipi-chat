@@ -113,7 +113,8 @@ public sealed class BankingService(
                     Amounts.Format(transfer.Amount),
                     OnBehalfOf: from.BridgeCustomerId!,
                     Source: new BridgeTransferEndpoint("bridge_wallet", transfer.Currency, BridgeWalletId: from.WalletId),
-                    Destination: new BridgeTransferEndpoint(to.WalletChain!, transfer.Currency, ToAddress: to.WalletAddress)),
+                    Destination: new BridgeTransferEndpoint(to.WalletChain!, transfer.Currency, ToAddress: to.WalletAddress),
+                    DeveloperFee: transfer.FeeAmount is { } fee and > 0 ? Amounts.Format(fee) : null),
                 idempotencyKey: transfer.Id.ToString(),
                 ct);
 

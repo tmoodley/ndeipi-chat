@@ -42,6 +42,16 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<DonationCampaign> DonationCampaigns => Set<DonationCampaign>();
     public DbSet<Donation> Donations => Set<Donation>();
     public DbSet<PointsEntry> Points => Set<PointsEntry>();
+    public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
+    public DbSet<CreatorTier> CreatorTiers => Set<CreatorTier>();
+    public DbSet<CreatorPost> CreatorPosts => Set<CreatorPost>();
+    public DbSet<CreatorMedia> CreatorMedia => Set<CreatorMedia>();
+    public DbSet<CreatorSubscription> CreatorSubscriptions => Set<CreatorSubscription>();
+    public DbSet<CreatorPayment> CreatorPayments => Set<CreatorPayment>();
+    public DbSet<CreatorUnlock> CreatorUnlocks => Set<CreatorUnlock>();
+    public DbSet<CreatorActivity> CreatorActivity => Set<CreatorActivity>();
+    public DbSet<PayoutAccount> PayoutAccounts => Set<PayoutAccount>();
+    public DbSet<Withdrawal> Withdrawals => Set<Withdrawal>();
     public DbSet<ChatMedia> ChatMedia => Set<ChatMedia>();
     public DbSet<MarketListing> MarketListings => Set<MarketListing>();
     public DbSet<MarketListingPost> MarketListingPosts => Set<MarketListingPost>();
@@ -258,6 +268,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
 
         NdeipiChat.Api.Pos.PosModel.Configure(model);
         NdeipiChat.Api.Donations.DonationsModel.Configure(model);
+        NdeipiChat.Api.Creators.CreatorsModel.Configure(model);
         NdeipiChat.Api.Market.MarketModel.Configure(model);
         NdeipiChat.Api.Finance.FinanceModel.Configure(model);
         NdeipiChat.Api.Trust.TrustModel.Configure(model);

@@ -1,0 +1,548 @@
+@inject IJSRuntime JS
+
+@* The creator's studio: earnings (FR-CR-12), posts (FR-CR-08, 10), tiers (FR-CR-04), the page
+   itself (FR-CR-01, 03), subscribers, broadcasts and analytics (FR-CR-14..16), and withdrawals
+   (FR-CR-13). Someone who isn't a creator yet lands on "Your page" to set one up. *@
+
+@if (_me is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else if (!_me.IsCreator && !_me.CanApply)
+{
+    <section class="cr-card">
+        <h3>Verify your identity first</h3>
+        <p class="muted" style="margin: 0">Creators are paid into their Ndeipi wallet, so the identity check comes first: open Me > Wallet, then come back here.</p>
+    </section>
+}
+else
+{
+    @if (_me.IsCreator)
+    {
+        <nav class="cr-tabs">
+            @foreach (var (key, label) in Tabs)
+            {
+                <button class="@(_tab == key ? "on" : "")" @onclick="() => ShowAsync(key)">@label</button>
+            }
+        </nav>
+    }
+    @if (_message is not null)
+    {
+        <div class="notice">@_message</div>
+    }
+    @if (_error is not null)
+    {
+        <p class="error" style="margin: 0">@_error</p>
+    }
+
+    @switch (_tab)
+    {
+        case "overview" when _earnings is { } e:
+            <div class="cr-stats">
+                <div class="cr-stat"><span>This month (net)</span><b>@Format.Money(e.NetThisMonth)</b></div>
+                <div class="cr-stat"><span>Monthly recurring</span><b>@Format.Money(e.Mrr)</b></div>
+                <div class="cr-stat"><span>Subscribers</span><b>@e.ActiveSubscribers</b></div>
+                <div class="cr-stat"><span>Can withdraw</span><b>@Format.Money(e.Withdrawable)</b></div>
+            </div>
+            <section class="cr-card">
+                <h3>Earnings</h3>
+                <table class="cr-table">
+                    <tr><th></th><th class="num">This month</th><th class="num">All time</th></tr>
+                    <tr><td>Paid by subscribers</td><td class="num">@Format.Money(e.GrossThisMonth)</td><td class="num">@Format.Money(e.GrossAllTime)</td></tr>
+                    <tr><td>Ndeipi fee (@e.FeePercent.ToString("0.#")%)</td><td class="num">−@Format.Money(e.FeesThisMonth)</td><td class="num">−@Format.Money(e.GrossAllTime - e.NetAllTime)</td></tr>
+                    <tr><td><b>Yours</b></td><td class="num"><b>@Format.Money(e.NetThisMonth)</b></td><td class="num"><b>@Format.Money(e.NetAllTime)</b></td></tr>
+                </table>
+                <span class="muted small">Wallet balance @Format.Money(e.Balance) · @Format.Money(e.OnHold) on hold for @CreatorsContract.HoldDays days after it's earned.</span>
+            </section>
+            <section class="cr-card">
+                <h3>Recent payments</h3>
+                @if (e.Recent.Count == 0)
+                {
+                    <p class="muted" style="margin: 0">None yet. Share your page so people can subscribe.</p>
+                }
+                @foreach (var p in e.Recent)
+                {
+                    <div class="cr-row">
+                        <span class="grow">
+                            <b>@(p.Kind switch { CreatorPaymentKinds.Unlock => $"Unlock: {p.What}", CreatorPaymentKinds.Renewal => "Renewal", _ => "New subscriber" })</b>
+                            <small>@(p.Payer ?? "Anonymous") · @Format.WhenTime(p.CreatedAt) · you get @Format.Money(p.Net)</small>
+                        </span>
+                        <span class="cr-badge @Format.Tone(p.Status)">@Format.Money(p.Amount)</span>
+                    </div>
+                }
+            </section>
+            break;
+
+        case "posts":
+            <button class="primary" @onclick="() => App.Go(new CreatorsView.EditPost(null))">＋ New post</button>
+            @if (_posts is { } posts)
+            {
+                @if (posts.Count == 0)
+                {
+                    <section class="cr-card"><p class="muted" style="margin: 0">No posts yet. Write your first one.</p></section>
+                }
+                @foreach (var p in posts)
+                {
+                    <section class="cr-card">
+                        <div class="cr-row">
+                            <span class="grow">
+                                <b>@p.Title</b>
+                                <small>@(p.IsScheduled ? $"⏰ Scheduled for {Format.WhenTime(p.PublishAt)}" : $"Published {Format.When(p.PublishAt)}") · @Format.Access(p) · @(p.Views ?? 0) views</small>
+                            </span>
+                            <button class="secondary" @onclick="() => App.Go(new CreatorsView.EditPost(p.Id))">Edit</button>
+                        </div>
+                    </section>
+                }
+            }
+            break;
+
+        case "tiers":
+            <p class="muted small" style="margin: 0">Up to @CreatorsContract.MaxTiers tiers at once. A higher rank sees everything a lower one does. Prices are in US dollars, paid from subscribers' Ndeipi wallets.</p>
+            @foreach (var t in _tiers)
+            {
+                <section class="cr-card">
+                    <div class="cr-two">
+                        <label class="cr-field">Name<input @bind="t.Name" maxlength="40" placeholder="e.g. Gold" /></label>
+                        <label class="cr-field">Rank (1 = lowest)<input type="number" min="1" max="@CreatorsContract.MaxTiers" @bind="t.Rank" /></label>
+                        <label class="cr-field">Monthly price ($)<input type="number" min="0.5" step="0.01" @bind="t.Monthly" /></label>
+                        <label class="cr-field">Annual price ($, optional)<input type="number" min="0.5" step="0.01" @bind="t.Annual" /></label>
+                    </div>
+                    <label class="cr-field">What subscribers get<textarea rows="2" maxlength="500" @bind="t.Description"></textarea></label>
+                    <div class="cr-actions" style="align-items: center">
+                        <label class="cr-row" style="flex: 1"><input type="checkbox" @bind="t.Active" style="width: 18px; height: 18px" /><span class="grow small">Offered</span></label>
+                        @if (t.Subscribers > 0)
+                        {
+                            <span class="muted small">@t.Subscribers subscriber@(t.Subscribers == 1 ? "" : "s")</span>
+                        }
+                        <button class="primary" disabled="@_busy" @onclick="() => SaveTierAsync(t)">@(t.Id is null ? "Add tier" : "Save")</button>
+                    </div>
+                </section>
+            }
+            @if (_tiers.All(t => t.Id is not null) && _tiers.Count(t => t.Active) < CreatorsContract.MaxTiers)
+            {
+                <button class="secondary" @onclick="AddTier">＋ Add a tier</button>
+            }
+            break;
+
+        case "page":
+            <section class="cr-card">
+                <h3>@(_me.IsCreator ? "Your page" : "Become a creator")</h3>
+                @if (!_me.IsCreator)
+                {
+                    <p class="muted small" style="margin: 0">Your identity is checked, so you're ready. Ndeipi keeps @_me.FeePercent.ToString("0.#")% of what subscribers pay; the rest goes straight to your Ndeipi wallet.</p>
+                }
+                <label class="cr-field">Name<input @bind="_name" maxlength="@CreatorsContract.MaxNameLength" placeholder="Your creator name" /></label>
+                <label class="cr-field">Category
+                    <select @bind="_category">
+                        @foreach (var c in CreatorsContract.Categories)
+                        {
+                            <option value="@c.Code">@c.Label</option>
+                        }
+                    </select>
+                </label>
+                <label class="cr-field">About<textarea rows="4" maxlength="@CreatorsContract.MaxBioLength" @bind="_bio" placeholder="What you make, and what subscribers get"></textarea></label>
+                <div class="cr-field">Links
+                    @for (var i = 0; i < _links.Count; i++)
+                    {
+                        var link = _links[i];
+                        <div class="cr-two">
+                            <input @bind="link.Label" placeholder="Label, e.g. YouTube" maxlength="40" />
+                            <input @bind="link.Url" placeholder="https://…" />
+                        </div>
+                    }
+                    @if (_links.Count < 8)
+                    {
+                        <button class="link" style="align-self: flex-start" @onclick="() => _links.Add(new LinkForm())">＋ Add a link</button>
+                    }
+                </div>
+                @if (_me.IsCreator && _posts is { Count: > 0 } pinnable)
+                {
+                    <label class="cr-field">Pinned post
+                        <select @bind="_pinned">
+                            <option value="">None</option>
+                            @foreach (var p in pinnable.Where(p => !p.IsScheduled))
+                            {
+                                <option value="@p.Id">@p.Title</option>
+                            }
+                        </select>
+                    </label>
+                }
+                <button class="primary" disabled="@_busy" @onclick="SaveProfileAsync">@(_me.IsCreator ? "Save" : "Create my page")</button>
+            </section>
+            @if (_me.IsCreator)
+            {
+                <section class="cr-card">
+                    <h3>Banner</h3>
+                    <label class="button secondary" style="position: relative; overflow: hidden; align-self: flex-start">@(_busy ? "Uploading…" : "Upload a banner photo")
+                        <InputFile OnChange="BannerAsync" accept="image/*" style="position: absolute; inset: 0; opacity: 0" />
+                    </label>
+                </section>
+            }
+            break;
+
+        case "audience":
+            @if (_analytics is { } a)
+            {
+                <div class="cr-stats">
+                    <div class="cr-stat"><span>Page visitors (30 days)</span><b>@a.StorefrontVisitors</b></div>
+                    <div class="cr-stat"><span>New subscribers</span><b>@a.NewSubscribers</b></div>
+                    <div class="cr-stat"><span>Conversion</span><b>@a.ConversionPercent.ToString("0.#")%</b></div>
+                    <div class="cr-stat"><span>Post views</span><b>@a.PostViews</b></div>
+                    <div class="cr-stat"><span>Plays</span><b>@a.MediaPlays</b></div>
+                    <div class="cr-stat"><span>Unlocks</span><b>@a.Unlocks</b></div>
+                </div>
+                @if (a.TopPosts.Count > 0)
+                {
+                    <section class="cr-card">
+                        <h3>Top posts (30 days)</h3>
+                        <table class="cr-table">
+                            <tr><th>Post</th><th class="num">Views</th><th class="num">Plays</th><th class="num">Unlocks</th></tr>
+                            @foreach (var p in a.TopPosts)
+                            {
+                                <tr><td>@p.Title</td><td class="num">@p.Views</td><td class="num">@p.Plays</td><td class="num">@p.Unlocks</td></tr>
+                            }
+                        </table>
+                    </section>
+                }
+            }
+            <section class="cr-card">
+                <h3>Message your subscribers</h3>
+                <textarea rows="3" maxlength="@CreatorsContract.MaxBroadcastLength" @bind="_broadcast" placeholder="An announcement, a newsletter, an exclusive update…"></textarea>
+                <div class="cr-actions" style="align-items: center">
+                    <select @bind="_broadcastTier" style="flex: 1">
+                        <option value="">All subscribers</option>
+                        @foreach (var t in _tiers.Where(t => t.Id is not null))
+                        {
+                            <option value="@t.Id">@t.Name and up</option>
+                        }
+                    </select>
+                    <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_broadcast))" @onclick="BroadcastAsync">Send</button>
+                </div>
+                <span class="muted small">It arrives in each subscriber's chats, from you.</span>
+            </section>
+            <section class="cr-card">
+                <h3>Subscribers (@_subscribers.Count)</h3>
+                @if (_subscribers.Count == 0)
+                {
+                    <p class="muted" style="margin: 0">No subscribers yet.</p>
+                }
+                else
+                {
+                    <table class="cr-table">
+                        <tr><th>Who</th><th>Tier</th><th class="num">Months</th></tr>
+                        @foreach (var s in _subscribers)
+                        {
+                            <tr>
+                                <td>@s.Name @if (s.Status == SubscriptionStatuses.Grace) {<span class="cr-badge wait">payment due</span>}</td>
+                                <td>@s.TierName · @s.Period</td>
+                                <td class="num">@s.Months</td>
+                            </tr>
+                        }
+                    </table>
+                    <span class="muted small">Subscribers are anonymous unless they chose to share who they are.</span>
+                }
+            </section>
+            break;
+
+        case "payouts" when _payouts is { } po:
+            <div class="cr-stats">
+                <div class="cr-stat"><span>Can withdraw</span><b>@Format.Money(po.Withdrawable)</b></div>
+                <div class="cr-stat"><span>On hold</span><b>@Format.Money(po.OnHold)</b></div>
+            </div>
+            @if (po.Accounts.Count > 0)
+            {
+                <section class="cr-card">
+                    <h3>Withdraw</h3>
+                    <div class="cr-two">
+                        <label class="cr-field">To
+                            <select @bind="_withdrawTo">
+                                @foreach (var acc in po.Accounts)
+                                {
+                                    <option value="@acc.Id">@acc.Label (@PayoutRails.Label(acc.Rail))</option>
+                                }
+                            </select>
+                        </label>
+                        <label class="cr-field">Amount ($)<input type="number" min="1" step="0.01" @bind="_withdrawAmount" placeholder="@po.Withdrawable.ToString("0.00", CultureInfo.InvariantCulture)" /></label>
+                    </div>
+                    <button class="primary" disabled="@(_busy || _withdrawAmount is null)" @onclick="WithdrawAsync">Withdraw</button>
+                    <span class="muted small">Earnings stay on hold for @CreatorsContract.HoldDays days after they're paid, against fraud. Bank transfers usually arrive in 1-3 business days.</span>
+                </section>
+            }
+            <section class="cr-card">
+                <h3>Where to withdraw to</h3>
+                @foreach (var acc in po.Accounts)
+                {
+                    <div class="cr-row">
+                        <span class="grow"><b>@acc.Label</b><small>@PayoutRails.Label(acc.Rail)</small></span>
+                        <button class="link" disabled="@_busy" @onclick="() => RemoveAccountAsync(acc.Id)">Remove</button>
+                    </div>
+                }
+                <div class="cr-chips">
+                    @foreach (var rail in new[] { PayoutRails.Ach, PayoutRails.Wire, PayoutRails.Sepa, PayoutRails.Crypto })
+                    {
+                        <button class="@(_account.Rail == rail ? "on" : "")" @onclick="() => _account.Rail = rail">@PayoutRails.Label(rail)</button>
+                    }
+                </div>
+                @if (_account.Rail == PayoutRails.Crypto)
+                {
+                    <label class="cr-field">USDC address (on the same network as your Ndeipi wallet)<input @bind="_account.Address" placeholder="Address" /></label>
+                    <label class="cr-field">Name for it<input @bind="_account.OwnerName" placeholder="e.g. My exchange" /></label>
+                }
+                else
+                {
+                    <label class="cr-field">Account holder<input @bind="_account.OwnerName" placeholder="Full name, as on the account" /></label>
+                    @if (_account.Rail == PayoutRails.Sepa)
+                    {
+                        <div class="cr-two">
+                            <label class="cr-field">IBAN<input @bind="_account.Iban" placeholder="DE89 3704 0044 0532 0130 00" /></label>
+                            <label class="cr-field">BIC (optional)<input @bind="_account.Bic" /></label>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="cr-two">
+                            <label class="cr-field">Bank name<input @bind="_account.BankName" /></label>
+                            <label class="cr-field">Type
+                                <select @bind="_account.CheckingOrSavings"><option value="checking">Checking</option><option value="savings">Savings</option></select>
+                            </label>
+                            <label class="cr-field">Account number<input @bind="_account.AccountNumber" inputmode="numeric" /></label>
+                            <label class="cr-field">Routing number<input @bind="_account.RoutingNumber" inputmode="numeric" maxlength="9" /></label>
+                            <label class="cr-field">Street address<input @bind="_account.StreetLine1" /></label>
+                            <label class="cr-field">City<input @bind="_account.City" /></label>
+                            <label class="cr-field">State<input @bind="_account.State" maxlength="30" /></label>
+                            <label class="cr-field">ZIP code<input @bind="_account.PostalCode" maxlength="12" /></label>
+                        </div>
+                    }
+                    <span class="muted small">Your bank details go straight to Bridge, our payments partner; Ndeipi only keeps the last four digits.</span>
+                }
+                <button class="secondary" disabled="@_busy" @onclick="AddAccountAsync">Save</button>
+            </section>
+            @if (po.Withdrawals.Count > 0)
+            {
+                <section class="cr-card">
+                    <h3>Withdrawals</h3>
+                    @foreach (var w in po.Withdrawals)
+                    {
+                        <div class="cr-row">
+                            <span class="grow"><b>@Format.Money(w.Amount) to @w.AccountLabel</b><small>@Format.WhenTime(w.CreatedAt)@(w.Error is { } err ? $" · {err}" : "")</small></span>
+                            <span class="cr-badge @Format.Tone(w.Status)">@w.Status</span>
+                        </div>
+                    }
+                </section>
+            }
+            break;
+    }
+}
+
+@code {
+    [CascadingParameter] public CreatorsApp App { get; set; } = null!;
+    [Parameter] public string Tab { get; set; } = "overview";
+
+    static readonly (string Key, string Label)[] Tabs =
+        [("overview", "Overview"), ("posts", "Posts"), ("tiers", "Tiers"), ("page", "Your page"), ("audience", "Audience"), ("payouts", "Payouts")];
+
+    sealed class TierForm
+    {
+        public Guid? Id;
+        public string Name = "";
+        public string? Description;
+        public decimal Monthly = 5m;
+        public decimal? Annual;
+        public int Rank = 1;
+        public bool Active = true;
+        public int Subscribers;
+    }
+
+    sealed class LinkForm
+    {
+        public string Label = "", Url = "";
+    }
+
+    sealed class AccountForm
+    {
+        public string Rail = PayoutRails.Ach, OwnerName = "", CheckingOrSavings = "checking";
+        public string? BankName, AccountNumber, RoutingNumber, Iban, Bic, StreetLine1, City, State, PostalCode, Address;
+    }
+
+    CreatorsMeDto? _me;
+    string _tab = "overview";
+    string? _error, _message, _broadcast, _broadcastTier, _pinned;
+    bool _busy;
+    CreatorEarningsDto? _earnings;
+    List<CreatorPostDto>? _posts;
+    List<TierForm> _tiers = [];
+    List<SubscriberDto> _subscribers = [];
+    CreatorAnalyticsDto? _analytics;
+    PayoutsDto? _payouts;
+    Guid _withdrawTo;
+    decimal? _withdrawAmount;
+    AccountForm _account = new();
+    string _name = "", _category = "other";
+    string? _bio;
+    List<LinkForm> _links = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _me = await App.Api.GetAsync<CreatorsMeDto>($"{CreatorsApi.Base}/me");
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+            return;
+        }
+        await ShowAsync(_me.IsCreator ? Tab : "page");
+    }
+
+    async Task ShowAsync(string tab)
+    {
+        (_tab, _error, _message) = (tab, null, null);
+        try
+        {
+            switch (tab)
+            {
+                case "overview":
+                    _earnings = await App.Api.GetAsync<CreatorEarningsDto>($"{CreatorsApi.Base}/studio/earnings");
+                    break;
+                case "posts":
+                    await LoadPostsAsync();
+                    break;
+                case "tiers":
+                    await LoadTiersAsync();
+                    break;
+                case "page":
+                    if (_me!.IsCreator)
+                    {
+                        var me = await App.Api.GetAsync<CreatorDto>($"{CreatorsApi.Base}/{App.Context.UserId}");
+                        (_name, _category, _bio, _pinned) = (me.Name, me.Category, me.Bio, me.PinnedPostId?.ToString());
+                        _links = me.Links.Select(l => new LinkForm { Label = l.Label, Url = l.Url }).ToList();
+                        await LoadPostsAsync();
+                    }
+                    else
+                    {
+                        _name = App.Context.DisplayName;
+                    }
+                    break;
+                case "audience":
+                    await LoadTiersAsync();
+                    _analytics = await App.Api.GetAsync<CreatorAnalyticsDto>($"{CreatorsApi.Base}/studio/analytics");
+                    _subscribers = await App.Api.GetAsync<List<SubscriberDto>>($"{CreatorsApi.Base}/studio/subscribers");
+                    break;
+                case "payouts":
+                    _payouts = await App.Api.GetAsync<PayoutsDto>($"{CreatorsApi.Base}/studio/payouts");
+                    if (_payouts.Accounts.Count > 0 && _payouts.Accounts.All(a => a.Id != _withdrawTo))
+                        _withdrawTo = _payouts.Accounts[0].Id;
+                    break;
+            }
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task LoadPostsAsync() =>
+        _posts = (await App.Api.GetAsync<CreatorPostPageDto>($"{CreatorsApi.Base}/{App.Context.UserId}/posts")).Posts.ToList();
+
+    async Task LoadTiersAsync() =>
+        _tiers = (await App.Api.GetAsync<List<CreatorTierDto>>($"{CreatorsApi.Base}/studio/tiers"))
+            .Select(t => new TierForm { Id = t.Id, Name = t.Name, Description = t.Description, Monthly = t.MonthlyPrice, Annual = t.AnnualPrice, Rank = t.Rank, Active = t.Active, Subscribers = t.SubscriberCount })
+            .ToList();
+
+    void AddTier() => _tiers.Add(new TierForm { Rank = _tiers.Where(t => t.Active).Select(t => t.Rank).DefaultIfEmpty(0).Max() + 1 });
+
+    Task SaveTierAsync(TierForm t) => Run(async () =>
+    {
+        var request = new SaveCreatorTierRequest(t.Name, t.Description, t.Monthly, t.Annual, t.Rank, t.Active);
+        var saved = t.Id is { } id
+            ? await App.Api.SendAsync<CreatorTierDto>(HttpMethod.Put, $"{CreatorsApi.Base}/studio/tiers/{id}", request)
+            : await App.Api.SendAsync<CreatorTierDto>(HttpMethod.Post, $"{CreatorsApi.Base}/studio/tiers", request);
+        t.Id = saved!.Id;
+    }, $"{t.Name} saved.");
+
+    Task SaveProfileAsync() => Run(async () =>
+    {
+        var request = new SaveCreatorRequest(_name, _category, _bio,
+            _links.Where(l => !string.IsNullOrWhiteSpace(l.Url)).Select(l => new CreatorLink(l.Label, l.Url)).ToList(),
+            Guid.TryParse(_pinned, out var pin) ? pin : null);
+        await App.Api.SendAsync<CreatorDto>(HttpMethod.Put, $"{CreatorsApi.Base}/profile", request);
+        if (!_me!.IsCreator)
+        {
+            _me = _me with { IsCreator = true };
+            await ShowAsync("tiers");
+            _message = "Your page is ready. Now add a tier or two, then your first post.";
+        }
+    }, "Saved.");
+
+    async Task BannerAsync(InputFileChangeEventArgs e) => await Run(async () =>
+    {
+        using var original = new MemoryStream();
+        await e.File.OpenReadStream(CreatorsContract.MaxImageBytes).CopyToAsync(original);
+        var bytes = original.ToArray();
+        try
+        {
+            bytes = await JS.InvokeAsync<byte[]>("ndeipi.shrinkImage", bytes, 2048, 0.85);
+        }
+        catch (JSException)
+        {
+        }
+        await App.Api.UploadAsync<CreatorDto>($"{CreatorsApi.Base}/profile/banner", new MemoryStream(bytes), "banner.jpg", "image/jpeg");
+    }, "Banner updated.");
+
+    Task BroadcastAsync() => Run(async () =>
+    {
+        var result = await App.Api.SendAsync<BroadcastResultDto>(HttpMethod.Post, $"{CreatorsApi.Base}/studio/broadcasts",
+            new CreatorBroadcastRequest(_broadcast!, Guid.TryParse(_broadcastTier, out var tier) ? tier : null));
+        _broadcast = null;
+        _message = $"Sent to {result!.Sent} subscriber{(result.Sent == 1 ? "" : "s")}.";
+    }, null);
+
+    Task AddAccountAsync() => Run(async () =>
+    {
+        var a = _account;
+        await App.Api.SendAsync<PayoutAccountDto>(HttpMethod.Post, $"{CreatorsApi.Base}/studio/payout-accounts",
+            new SavePayoutAccountRequest(a.Rail, a.OwnerName, a.BankName, a.AccountNumber, a.RoutingNumber, a.CheckingOrSavings, a.Iban, a.Bic, null,
+                a.StreetLine1, a.City, a.State, a.PostalCode, a.Address));
+        _account = new AccountForm { Rail = a.Rail };
+        await ShowAsync("payouts");
+    }, "Saved. You can withdraw to it now.");
+
+    Task RemoveAccountAsync(Guid id) => Run(async () =>
+    {
+        await App.Api.SendAsync<object>(HttpMethod.Delete, $"{CreatorsApi.Base}/studio/payout-accounts/{id}", null);
+        await ShowAsync("payouts");
+    }, "Removed.");
+
+    Task WithdrawAsync() => Run(async () =>
+    {
+        var w = await App.Api.SendAsync<WithdrawalDto>(HttpMethod.Post, $"{CreatorsApi.Base}/studio/withdrawals", new WithdrawRequest(_withdrawTo, _withdrawAmount ?? 0));
+        _withdrawAmount = null;
+        await ShowAsync("payouts");
+        _message = w!.Status == PayoutStatuses.Failed ? null : $"Withdrawal of {Format.Money(w.Amount)} on its way.";
+        if (w.Status == PayoutStatuses.Failed)
+            _error = w.Error;
+    }, null);
+
+    async Task Run(Func<Task> work, string? done)
+    {
+        (_busy, _error, _message) = (true, null, null);
+        try
+        {
+            await work();
+            _message ??= done;
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (IOException)
+        {
+            _error = "Couldn't read that file. Please try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

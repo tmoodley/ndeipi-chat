@@ -1,0 +1,153 @@
+@implements IDisposable
+
+@* One post: the text, photos, audio and video (served by links that expire, NFR-CR-06), or, when
+   locked, its teaser and how to see it: subscribe to its tier, or pay once (FR-CR-05). Starting a
+   video or audio counts a play (FR-CR-16). *@
+
+@if (_post is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var p = _post;
+    <section class="cr-card">
+        <button class="cr-row" style="background: none; box-shadow: none; padding: 0; color: inherit; text-align: left" @onclick="() => App.Go(new CreatorsView.Storefront(p.CreatorId))">
+            <span class="grow"><small>@p.CreatorName</small></span><span class="muted small">@Format.When(p.PublishAt)</span>
+        </button>
+        <h2>@p.Title</h2>
+        <span><span class="cr-lock @(p.Locked ? "" : "open")">@(p.Locked ? "🔒" : "🔓") @Format.Access(p)</span></span>
+
+        @if (p.Locked)
+        {
+            @if (p.Teaser is { } teaser)
+            {
+                <div class="cr-body muted">@teaser</div>
+            }
+            @if (p.Media.Count > 0)
+            {
+                <span class="muted small">🔒 @p.Media.Count photo@(p.Media.Count == 1 ? "" : "s") or video@(p.Media.Count == 1 ? "" : "s") inside</span>
+            }
+            <div class="cr-actions">
+                @if (p.Access == PostAccess.PayPerView && p.Price is { } price)
+                {
+                    <button class="primary" disabled="@_busy" @onclick="UnlockAsync">@(_busy ? "Paying…" : $"Unlock for {Format.Money(price)}")</button>
+                }
+                @if (p.TierName is not null)
+                {
+                    <button class="secondary" @onclick="() => App.Go(new CreatorsView.Storefront(p.CreatorId))">Subscribe to @p.TierName</button>
+                }
+            </div>
+            <span class="muted small">Paid from your Ndeipi wallet.</span>
+        }
+        else
+        {
+            @if (p.Body is { } body)
+            {
+                <div class="cr-body">@body</div>
+            }
+            @if (p.Media.Count > 0)
+            {
+                <div class="cr-media">
+                    @foreach (var m in p.Media)
+                    {
+                        @switch (m.Type)
+                        {
+                            case MediaTypes.Video:
+                                <video src="@m.Url" controls preload="metadata" playsinline controlsList="nodownload" @onplay="PlayedAsync"></video>
+                                break;
+                            case "audio":
+                                <div>
+                                    @if (m.FileName is { } name)
+                                    {
+                                        <span class="small muted">🎧 @name</span>
+                                    }
+                                    <audio src="@m.Url" controls preload="metadata" controlsList="nodownload" @onplay="PlayedAsync"></audio>
+                                </div>
+                                break;
+                            default:
+                                <img src="@m.Url" alt="" loading="lazy" />
+                                break;
+                        }
+                    }
+                </div>
+            }
+        }
+        @if (_error is not null)
+        {
+            <p class="error" style="margin: 0">@_error</p>
+        }
+        @if (p.Views is { } views)
+        {
+            <span class="muted small">👁 @views view@(views == 1 ? "" : "s") · this is your post</span>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public CreatorsApp App { get; set; } = null!;
+    [Parameter] public Guid PostId { get; set; }
+
+    CreatorPostDto? _post;
+    string? _error;
+    bool _busy, _played;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _post = await App.Api.GetAsync<CreatorPostDto>($"{CreatorsApi.Base}/posts/{PostId}");
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task UnlockAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            _post = await App.Api.SendAsync<CreatorPostDto>(HttpMethod.Post, $"{CreatorsApi.Base}/posts/{PostId}/unlock", null);
+            if (_post!.Locked)
+                _error = "The payment didn't go through. Check your wallet balance.";
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task PlayedAsync()
+    {
+        if (_played)
+            return;
+        _played = true;
+        try
+        {
+            await App.Api.SendAsync<object>(HttpMethod.Post, $"{CreatorsApi.Base}/posts/{PostId}/play", null);
+        }
+        catch (CreatorsException)
+        {
+        }
+    }
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

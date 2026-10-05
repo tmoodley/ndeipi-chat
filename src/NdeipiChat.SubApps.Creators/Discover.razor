@@ -1,0 +1,140 @@
+@implements IDisposable
+
+@* Finding creators: search and categories; your subscriptions (with a warning if a renewal failed,
+   FR-CR-07); and the way into your studio, or to becoming a creator once your identity is checked. *@
+
+@if (_me is { } me)
+{
+    @if (me.IsCreator)
+    {
+        <button class="primary" @onclick='() => App.Go(new CreatorsView.Studio())'>🎛 Your studio</button>
+    }
+    else if (me.CanApply)
+    {
+        <section class="cr-card">
+            <div class="cr-row">
+                <span class="grow"><b>Become a creator</b><small>Post, sell subscriptions in up to @CreatorsContract.MaxTiers tiers, and get paid into your Ndeipi wallet. Ndeipi keeps @me.FeePercent.ToString("0.#")%.</small></span>
+                <button class="primary" @onclick='() => App.Go(new CreatorsView.Studio("page"))'>Start</button>
+            </div>
+        </section>
+    }
+
+    @foreach (var s in me.Subscriptions.Where(s => s.Status == SubscriptionStatuses.Grace))
+    {
+        <div class="cr-warn">⚠️ Your payment to @s.CreatorName didn't go through. Add money to your Ndeipi wallet by @Format.When(s.GraceUntil ?? s.CurrentPeriodEnd) to keep your access.</div>
+    }
+
+    @if (me.Subscriptions.Any(s => s.Status != SubscriptionStatuses.Ended))
+    {
+        <section class="cr-card">
+            <h3>Your subscriptions</h3>
+            @foreach (var s in me.Subscriptions.Where(s => s.Status != SubscriptionStatuses.Ended))
+            {
+                <button class="cr-row" style="background: none; box-shadow: none; padding: 4px 0; color: inherit; text-align: left"
+                        @onclick="() => App.Go(new CreatorsView.Storefront(s.CreatorId))">
+                    <span class="grow"><b>@s.CreatorName</b><small>@s.TierName · @Format.Money(s.Price)/@Format.Period(s.Period)</small></span>
+                    <span class="cr-badge @Format.Tone(s.Status)">@Format.Status(s)</span>
+                </button>
+            }
+        </section>
+    }
+}
+
+<input type="search" placeholder="Search creators" @bind="_q" @bind:event="onchange" @bind:after="LoadAsync" />
+<div class="cr-chips">
+    <button class="@(_category is null ? "on" : "")" @onclick="() => CategoryAsync(null)">All</button>
+    @foreach (var c in CreatorsContract.Categories)
+    {
+        <button class="@(_category == c.Code ? "on" : "")" @onclick="() => CategoryAsync(c.Code)">@c.Label</button>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <p class="error">@_error</p>
+}
+@if (_creators is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_creators.Count == 0)
+{
+    <section class="cr-card"><p class="muted" style="margin: 0">No creators here yet.</p></section>
+}
+else
+{
+    <div class="cr-grid">
+        @foreach (var c in _creators)
+        {
+            <button class="cr-creator" @key="c.UserId" @onclick="() => App.Go(new CreatorsView.Storefront(c.UserId))">
+                <div class="banner" style="@(c.BannerUrl is { } b ? $"background: url('{b}') center / cover" : "background: linear-gradient(135deg, #7750F8, #1FC98A)")"></div>
+                <div class="who">
+                    <span class="cr-avatar" style="@(c.AvatarUrl is { } a ? $"background-image: url('{a}')" : "")">@(c.AvatarUrl is null ? c.Name[..1] : "")</span>
+                    <span class="text">
+                        <b>@c.Name</b>
+                        <small class="muted">@CreatorsContract.CategoryLabel(c.Category) · @c.SubscriberCount subscriber@(c.SubscriberCount == 1 ? "" : "s")</small>
+                        @if (c.FromPrice is { } from)
+                        {
+                            <small class="muted">From @Format.Money(from)/month</small>
+                        }
+                    </span>
+                </div>
+            </button>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public CreatorsApp App { get; set; } = null!;
+
+    CreatorsMeDto? _me;
+    List<CreatorCardDto>? _creators;
+    string? _q, _category, _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await Task.WhenAll(LoadMeAsync(), LoadAsync());
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadMeAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadMeAsync()
+    {
+        try
+        {
+            _me = await App.Api.GetAsync<CreatorsMeDto>($"{CreatorsApi.Base}/me");
+        }
+        catch (CreatorsException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            var query = new List<string>();
+            if (!string.IsNullOrWhiteSpace(_q)) query.Add($"q={Uri.EscapeDataString(_q.Trim())}");
+            if (_category is not null) query.Add($"category={_category}");
+            _creators = await App.Api.GetAsync<List<CreatorCardDto>>($"{CreatorsApi.Base}/{(query.Count > 0 ? "?" + string.Join('&', query) : "")}");
+        }
+        catch (CreatorsException ex)
+        {
+            (_error, _creators) = (ex.Message, _creators ?? []);
+        }
+    }
+
+    Task CategoryAsync(string? category)
+    {
+        _category = category;
+        return LoadAsync();
+    }
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

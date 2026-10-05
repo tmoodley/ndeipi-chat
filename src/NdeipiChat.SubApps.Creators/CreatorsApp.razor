@@ -1,0 +1,187 @@
+@implements IAsyncDisposable
+
+@* The Creators sub-app (NDEIPI-SRS-CREATOR-001): discover creators and subscribe from your Ndeipi
+   wallet, read and watch what they post, and, as a creator, run your page from the studio: posts,
+   tiers, earnings, subscribers, broadcasts, analytics and withdrawals. Opened at a creator with
+   "creator={id}" or a post with "post={id}". *@
+@attribute [SubAppRoot(CreatorsContract.AppId)]
+
+<style>
+    .content.embedded header.cr-bar { display: none; }
+    .cr .page { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 36px; }
+    .cr h2 { font-size: 22px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .cr h3 { font-size: 16px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .cr .muted { color: var(--muted); }
+    .cr .small { font-size: 13px; }
+    .cr-card { background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, var(--divider)); border-radius: 18px; box-shadow: var(--shadow, none); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }
+    .cr-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .cr-chips button { flex: none; border-radius: 16px; padding: 6px 12px; font-size: 13px; background: var(--secondary); color: var(--text); box-shadow: none; white-space: nowrap; }
+    .cr-chips button.on { background: var(--brand); color: #fff; font-weight: 700; }
+    .cr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+    .cr-creator { text-align: left; padding: 0; overflow: hidden; display: flex; flex-direction: column; font: inherit; color: var(--text); cursor: pointer; background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, var(--divider)); border-radius: 18px; box-shadow: var(--shadow, none); }
+    .cr-creator .banner { height: 86px; background: linear-gradient(135deg, #7750F8, #1FC98A); background-size: cover; background-position: center; }
+    .cr-creator .who { display: flex; gap: 10px; align-items: center; padding: 0 12px 12px; margin-top: -22px; }
+    .cr-avatar { width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--page); background: var(--secondary) center/cover; flex: none; display: grid; place-items: center; font-weight: 800; color: var(--muted); }
+    .cr-creator .who .text { display: flex; flex-direction: column; padding-top: 22px; min-width: 0; }
+    .cr-hero { border-radius: 20px; overflow: hidden; background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, var(--divider)); box-shadow: var(--shadow, none); }
+    .cr-hero .banner { height: 150px; background: linear-gradient(135deg, #7750F8, #1FC98A); background-size: cover; background-position: center; }
+    .cr-hero .body { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .cr-hero .top { display: flex; gap: 12px; align-items: flex-end; margin-top: -34px; }
+    .cr-hero .cr-avatar { width: 76px; height: 76px; }
+    .cr-tiers { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+    .cr-tier { border: 1.5px solid var(--divider); border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+    .cr-tier.mine { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
+    .cr-tier .price { font-size: 22px; font-weight: 800; }
+    .cr-post { display: flex; flex-direction: column; gap: 8px; cursor: pointer; text-align: left; font: inherit; color: var(--text); }
+    .cr-post .cover { border-radius: 14px; overflow: hidden; aspect-ratio: 16 / 9; background: #1b1f2a; position: relative; display: grid; place-items: center; color: #fff; font-size: 36px; }
+    .cr-post .cover img { width: 100%; height: 100%; object-fit: cover; }
+    .cr-post .cover.locked img { filter: blur(14px) brightness(.7); transform: scale(1.1); }
+    .cr-lock { display: inline-flex; gap: 4px; align-items: center; border-radius: 10px; padding: 2px 9px; font-size: 12px; font-weight: 800; background: var(--secondary); color: var(--muted); }
+    .cr-lock.open { background: rgba(31, 169, 113, .16); color: var(--success); }
+    .cr-body { white-space: pre-wrap; line-height: 1.55; font-size: 16px; }
+    .cr-media { display: flex; flex-direction: column; gap: 10px; }
+    .cr-media img, .cr-media video { width: 100%; border-radius: 14px; background: #000; }
+    .cr-media audio { width: 100%; }
+    .cr-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 12px; font-weight: 800; background: var(--secondary); color: var(--muted); white-space: nowrap; }
+    .cr-badge.ok { background: rgba(31, 169, 113, .16); color: var(--success); }
+    .cr-badge.wait { background: rgba(255, 196, 0, .2); color: #8A6100; }
+    .cr-badge.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .cr-row { display: flex; gap: 10px; align-items: center; }
+    .cr-row .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .cr-row .grow small { color: var(--muted); }
+    .cr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cr-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 700; }
+    .cr-field input, .cr-field select, .cr-field textarea { font-weight: 500; font-size: 15px; }
+    .cr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cr-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .cr-tabs button { flex: none; border-radius: 18px; padding: 8px 14px; font-size: 14px; background: var(--secondary); color: var(--text); box-shadow: none; }
+    .cr-tabs button.on { background: var(--brand); color: #fff; font-weight: 700; }
+    .cr-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .cr-stat { border-radius: 16px; padding: 12px 14px; background: var(--secondary); display: flex; flex-direction: column; gap: 2px; }
+    .cr-stat b { font-size: 22px; font-variant-numeric: tabular-nums; }
+    .cr-stat span { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .cr-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    .cr-table th, .cr-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--divider); }
+    .cr-table th { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .cr-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .cr-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .cr-thumb { width: 84px; height: 84px; border-radius: 12px; overflow: hidden; position: relative; background: #1b1f2a; display: grid; place-items: center; color: #fff; font-size: 24px; }
+    .cr-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .cr-thumb button { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; box-shadow: none; }
+    .cr-add { width: 84px; height: 84px; border-radius: 12px; border: 2px dashed var(--divider); display: grid; place-items: center; font-size: 26px; color: var(--muted); position: relative; overflow: hidden; cursor: pointer; }
+    .cr-add input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .cr-warn { background: rgba(255, 196, 0, .18); color: #8A6100; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+    @@media (max-width: 480px) { .cr-two { grid-template-columns: 1fr; } }
+</style>
+
+<div class="cr">
+    <header class="bar cr-bar">
+        <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+        <h1>@Title</h1>
+    </header>
+
+    <div class="page">
+        <CascadingValue Value="this" IsFixed="true">
+            @switch (_view)
+            {
+                case CreatorsView.Discover:
+                    <Discover />
+                    break;
+                case CreatorsView.Storefront s:
+                    <Storefront @key="s" CreatorId="s.CreatorId" />
+                    break;
+                case CreatorsView.Post p:
+                    <PostPage @key="p" PostId="p.PostId" />
+                    break;
+                case CreatorsView.Studio st:
+                    <Studio @key="st" Tab="@st.Tab" />
+                    break;
+                case CreatorsView.EditPost e:
+                    <EditPost @key="e" PostId="e.PostId" />
+                    break;
+            }
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    CreatorsView _view = new CreatorsView.Discover();
+    readonly Stack<CreatorsView> _history = new();
+    IAsyncDisposable? _subscription;
+
+    public CreatorsApi Api { get; private set; } = null!;
+
+    /// <summary>Raised when a payment or subscription of theirs changes (from the server, live).</summary>
+    public event Action? Changed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new CreatorsApi(Context.Api);
+        var query = Context.Query.Split('&').Select(p => p.Split('=', 2)).Where(p => p.Length == 2)
+            .GroupBy(p => p[0]).ToDictionary(g => g.Key, g => g.First()[1]);
+        if (query.TryGetValue("creator", out var c) && Guid.TryParse(c, out var creator))
+        {
+            _history.Push(_view);
+            _view = new CreatorsView.Storefront(creator);
+        }
+        else if (query.TryGetValue("post", out var p) && Guid.TryParse(p, out var post))
+        {
+            _history.Push(_view);
+            _view = new CreatorsView.Post(post);
+        }
+
+        if (Context.Realtime is { } realtime)
+        {
+            try
+            {
+                _subscription = await realtime.SubscribeAsync(CreatorsContract.Topic(Context.UserId), _ => InvokeAsync(() => Changed?.Invoke()));
+            }
+            catch (Exception)
+            {
+                // Live updates are a nicety: pages show the latest when they load.
+            }
+        }
+    }
+
+    string Title => _view switch
+    {
+        CreatorsView.Studio or CreatorsView.EditPost => "Studio",
+        CreatorsView.Post => "Post",
+        _ => "Creators"
+    };
+
+    public void Go(CreatorsView view)
+    {
+        if (view is CreatorsView.Discover)
+            _history.Clear();
+        else
+            _history.Push(_view);
+        _view = view;
+        StateHasChanged();
+    }
+
+    public void Replace(CreatorsView view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
+
+    public Task BackAsync()
+    {
+        if (_history.TryPop(out var previous))
+        {
+            _view = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return Context.NavigateToLauncher();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+    }
+}
