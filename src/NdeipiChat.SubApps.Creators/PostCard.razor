@@ -1,7 +1,9 @@
-@* A post in a creator's list: its cover (blurred when locked), title, teaser, and who can see it. *@
+@* A post in a creator's list: its cover (a photo, blurred when locked; a tile for audio or video),
+   title, date and who can see it, and the teaser. Not a <button>: the shell's button style would
+   centre and shrink everything inside it. *@
 
 <section class="cr-card">
-    <button class="cr-post" style="background: none; box-shadow: none; padding: 0" @onclick="() => App.Go(new CreatorsView.Post(Post.Id))">
+    <div class="cr-post" role="link" tabindex="0" aria-label="@Post.Title" @onclick="Open" @onkeydown="OnKey">
         @if (Post.Media.FirstOrDefault() is { } first)
         {
             <div class="cover @(Post.Locked ? "locked" : "")">
@@ -9,32 +11,55 @@
                 {
                     <img src="@thumb" alt="" loading="lazy" />
                 }
-                else if (Post.Locked)
-                {
-                    <span>🔒</span>
-                }
                 else
                 {
-                    <span>@(first.Type == MediaTypes.Video ? "▶" : "🎧")</span>
+                    <span class="glyph">@(Post.Locked ? "🔒" : first.Type == MediaTypes.Video ? "▶" : "🎧")</span>
+                }
+                @if (Post.Media.Count > 1 || first.Type != MediaTypes.Image)
+                {
+                    <span class="tag">@MediaSummary(Post.Media)</span>
                 }
             </div>
         }
-        <div class="cr-row">
-            <span class="grow">
-                <b style="font-size: 17px">@(Pinned ? "📌 " : "")@Post.Title</b>
-                <small>@(Post.IsScheduled ? $"Scheduled for {Format.WhenTime(Post.PublishAt)}" : Format.When(Post.PublishAt))@(Post.Views is { } v ? $" · {v} view{(v == 1 ? "" : "s")}" : "")</small>
-            </span>
-            <span class="cr-lock @(Post.Locked ? "" : "open")">@(Post.Locked ? "🔒" : Post.Unlocked ? "🔓" : "") @Format.Access(Post)</span>
+        <div class="title">@(Pinned ? "📌 " : "")@Post.Title</div>
+        <div class="meta">
+            <span class="cr-lock @(Post.Locked ? "" : "open")">@(Post.Locked ? "🔒" : Post.Unlocked ? "🔓" : "✓") @Format.Access(Post)</span>
+            <span>@(Post.IsScheduled ? $"⏰ Scheduled for {Format.WhenTime(Post.PublishAt)}" : Format.When(Post.PublishAt))</span>
+            @if (Post.Views is { } v)
+            {
+                <span>· @v view@(v == 1 ? "" : "s")</span>
+            }
         </div>
         @if (Post.Teaser is { } teaser)
         {
-            <span class="muted" style="font-size: 15px">@teaser</span>
+            <div class="teaser">@teaser</div>
         }
-    </button>
+    </div>
 </section>
 
 @code {
     [CascadingParameter] public CreatorsApp App { get; set; } = null!;
     [Parameter, EditorRequired] public CreatorPostDto Post { get; set; } = null!;
     [Parameter] public bool Pinned { get; set; }
+
+    void Open() => App.Go(new CreatorsView.Post(Post.Id));
+
+    void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+            Open();
+    }
+
+    static string MediaSummary(IReadOnlyList<CreatorMediaDto> media)
+    {
+        var photos = media.Count(m => m.Type == MediaTypes.Image);
+        var videos = media.Count(m => m.Type == MediaTypes.Video);
+        var audio = media.Count - photos - videos;
+        return string.Join(" · ", new[]
+        {
+            photos > 0 ? $"📷 {photos}" : null,
+            videos > 0 ? $"▶ {videos} video{(videos == 1 ? "" : "s")}" : null,
+            audio > 0 ? $"🎧 {audio} audio" : null
+        }.Where(s => s is not null));
+    }
 }
