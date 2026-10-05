@@ -61,6 +61,7 @@ public sealed class CreatorService(
 
     public async Task<IReadOnlyList<CreatorCardDto>> DiscoverAsync(string? q, string? category, CancellationToken ct)
     {
+        var now = Now;
         var query = db.CreatorProfiles.AsNoTracking().AsQueryable();
         if (!string.IsNullOrEmpty(category))
             query = query.Where(c => c.Category == category);
@@ -70,13 +71,15 @@ public sealed class CreatorService(
             .ThenByDescending(c => c.UpdatedAt).Take(60)
             .Select(c => new
             {
-                c.UserId, c.Name, c.Category, c.BannerMediaId,
+                c.UserId, c.Name, c.Category, c.BannerMediaId, c.Bio,
+                Posts = db.CreatorPosts.Count(p => p.CreatorId == c.UserId && !p.Deleted && p.PublishAt <= now),
                 Avatar = db.Users.Where(u => u.Id == c.UserId).Select(u => u.AvatarUrl).FirstOrDefault(),
                 From = db.CreatorTiers.Where(t => t.CreatorId == c.UserId && t.Active).Min(t => (decimal?)t.MonthlyPrice),
                 Subs = db.CreatorSubscriptions.Count(s => s.CreatorId == c.UserId && (s.Status == SubscriptionStatuses.Active || s.Status == SubscriptionStatuses.Grace))
             }).ToListAsync(ct);
         return creators.Select(c => new CreatorCardDto(c.UserId, c.Name, c.Category, c.Avatar,
-            c.BannerMediaId is { } b ? media.Link(b, CreatorMediaService.Thumb) : null, c.From, c.Subs)).ToList();
+            c.BannerMediaId is { } b ? media.Link(b, CreatorMediaService.Thumb) : null, c.From, c.Subs,
+            c.Bio is { Length: > 160 } bio ? bio[..157].TrimEnd() + "…" : c.Bio, c.Posts)).ToList();
     }
 
     /// <summary>A storefront (FR-CR-03). Counts as a visit for the funnel (FR-CR-16).</summary>

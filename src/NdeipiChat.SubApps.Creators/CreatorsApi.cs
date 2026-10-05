@@ -94,6 +94,37 @@ public static class Format
 
     public static string WhenTime(DateTimeOffset at) => at.ToLocalTime().ToString("d MMM yyyy, HH:mm", System.Globalization.CultureInfo.CurrentCulture);
 
+    public static string CategoryIcon(string? category) => category switch
+    {
+        "education" => "🎓",
+        "music" => "🎵",
+        "art" => "🎨",
+        "farming" => "🌾",
+        "business" => "💼",
+        "tech" => "💻",
+        "faith" => "🙏",
+        "lifestyle" => "✨",
+        "news" => "📰",
+        _ => "⭐"
+    };
+
+    /// <summary>The banner as a CSS background: their photo, or a gradient that differs by category.</summary>
+    public static string Banner(string? url, string? category) => url is not null
+        ? $"background: url('{url}') center / cover no-repeat"
+        : "background: linear-gradient(135deg, " + (category switch
+        {
+            "education" => "#3D7BF7, #7750F8",
+            "music" => "#E5484D, #F5B324",
+            "art" => "#D6409F, #7750F8",
+            "farming" => "#1FA971, #A3C53A",
+            "business" => "#1F2A44, #3D7BF7",
+            "tech" => "#0F9BD8, #1FC98A",
+            "faith" => "#8E6CEF, #F5B324",
+            "lifestyle" => "#F76B8A, #F5B324",
+            "news" => "#374151, #6B7280",
+            _ => "#7750F8, #1FC98A"
+        }) + ")";
+
     public static string Period(string period) => period == BillingPeriods.Annual ? "year" : "month";
 
     public static string Status(CreatorSubscriptionDto s) => s.Status switch

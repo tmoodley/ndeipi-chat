@@ -155,7 +155,10 @@ public sealed record CreatorDto(
     bool IsMe,
     CreatorSubscriptionDto? MySubscription);
 
-public sealed record CreatorCardDto(Guid UserId, string Name, string Category, string? AvatarUrl, string? BannerUrl, decimal? FromPrice, int SubscriberCount);
+/// <param name="Bio">The start of their "about", so a card says what they make.</param>
+/// <param name="PostCount">Published posts.</param>
+public sealed record CreatorCardDto(Guid UserId, string Name, string Category, string? AvatarUrl, string? BannerUrl, decimal? FromPrice, int SubscriberCount,
+    string? Bio = null, int PostCount = 0);
 
 /// <param name="IsCreator">They have a creator profile.</param>
 /// <param name="CanApply">Their identity check is passed (so they may become a creator).</param>

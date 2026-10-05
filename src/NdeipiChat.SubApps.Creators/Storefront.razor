@@ -12,14 +12,20 @@ else
 {
     var c = _creator;
     <section class="cr-hero">
-        <div class="banner" style="@(c.BannerUrl is { } b ? $"background: url('{b}') center / cover" : "background: linear-gradient(135deg, #7750F8, #1FC98A)")"></div>
+        <div class="banner" style="@Format.Banner(c.BannerUrl, c.Category)"></div>
         <div class="body">
-            <div class="top">
-                <span class="cr-avatar" style="@(c.AvatarUrl is { } a ? $"background-image: url('{a}')" : "")">@(c.AvatarUrl is null ? c.Name[..1] : "")</span>
-                <span style="flex: 1; min-width: 0; padding-bottom: 4px">
-                    <h2>@c.Name</h2>
-                    <span class="muted small">@CreatorsContract.CategoryLabel(c.Category) · @c.SubscriberCount subscriber@(c.SubscriberCount == 1 ? "" : "s") · @c.PostCount post@(c.PostCount == 1 ? "" : "s")</span>
-                </span>
+            <span class="cr-avatar" style="@(c.AvatarUrl is { } a ? $"background-image: url('{a}')" : "")">@(c.AvatarUrl is null ? c.Name[..1].ToUpperInvariant() : "")</span>
+            <div>
+                <div class="name">@c.Name</div>
+                <div class="facts" style="margin-top: 6px">
+                    <span class="cr-cat">@Format.CategoryIcon(c.Category) @CreatorsContract.CategoryLabel(c.Category)</span>
+                    <span><b>@c.SubscriberCount</b> subscriber@(c.SubscriberCount == 1 ? "" : "s")</span>
+                    <span><b>@c.PostCount</b> post@(c.PostCount == 1 ? "" : "s")</span>
+                    @if (c.Tiers.Count > 0)
+                    {
+                        <span>From <b>@Format.Money(c.Tiers.Min(t => t.MonthlyPrice))</b>/month</span>
+                    }
+                </div>
             </div>
             @if (c.Bio is not null)
             {
