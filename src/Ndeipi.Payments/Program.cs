@@ -65,6 +65,7 @@ builder.Services.AddRateLimiter(o =>
 
 builder.Services.AddPaymentUsers();
 builder.Services.AddLedger();
+builder.Services.AddTransfers();
 builder.Services.AddRamps();
 builder.Services.AddWebhooks();
 builder.Services.AddScoped<ReconciliationService>();

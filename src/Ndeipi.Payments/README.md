@@ -13,9 +13,9 @@ The folders follow the six server components in SRS §8.2.
 | Folder | Component | State |
 |---|---|---|
 | `Api/` | Payments API: API keys, idempotency, errors, request IDs, rate limits, audit log, pagination | Built (M1) |
-| `Users/` | Users and KYC | Create, get, list, update, onboarding links and KYC and terms status changes are built (M2). Deactivate comes with wallets in M3. |
-| `Ledger/` | Ledger and wallets | The ledger is built (M1). Wallet endpoints are M3. |
-| `Transfers/` | One transfer resource for all three money movements | The state machine is defined. Endpoints are M3 (user-to-user) and M4 (ramps). |
+| `Users/` | Users and KYC | Built: create, get, list, update, onboarding links, KYC and terms status changes (M2), and deactivation (M3). |
+| `Ledger/` | Ledger and wallets | Built (M3): wallets with available, earned and pending buckets, balances, history, and points issuance. |
+| `Transfers/` | One transfer resource for every money movement | User-to-user is built (M3), with points keeping their kind. Conversions and ramps are M4; cancel is M6. |
 | `Ramps/` | Deposit accounts, payout accounts, routes, rates | M4 |
 | `Providers/` | Fiat rails (PayPal, Absa), the exchange (Blockfinex), and the registry that routes by rail code | The interfaces, registry and simulated providers are built. The real adapters are M4. |
 | `Treasury/` | NdeipiCoin: manual OTC trades with Blockfinex, and conversion pricing | The trade record and pricing are built. Quotes, conversions and house-account postings are M4. |

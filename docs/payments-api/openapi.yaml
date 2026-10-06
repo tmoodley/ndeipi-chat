@@ -437,6 +437,10 @@ paths:
         deposit instructions. An `offramp` debits the source wallet when accepted and returns
         `pending`.
 
+        Points keep their kind when sent: a `user_to_user` transfer of points spends the sender's
+        earned points first and credits the recipient with the same split, so a reward never
+        becomes cashable by changing hands. The receipt shows both parts.
+
         A `conversion` buys or sells NdeipiCoin with Ndeipi Points. It needs a `quote_id` from
         `POST /quotes` that matches its wallets and amount and has not expired. It settles from
         Ndeipi's own stock in one ledger transaction and returns `completed`, so it never waits on
@@ -1896,7 +1900,8 @@ components:
         asset: { $ref: '#/components/schemas/Asset' }
         available:
           $ref: '#/components/schemas/Amount'
-          description: Spendable now. Never negative (SRV-LED-03).
+          description: |
+            Spendable now: for points, purchased plus earned. Never negative (SRV-LED-03).
         pending:
           $ref: '#/components/schemas/Amount'
           description: In flight in suspense; deposits not yet credited and payouts not yet confirmed (SRV-LED-05).
@@ -1905,7 +1910,8 @@ components:
           description: |
             The part of `available` that can be cashed out: points bought with fiat and not yet
             spent. Earned points (rewards) can be spent and sent but never cashed out, and spending
-            uses them first. An off-ramp above this returns `422 amount_exceeds_cashable`.
+            uses them first. An off-ramp above this returns `422 amount_exceeds_cashable`. Always
+            `0` for `ndeipi-coin` wallets, which cash out by converting to points first.
         as_of: { $ref: '#/components/schemas/Timestamp' }
     Wallet:
       type: object
@@ -1940,10 +1946,18 @@ components:
         id: { type: string, pattern: '^whe_[0-9A-Z]{26}$' }
         object: { const: wallet_history_entry }
         wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
-        transfer_id: { $ref: '#/components/schemas/TransferIdValue' }
+        transfer_id:
+          description: The transfer that moved the funds; null for a reward credited outside a transfer.
+          oneOf:
+            - $ref: '#/components/schemas/TransferIdValue'
+            - type: 'null'
         bucket:
           type: string
-          enum: [available, pending]
+          enum: [available, earned, pending]
+          description: |
+            `available` holds cashable points (purchased) or NdeipiCoin; `earned` holds reward
+            points, which can be spent and sent but not cashed out; `pending` is in flight.
+            `WalletBalance.available` is `available` plus `earned`.
         amount:
           $ref: '#/components/schemas/SignedAmount'
           description: Positive for a credit, negative for a debit.
@@ -2097,6 +2111,11 @@ components:
         amount_credited:
           $ref: '#/components/schemas/Amount'
           description: Credited to the destination wallet.
+        earned_amount:
+          $ref: '#/components/schemas/Amount'
+          description: |
+            Points transfers only: the part of the amount that moved as earned points and arrived
+            as earned points. The rest moved as cashable points.
         amount_paid_out:
           $ref: '#/components/schemas/Amount'
           description: Off-ramp only. Sent to the payout account, in its currency.

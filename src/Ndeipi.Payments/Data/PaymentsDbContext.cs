@@ -40,6 +40,8 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
     public DbSet<EventRecord> Events => Set<EventRecord>();
     public DbSet<OtcTrade> OtcTrades => Set<OtcTrade>();
     public DbSet<OnboardingLink> OnboardingLinks => Set<OnboardingLink>();
+    public DbSet<Wallet> Wallets => Set<Wallet>();
+    public DbSet<Transfer> Transfers => Set<Transfer>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<EventDelivery> EventDeliveries => Set<EventDelivery>();
 
@@ -111,6 +113,9 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(a => a.Provider).HasMaxLength(40);
             e.Property(a => a.Asset).HasMaxLength(32);
             e.HasIndex(a => new { a.Kind, a.Provider, a.Asset });
+            // One system account (suspense, points issued) per integrator, kind, bucket and asset.
+            e.HasIndex(a => new { a.IntegratorId, a.Kind, a.Bucket, a.Asset }).IsUnique()
+                .HasFilter("[WalletId] IS NULL AND [Provider] IS NULL");
             e.Property(a => a.Balance).HasPrecision(38, 18);
             e.Property(a => a.Kind).HasConversion<string>().HasMaxLength(20);
             e.Property(a => a.Bucket).HasConversion<string>().HasMaxLength(20);
@@ -152,6 +157,42 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(l => l.Url).HasMaxLength(2000);
             e.HasIndex(l => new { l.UserId, l.Kind });
             e.HasQueryFilter(l => l.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<Wallet>(e =>
+        {
+            e.Property(w => w.Id).HasMaxLength(40);
+            e.Property(w => w.UserId).HasMaxLength(40);
+            e.Property(w => w.Asset).HasMaxLength(32);
+            e.Property(w => w.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(w => w.Version).IsConcurrencyToken();
+            e.HasIndex(w => new { w.UserId, w.Asset }).IsUnique();
+            e.HasQueryFilter(w => w.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<Transfer>(e =>
+        {
+            e.Property(t => t.Id).HasMaxLength(40);
+            e.Property(t => t.Kind).HasConversion<string>().HasMaxLength(20);
+            e.Property(t => t.State).HasConversion<string>().HasMaxLength(20);
+            e.Property(t => t.SourceType).HasMaxLength(20);
+            e.Property(t => t.SourceWalletId).HasMaxLength(40);
+            e.Property(t => t.SourceUserId).HasMaxLength(40);
+            e.Property(t => t.DestinationType).HasMaxLength(20);
+            e.Property(t => t.DestinationWalletId).HasMaxLength(40);
+            e.Property(t => t.DestinationUserId).HasMaxLength(40);
+            e.Property(t => t.Asset).HasMaxLength(32);
+            e.Property(t => t.Amount).HasPrecision(38, 18);
+            e.Property(t => t.IntegratorReference).HasMaxLength(128);
+            e.Property(t => t.IdempotencyKey).HasMaxLength(255);
+            e.Property(t => t.Version).IsConcurrencyToken();
+            e.HasIndex(t => new { t.IntegratorId, t.IdempotencyKey }).IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
+            e.HasIndex(t => t.SourceWalletId);
+            e.HasIndex(t => t.DestinationWalletId);
+            e.HasIndex(t => t.SourceUserId);
+            e.HasIndex(t => t.DestinationUserId);
+            e.HasIndex(t => new { t.IntegratorId, t.IntegratorReference });
+            e.HasQueryFilter(t => t.IntegratorId == CurrentIntegratorId);
         });
 
         model.Entity<WebhookEndpoint>(e =>
