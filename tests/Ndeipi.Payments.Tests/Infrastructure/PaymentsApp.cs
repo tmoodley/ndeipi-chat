@@ -11,15 +11,22 @@ using Ndeipi.Payments.Data;
 namespace Ndeipi.Payments.Tests.Infrastructure;
 
 /// <summary>
-/// The payments server on a TestServer, against its own LocalDB database, in sandbox mode with the
+/// The payments server on a TestServer, against its own database, in sandbox mode with the
 /// simulated providers. Integrators and keys are created through the real <see cref="ApiKeyService"/>.
+///
+/// The database is on LocalDB, or on the SQL Server in <c>PAYMENTS_TEST_SQL</c> (a connection string
+/// without a database, as CI sets for its SQL Server container).
 /// </summary>
 public class PaymentsApp : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    const string LocalDb = "Server=(localdb)\\MSSQLLocalDB;Trusted_Connection=True;TrustServerCertificate=True";
+
     readonly string _database = $"NdeipiPaymentsTests_{Guid.NewGuid():N}";
 
-    public string ConnectionString =>
-        $"Server=(localdb)\\MSSQLLocalDB;Database={_database};Trusted_Connection=True;TrustServerCertificate=True";
+    public string ConnectionString => new SqlConnectionStringBuilder(Environment.GetEnvironmentVariable("PAYMENTS_TEST_SQL") is { Length: > 0 } server ? server : LocalDb)
+    {
+        InitialCatalog = _database
+    }.ConnectionString;
 
     /// <summary>Settings on top of the defaults below, for apps that test other configurations.</summary>
     protected virtual IDictionary<string, string?> Overrides => new Dictionary<string, string?>();
