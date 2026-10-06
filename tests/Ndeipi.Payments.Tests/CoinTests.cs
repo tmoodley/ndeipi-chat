@@ -16,7 +16,16 @@ public sealed class CoinTests(PaymentsApp app) : IClassFixture<PaymentsApp>
     const string Points = "ndeipi-points";
     const string Coin = "ndeipi-coin";
 
-    Task<T> InScopeAsync<T>(Func<IServiceProvider, Task<T>> work) => app.AsIntegratorAsync(Guid.NewGuid(), work);
+    /// <summary>As the treasury team: no integrator scope, with USD already in the treasury to pay the desk.</summary>
+    async Task<T> InScopeAsync<T>(Func<IServiceProvider, Task<T>> work)
+    {
+        await app.AsHouseAsync(async sp =>
+        {
+            await sp.GetRequiredService<TreasuryService>().DepositAsync("simulated_fiat", "usd", 10_000m, "Test capital", default);
+            return 0;
+        });
+        return await app.AsHouseAsync(work);
+    }
 
     static OtcTradeEntry Trade(decimal coin, decimal usd, DateTimeOffset at, string? desk = null) =>
         new(OtcSide.Buy, coin, usd, "ABSA-" + Guid.NewGuid().ToString("N")[..8], desk ?? "DESK-" + Guid.NewGuid().ToString("N")[..8], "treasury@ndeipi.test", at);
@@ -123,15 +132,19 @@ public sealed class StaleCoinPriceTests(PaymentsApp app) : IClassFixture<Payment
     public async Task No_trade_or_an_old_trade_means_no_quote()
     {
         var noTrade = await Assert.ThrowsAsync<PaymentsException>(() =>
-            app.AsIntegratorAsync(Guid.NewGuid(), sp => sp.GetRequiredService<CoinPricing>().PointsPerCoinAsync(default)));
+            app.AsHouseAsync(sp => sp.GetRequiredService<CoinPricing>().PointsPerCoinAsync(default)));
         Assert.Equal(503, noTrade.Status);
         Assert.Equal("provider_unavailable", noTrade.Error.Code);
 
-        await app.AsIntegratorAsync(Guid.NewGuid(), sp => sp.GetRequiredService<OtcDesk>().RecordAsync(
-            new(OtcSide.Buy, 100m, 10m, "ABSA-OLD", "DESK-OLD", "treasury@ndeipi.test", DateTimeOffset.UtcNow.AddDays(-4)), default));
+        await app.AsHouseAsync(async sp =>
+        {
+            await sp.GetRequiredService<TreasuryService>().DepositAsync("simulated_fiat", "usd", 100m, "Test capital", default);
+            return await sp.GetRequiredService<OtcDesk>().RecordAsync(
+                new(OtcSide.Buy, 100m, 10m, "ABSA-OLD", "DESK-OLD", "treasury@ndeipi.test", DateTimeOffset.UtcNow.AddDays(-4)), default);
+        });
 
         var stale = await Assert.ThrowsAsync<PaymentsException>(() =>
-            app.AsIntegratorAsync(Guid.NewGuid(), sp => sp.GetRequiredService<CoinPricing>().PointsPerCoinAsync(default)));
+            app.AsHouseAsync(sp => sp.GetRequiredService<CoinPricing>().PointsPerCoinAsync(default)));
         Assert.Contains("too old", stale.Error.Message);
     }
 }
