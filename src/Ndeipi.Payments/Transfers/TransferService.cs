@@ -22,6 +22,7 @@ public sealed class TransferService(
     OnRampService onRamps,
     OffRampService offRamps,
     ConversionService conversions,
+    TransactionMonitor monitor,
     IOptions<PaymentsOptions> options)
 {
     const int Attempts = 3;
@@ -89,30 +90,42 @@ public sealed class TransferService(
     async Task<TransferDto> PostUserToUserAsync(Wallet from, Wallet to, decimal amount, TransferCreateRequest request, string? idempotencyKey, CancellationToken ct)
     {
         var split = await SplitAsync(from, amount, ct);
+        var hold = await monitor.AssessAsync(from.UserId, from.Asset, amount, ct);
         var accounts = await db.LedgerAccounts.AsNoTracking()
             .Where(a => a.WalletId == from.Id || a.WalletId == to.Id)
             .ToDictionaryAsync(a => (a.WalletId!, a.Bucket), a => a.Id, ct);
 
+        // Held for review, the funds wait in the sender's pending bucket; the receipt keeps the
+        // earned/cashable split so a release or a rejection restores each kind exactly.
         var lines = new List<LedgerLine>();
         if (split.Earned > 0)
         {
             lines.Add(new(accounts[(from.Id, LedgerBucket.Earned)], -split.Earned));
-            lines.Add(new(accounts[(to.Id, LedgerBucket.Earned)], split.Earned));
+            if (hold is null)
+                lines.Add(new(accounts[(to.Id, LedgerBucket.Earned)], split.Earned));
         }
         if (split.Cashable > 0)
         {
             lines.Add(new(accounts[(from.Id, LedgerBucket.Available)], -split.Cashable));
-            lines.Add(new(accounts[(to.Id, LedgerBucket.Available)], split.Cashable));
+            if (hold is null)
+                lines.Add(new(accounts[(to.Id, LedgerBucket.Available)], split.Cashable));
         }
+        if (hold is not null)
+            lines.Add(new(accounts[(from.Id, LedgerBucket.Pending)], amount));
 
         var transfer = book.New(TransferKind.UserToUser, "wallet", "wallet", from.Asset, amount, request, idempotencyKey);
         transfer.SourceWalletId = from.Id;
         transfer.SourceUserId = from.UserId;
         transfer.DestinationWalletId = to.Id;
         transfer.DestinationUserId = to.UserId;
-        TransferBook.MoveUnsaved(transfer, TransferState.Completed);
+        TransferBook.MoveUnsaved(transfer, hold is null ? TransferState.Completed : TransferState.InReview);
+        if (hold is not null)
+            transfer.StateReasonJson = System.Text.Json.JsonSerializer.Serialize(hold, PaymentsJson.Options);
         var formatted = book.Format(amount, from.Asset);
-        book.SetReceipt(transfer, new ReceiptDto(formatted, formatted, IsPoints(from) ? book.Format(split.Earned, from.Asset) : null, [], transfer.CreatedAt, transfer.CreatedAt));
+        var earned = IsPoints(from) ? book.Format(split.Earned, from.Asset) : null;
+        book.SetReceipt(transfer, hold is null
+            ? new ReceiptDto(formatted, formatted, earned, [], transfer.CreatedAt, transfer.CreatedAt)
+            : new ReceiptDto(formatted, null, earned, [], transfer.CreatedAt, null));
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         db.Transfers.Add(transfer);

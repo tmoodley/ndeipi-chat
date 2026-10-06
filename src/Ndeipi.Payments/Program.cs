@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Ndeipi.Payments.Api;
 using Ndeipi.Payments.Data;
 using Ndeipi.Payments.Ledger;
+using Ndeipi.Payments.Ops;
 using Ndeipi.Payments.Ramps;
 using Ndeipi.Payments.Reconciliation;
 using Ndeipi.Payments.Sandbox;
@@ -35,8 +36,13 @@ builder.Services.Configure<JsonOptions>(o => PaymentsJson.Configure(o.Serializer
 builder.Services.Configure<RouteHandlerOptions>(o => o.ThrowOnBadRequest = true);
 
 builder.Services.AddAuthentication(ApiKeyAuthenticationHandler.SchemeName)
-    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, null);
-builder.Services.AddAuthorization();
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, null)
+    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, OperatorAuthenticationHandler>(OperatorAuthenticationHandler.SchemeName, null);
+// The operator API accepts operator keys only; integrator keys never reach it (SRV-OPS-04).
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy(OperatorAuthenticationHandler.Policy, policy => policy
+        .AddAuthenticationSchemes(OperatorAuthenticationHandler.SchemeName)
+        .RequireClaim(OperatorAuthenticationHandler.NameClaim));
 builder.Services.AddScoped<ApiKeyService>();
 
 // Per-key rate limit, answered with 429 and Retry-After (SRV-OPS-06).
@@ -68,6 +74,7 @@ builder.Services.AddLedger();
 builder.Services.AddTransfers();
 builder.Services.AddRamps();
 builder.Services.AddWebhooks();
+builder.Services.AddOps();
 builder.Services.AddScoped<ReconciliationService>();
 
 var app = builder.Build();
@@ -115,6 +122,15 @@ if (args is ["record-otc-trade", var side, var coin, var usd, var absaReference,
     return;
 }
 
+// `dotnet run -- issue-operator-key "<operator name>"`: a key for one named operator, printed once.
+if (args is ["issue-operator-key", var operatorName])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var (_, key) = await scope.ServiceProvider.GetRequiredService<OperatorKeyService>().IssueAsync(operatorName, default);
+    Console.WriteLine($"Operator key for {operatorName} (shown once): {key}");
+    return;
+}
+
 // `dotnet run -- treasury-deposit <rail> <currency> <amount> "<description>"`: Ndeipi's own money
 // arriving in its account on a rail, into the treasury.
 if (args is ["treasury-deposit", var depositRail, var depositCurrency, var depositAmount, var depositDescription])
@@ -156,6 +172,7 @@ v1.MapTransfers();
 v1.MapRamps();
 v1.MapWebhooks();
 v1.MapSandbox();
+app.MapOps();
 
 app.Run();
 

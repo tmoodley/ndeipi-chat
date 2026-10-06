@@ -13,15 +13,16 @@ The folders follow the six server components in SRS §8.2.
 | Folder | Component | State |
 |---|---|---|
 | `Api/` | Payments API: API keys, idempotency, errors, request IDs, rate limits, audit log, pagination | Built (M1) |
-| `Users/` | Users and KYC | Built: create, get, list, update, onboarding links, KYC and terms status changes (M2), and deactivation (M3). |
+| `Users/` | Users and KYC | Built: create, get, list, update, onboarding links, KYC and terms status changes (M2), and deactivation (M3). Names and contact details are encrypted at rest, and every read is audited (M5). |
 | `Ledger/` | Ledger, wallets and house accounts | Built: wallets (M3); house accounts for Ndeipi's floats, reserve, treasury, NdeipiCoin stock and fees (M4). |
-| `Transfers/` | One transfer resource for every money movement | Built: user-to-user (M3), conversions, on-ramps and off-ramps (M4). Cancel is M6. |
+| `Transfers/` | One transfer resource for every money movement | Built: user-to-user (M3), conversions, on-ramps and off-ramps (M4), and transaction monitoring that holds transfers for review (M5). Cancel is M6. |
 | `Ramps/` | Deposit accounts, payout accounts, routes, rates, ramp worker | Built (M4) on the sandbox rails. The real Absa and PayPal adapters wait on onboarding. |
 | `Providers/` | Fiat rails (PayPal, Absa), the exchange (Blockfinex), and the registry that routes by rail code | The interfaces, registry and simulated providers are built. The real adapters wait on Absa onboarding, PayPal approval and Blockfinex access. |
 | `Treasury/` | NdeipiCoin: quotes, conversions, manual OTC trades, treasury operations | Built (M4). |
 | `Reconciliation/` | Ledger against provider | The balance check is built. A daily schedule, per-movement matching and alerts are not built yet. |
 | `Webhooks/` | Endpoints, events, signed delivery | Built (M2): endpoints with their own keys, the events API, redelivery, and a dispatcher that retries with backoff and connects only to public addresses. The test call is M6. |
 | `Sandbox/` | Simulated KYC, deposits, payout outcomes | Built. |
+| `Ops/` | Operator API at `/ops/v1`: review queue, release and reject, four-eyes manual refunds | Built (M5). Not part of the integrator contract; operators authenticate with operator keys. |
 
 Every operation in the contract is mapped. Ones that are not built yet answer
 `501 not_implemented` and name their milestone. `ContractTests` fails if the routes and
@@ -33,6 +34,12 @@ openapi.yaml drift apart.
 dotnet run --project src/Ndeipi.Payments -- issue-key "Local dev"
 dotnet run --project src/Ndeipi.Payments
 curl -H "Api-Key: nd_test_..." http://localhost:5180/v1/users
+```
+
+Each operator gets their own key for the operator API (`/ops/v1`), printed once:
+
+```bash
+dotnet run --project src/Ndeipi.Payments -- issue-operator-key "Nomsa (compliance)"
 ```
 
 Treasury operations stand in for the operator console. These three steps set up NdeipiCoin:
