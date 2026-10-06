@@ -54,14 +54,17 @@ public sealed record UserDto(
 }
 
 /// <summary>
-/// User accounts (SRS §4.1). Built in M1 as the first slice through the foundation: create, get,
-/// list and update. Onboarding links and deactivation follow in M2.
+/// User accounts (SRS §4.1): create, get, list and update (M1), hosted onboarding links and KYC
+/// status changes (M2, <see cref="OnboardingService"/>, <see cref="UserStatusService"/>).
+/// Deactivation follows in M3, with the wallets whose balances it checks.
 /// </summary>
 public static class UsersModule
 {
     public static IServiceCollection AddPaymentUsers(this IServiceCollection services)
     {
         services.AddScoped<UserService>();
+        services.AddScoped<OnboardingService>();
+        services.AddScoped<UserStatusService>();
         services.AddSingleton<SimulatedKycProvider>();
         services.AddSingleton<IKycProvider>(sp =>
             sp.GetRequiredService<IOptions<PaymentsOptions>>().Value.KycProvider switch
@@ -91,8 +94,11 @@ public static class UsersModule
         v1.MapPatch("/users/{user_id}", async (string user_id, UserUpdateRequest request, UserService users, CancellationToken ct) =>
             Results.Json(await users.UpdateAsync(user_id, request, ct), PaymentsJson.Options));
 
-        v1.MapPost("/users/{user_id}/deactivate", Stubs.Milestone("M2"));
-        v1.MapPost("/users/{user_id}/onboarding_links", Stubs.Milestone("M2"));
+        // Deactivation is refused while a wallet holds funds, so it is built with wallets in M3.
+        v1.MapPost("/users/{user_id}/deactivate", Stubs.Milestone("M3"));
+
+        v1.MapPost("/users/{user_id}/onboarding_links", async (string user_id, OnboardingLinksRequest? request, OnboardingService onboarding, CancellationToken ct) =>
+            Results.Json(await onboarding.CreateAsync(user_id, request ?? new(null), ct), PaymentsJson.Options, statusCode: 201));
     }
 }
 
@@ -127,7 +133,7 @@ public sealed partial class UserService(PaymentsDbContext db, EventOutbox events
         };
         db.Users.Add(user);
         var dto = UserDto.From(user);
-        events.Add(EventTypes.UserCreated, "user", user.Id, user.Version, dto);
+        await events.AddAsync(EventTypes.UserCreated, "user", user.Id, user.Version, dto, null, ct);
 
         try
         {

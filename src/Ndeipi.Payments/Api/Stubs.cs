@@ -16,6 +16,10 @@ public static class Stubs
 /// <summary>Enum values in query strings use the wire spelling (<c>not_started</c>), as bodies do.</summary>
 public static class WireEnum
 {
+    /// <summary>The wire spelling of an enum value: <c>NotStarted</c> as <c>not_started</c>.</summary>
+    public static string Name<T>(T value) where T : struct, Enum =>
+        JsonSerializer.Deserialize<string>(JsonSerializer.Serialize(value, PaymentsJson.Options))!;
+
     public static T? Parse<T>(string? value, string field) where T : struct, Enum
     {
         if (string.IsNullOrEmpty(value))
