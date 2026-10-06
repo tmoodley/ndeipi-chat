@@ -178,6 +178,41 @@ accounts, and no API key can read them.
   purchase. Raise this explicitly in PayPal's pre-approval, and tell Absa about the USD flows to
   the OTC desk.
 
+## Monitoring, operators and identity data
+
+Built in M5a:
+
+- **Transaction monitoring (SRV-KYC-04).** Two rules in `Payments:Monitoring` hold user-to-user
+  transfers and cash-outs in `in_review`:
+  - a single amount (50,000 points by default);
+  - the sender's outgoing total over 24 hours (100,000 by default).
+
+  **The defaults are placeholders for compliance to set.** While a transfer is held, its points
+  wait in the sender's pending balance. A held cash-out has its fiat set aside, but is not
+  submitted. Deposits are held when the rail flags them.
+- **Operator API (SRV-OPS-04)**, at `/ops/v1`, with one key per named operator:
+  - **Reviews.** Operators see the review queue and release or reject each item. A user-to-user
+    transfer released or rejected restores each kind of point exactly. A held deposit is credited
+    or sent back. A held cash-out is submitted or refunded.
+  - **Manual refunds** of completed cash-outs need a second operator to approve. The database
+    refuses the same name as both requester and approver. A refund credits the points back as
+    cashable, paid for by the treasury, whose fiat goes into the reserve to back them.
+  - Every operator action is in the audit log with the operator's name.
+- **Identity data (SRV-KYC-05).**
+  - Names, emails and phone numbers, and payout account owner names, are encrypted at rest with
+    Data Protection. A database backup or a read-only SQL login sees only ciphertext. These fields
+    can be read back but not searched.
+  - Every read of a user, or anything under one, is in the audit log.
+  - A test scans every server log line at debug level for API keys and identity data.
+
+Known limits:
+
+- **The daily rule can be raced.** Two large transfers sent at the same moment can both pass it,
+  because it reads the day's total before posting. The single-amount rule has no such gap.
+- **No events for refunds yet.** A manual refund raises no webhook event. The contract has no event
+  type for one, and adding it is a contract change to agree.
+- **No operator console.** It is a user interface; the operator API is its back end.
+
 ## Not decided here
 
 - **Business users before associated persons ship.** FR-USER-01 allows business users at P0, but

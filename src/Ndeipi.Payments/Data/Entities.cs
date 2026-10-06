@@ -409,6 +409,42 @@ public sealed class PostingLine : IAppendOnly
     public decimal BalanceAfter { get; set; }
 }
 
+// ------------------------------------------------------------------ Operators (M5)
+
+/// <summary>
+/// A key for one named Ndeipi operator (SRV-OPS-04). Separate from integrator keys: it reaches the
+/// operator API only, never an integrator's, and every action taken with it is audited by name.
+/// </summary>
+public sealed class OperatorKey
+{
+    public Guid Id { get; set; }
+    public required string Operator { get; set; }
+    public required byte[] KeyHash { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? RevokedAt { get; set; }
+}
+
+public enum RefundStatus { Requested, Approved, Declined }
+
+/// <summary>
+/// A manual refund of a completed cash-out (SRV-OPS-04): one operator requests it, a different one
+/// approves it, and only then are the points credited back, paid for by Ndeipi's treasury.
+/// </summary>
+public sealed class RefundRequest
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string TransferId { get; set; }
+    public decimal Amount { get; set; }
+    public required string Reason { get; set; }
+    public RefundStatus Status { get; set; }
+    public required string RequestedBy { get; set; }
+    public DateTimeOffset RequestedAt { get; set; }
+    public string? DecidedBy { get; set; }
+    public DateTimeOffset? DecidedAt { get; set; }
+    public int Version { get; set; } = 1;
+}
+
 // ------------------------------------------------------------------ Treasury
 
 public enum OtcSide { Buy, Sell }
