@@ -22,7 +22,43 @@ public static class Ids
 
     const string Crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
+    public const string WalletHistoryEntry = "whe";
+
     public static string New(string prefix, TimeProvider clock) => $"{prefix}_{Ulid(clock.GetUtcNow())}";
+
+    /// <summary>
+    /// A public ID for a row numbered by the database (a ledger line), in the same 26-character
+    /// shape as a ULID, so it sorts and pages like every other ID.
+    /// </summary>
+    public static string FromNumber(string prefix, long number)
+    {
+        Span<char> chars = stackalloc char[26];
+        var value = (ulong)number;
+        for (var i = 25; i >= 0; i--, value >>= 5)
+            chars[i] = Crockford[(int)(value & 31)];
+        return $"{prefix}_{new string(chars)}";
+    }
+
+    /// <summary>The number in an ID from <see cref="FromNumber"/>, or null if it is not one.</summary>
+    public static long? ToNumber(string prefix, string id)
+    {
+        if (!id.StartsWith(prefix + "_", StringComparison.Ordinal) || id.Length != prefix.Length + 27)
+            return null;
+        var digits = id.AsSpan(prefix.Length + 1);
+
+        // A long fits in the last 13 characters, the first of which carries only 3 bits.
+        if (digits[..13].ContainsAnyExcept('0') || Crockford.IndexOf(digits[13]) is < 0 or > 7)
+            return null;
+        ulong value = 0;
+        foreach (var c in digits[13..])
+        {
+            var digit = Crockford.IndexOf(c);
+            if (digit < 0)
+                return null;
+            value = (value << 5) | (uint)digit;
+        }
+        return (long)value;
+    }
 
     /// <summary>26 Crockford base-32 characters: 48 bits of milliseconds, then 80 random bits.</summary>
     public static string Ulid(DateTimeOffset at)
