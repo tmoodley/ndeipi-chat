@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Ndeipi.Payments.Data;
@@ -21,7 +22,7 @@ public sealed class IntegratorScope
     }
 }
 
-public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> options, IntegratorScope scope) : DbContext(options)
+public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> options, IntegratorScope scope) : DbContext(options), IDataProtectionKeyContext
 {
     public const string Schema = "payments";
 
@@ -38,6 +39,12 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
     public DbSet<PostingLine> PostingLines => Set<PostingLine>();
     public DbSet<EventRecord> Events => Set<EventRecord>();
     public DbSet<OtcTrade> OtcTrades => Set<OtcTrade>();
+    public DbSet<OnboardingLink> OnboardingLinks => Set<OnboardingLink>();
+    public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
+    public DbSet<EventDelivery> EventDeliveries => Set<EventDelivery>();
+
+    /// <summary>The Data Protection key ring that encrypts webhook signing keys, shared by every instance.</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -136,6 +143,38 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(l => l.BalanceAfter).HasPrecision(38, 18);
             e.HasOne<LedgerAccount>().WithMany().HasForeignKey(l => l.AccountId).OnDelete(DeleteBehavior.Restrict);
             e.HasIndex(l => new { l.AccountId, l.Id });
+        });
+
+        model.Entity<OnboardingLink>(e =>
+        {
+            e.Property(l => l.UserId).HasMaxLength(40);
+            e.Property(l => l.Kind).HasConversion<string>().HasMaxLength(10);
+            e.Property(l => l.Url).HasMaxLength(2000);
+            e.HasIndex(l => new { l.UserId, l.Kind });
+            e.HasQueryFilter(l => l.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<WebhookEndpoint>(e =>
+        {
+            e.Property(w => w.Id).HasMaxLength(40);
+            e.Property(w => w.Url).HasMaxLength(2000);
+            e.Property(w => w.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(w => w.Description).HasMaxLength(200);
+            e.Property(w => w.Version).IsConcurrencyToken();
+            e.HasIndex(w => new { w.IntegratorId, w.DeletedAt });
+            e.HasQueryFilter(w => w.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<EventDelivery>(e =>
+        {
+            e.Property(d => d.EventId).HasMaxLength(40);
+            e.Property(d => d.WebhookEndpointId).HasMaxLength(40);
+            e.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(d => d.LastError).HasMaxLength(500);
+            // The dispatcher's query: what is due now.
+            e.HasIndex(d => new { d.Status, d.NextAttemptAt });
+            e.HasIndex(d => d.EventId);
+            e.HasQueryFilter(d => d.IntegratorId == CurrentIntegratorId);
         });
 
         model.Entity<OtcTrade>(e =>

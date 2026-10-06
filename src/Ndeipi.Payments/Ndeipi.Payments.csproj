@@ -15,6 +15,8 @@
   <ItemGroup>
     <!-- Ed25519 webhook signatures (docs/payments-api/README.md, decision 1); .NET has no Ed25519 of its own. -->
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.1" />
+    <!-- Webhook signing keys are encrypted at rest with a key ring kept in this database, shared by every instance. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
