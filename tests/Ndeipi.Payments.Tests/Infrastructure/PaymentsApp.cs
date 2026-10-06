@@ -1,0 +1,115 @@
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Ndeipi.Payments.Api;
+using Ndeipi.Payments.Data;
+
+namespace Ndeipi.Payments.Tests.Infrastructure;
+
+/// <summary>
+/// The payments server on a TestServer, against its own LocalDB database, in sandbox mode with the
+/// simulated providers. Integrators and keys are created through the real <see cref="ApiKeyService"/>.
+/// </summary>
+public class PaymentsApp : WebApplicationFactory<Program>, IAsyncLifetime
+{
+    readonly string _database = $"NdeipiPaymentsTests_{Guid.NewGuid():N}";
+
+    public string ConnectionString =>
+        $"Server=(localdb)\\MSSQLLocalDB;Database={_database};Trusted_Connection=True;TrustServerCertificate=True";
+
+    /// <summary>Settings on top of the defaults below, for apps that test other configurations.</summary>
+    protected virtual IDictionary<string, string?> Overrides => new Dictionary<string, string?>();
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        builder.UseEnvironment("Testing");
+        builder.ConfigureAppConfiguration(config =>
+        {
+            config.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Payments"] = ConnectionString,
+                ["Database:MigrateOnStartup"] = "true",
+                ["Payments:Environment"] = "sandbox",
+                ["Payments:FiatRails:0"] = "simulated",
+                ["Payments:Exchange"] = "none",
+                ["Payments:KycProvider"] = "simulated",
+                ["Payments:RateLimit:PermitLimit"] = "100000"
+            });
+            config.AddInMemoryCollection(Overrides);
+        });
+    }
+
+    /// <summary>A new integrator with one key for this app's environment.</summary>
+    public async Task<TestIntegrator> CreateIntegratorAsync(string name = "Acme Remit", PaymentsEnvironment environment = PaymentsEnvironment.Sandbox)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<PaymentsDbContext>();
+        var integrator = new Integrator { Id = Guid.NewGuid(), Name = name, CreatedAt = DateTimeOffset.UtcNow };
+        db.Integrators.Add(integrator);
+        await db.SaveChangesAsync();
+        var (record, key) = await scope.ServiceProvider.GetRequiredService<ApiKeyService>().IssueAsync(integrator.Id, environment, default);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add(ApiKeyAuthenticationHandler.Header, key);
+        return new TestIntegrator(this, integrator.Id, record.Id, key, client);
+    }
+
+    /// <summary>Runs <paramref name="work"/> in a service scope acting as <paramref name="integratorId"/>, as a request would.</summary>
+    public async Task<T> AsIntegratorAsync<T>(Guid integratorId, Func<IServiceProvider, Task<T>> work)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        scope.ServiceProvider.GetRequiredService<IntegratorScope>().Set(integratorId, apiKeyId: null);
+        return await work(scope.ServiceProvider);
+    }
+
+    /// <summary>Reads the database with no integrator filter, as an operator would.</summary>
+    public async Task<T> DbAsync<T>(Func<PaymentsDbContext, Task<T>> read)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await read(scope.ServiceProvider.GetRequiredService<PaymentsDbContext>());
+    }
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    async Task IAsyncLifetime.DisposeAsync()
+    {
+        await base.DisposeAsync();
+        SqlConnection.ClearAllPools();
+        await using var master = new SqlConnection(new SqlConnectionStringBuilder(ConnectionString) { InitialCatalog = "master" }.ConnectionString);
+        await master.OpenAsync();
+        await using var drop = master.CreateCommand();
+        drop.CommandText = $"IF DB_ID('{_database}') IS NOT NULL BEGIN ALTER DATABASE [{_database}] SET SINGLE_USER WITH ROLLBACK IMMEDIATE; DROP DATABASE [{_database}]; END";
+        await drop.ExecuteNonQueryAsync();
+    }
+}
+
+public sealed record TestIntegrator(PaymentsApp App, Guid Id, Guid KeyId, string Key, HttpClient Client)
+{
+    /// <summary>POSTs with an Idempotency-Key (a new one unless given), as the SDK does.</summary>
+    public Task<HttpResponseMessage> PostAsync(string path, object? body, string? idempotencyKey = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = body is null ? null : JsonContent.Create(body)
+        };
+        request.Headers.Add(IdempotencyMiddleware.Header, idempotencyKey ?? Guid.NewGuid().ToString());
+        return Client.SendAsync(request);
+    }
+
+    public Task<HttpResponseMessage> GetAsync(string path) => Client.GetAsync(path);
+
+    public Task<HttpResponseMessage> PatchAsync(string path, object body) => Client.PatchAsJsonAsync(path, body);
+}
+
+public static class ResponseExtensions
+{
+    public static async Task<JsonElement> JsonAsync(this HttpResponseMessage response) =>
+        await response.Content.ReadFromJsonAsync<JsonElement>();
+
+    public static async Task<string> ErrorCodeAsync(this HttpResponseMessage response) =>
+        (await response.JsonAsync()).GetProperty("code").GetString()!;
+}

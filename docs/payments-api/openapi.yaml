@@ -1,0 +1,2674 @@
+openapi: 3.1.0
+info:
+  title: Ndeipi Enterprise Server Payments API
+  version: 0.1.0-draft
+  summary: User accounts, user-to-user transfers, and on-ramp and off-ramp.
+  description: |
+    Draft contract for the payments API specified in "SRS: Ndeipi Enterprise Server Payments API
+    and SDK" (2026-10-06). This file is the single source of truth (DC-01, SC-01): the server
+    validates requests and responses against it and every SDK is generated from it.
+
+    Resource and field names are proposals until the M0 contract review and counsel's advice on
+    LEG-04. Bridge's public API is a design reference only; no Bridge text is reproduced (LEG-03).
+
+    ## Conventions
+
+    - **Authentication.** Every request carries the integrator's key in the `Api-Key` header.
+      Sandbox keys start `nd_test_` and production keys start `nd_live_` (FR-CORE-03).
+    - **Idempotency.** Every `POST` requires an `Idempotency-Key` header. The server replays the
+      original status and body for the same key for 24 hours and sets `Idempotent-Replayed: true`.
+      Reusing a key with a different body returns `409 idempotency_key_reused` (FR-CORE-04/05).
+      `PATCH` and `DELETE` are idempotent by definition and take no key.
+    - **Amounts** are decimal strings, never JSON numbers (FR-API-02). An amount may carry at most
+      the number of decimal places of its asset or currency, which `GET /v1/routes` publishes.
+      Extra places are rejected with `422 invalid_amount_precision`; the server never rounds an
+      amount a caller supplied. Fees and converted amounts are rounded half-even to the
+      destination's precision, and receipts show the rounded values.
+    - **Pagination.** Lists return newest first, take `limit` (1 to 100, default 10) and one of
+      `starting_after` or `ending_before`, and return `{ data, has_more }` (FR-API-04).
+    - **Versions.** Every mutable object carries an integer `version` that increases by one on
+      each change. Webhook events carry the version of the snapshot they hold, so a receiver can
+      drop a delivery older than what it already has. Events are not delivered in order.
+    - **Errors.** Every error has a stable `code`, a `message`, the offending `field` where there
+      is one, and the `request_id` (FR-API-06). Messages never contain the API key (FR-API-07).
+      Clients MUST accept codes they do not recognise (FR-API-03).
+    - **Request IDs.** Every response carries `Request-Id`, which matches the server audit record
+      (NFR-OBS-01).
+    - **Rate limits.** A key over its limit receives `429` with `Retry-After` in seconds
+      (SRV-OPS-06). Every response carries `RateLimit-Limit`, `RateLimit-Remaining` and
+      `RateLimit-Reset`. The limits themselves are set per integrator and are not part of the
+      contract.
+
+    `x-requirements` on each operation lists the SRS IDs it implements, and `x-priority` its
+    release priority.
+  contact:
+    name: Ndeipi
+servers:
+  - url: https://{host}/v1
+    description: Production. Ndeipi assigns the host.
+    variables:
+      host:
+        default: api.ndeipi.example
+  - url: https://{host}/v1
+    description: Sandbox. Same contract, no real funds (FR-SBX-01).
+    variables:
+      host:
+        default: sandbox.api.ndeipi.example
+security:
+  - ApiKey: []
+tags:
+  - name: Users
+  - name: Wallets
+  - name: Transfers
+  - name: Deposit accounts
+  - name: Payout accounts
+  - name: Rates and routes
+  - name: Webhooks
+  - name: Sandbox
+    description: Available only with a sandbox key. Production keys receive `403 sandbox_only`.
+
+paths:
+  # ---------------------------------------------------------------- Users
+  /users:
+    post:
+      tags: [Users]
+      operationId: users.create
+      summary: Create a user
+      description: |
+        Creates an individual or business user. Identity data is collected through the hosted
+        onboarding link, not through this call. `external_reference` is unique per integrator; a
+        second create with the same reference returns `409 external_reference_exists` naming the
+        existing user.
+      x-requirements: [FR-USER-01, FR-USER-02]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateRequest'
+      responses:
+        '201':
+          description: User created.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [Users]
+      operationId: users.list
+      summary: List users
+      x-requirements: [FR-USER-07, FR-API-04]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+        - name: external_reference
+          in: query
+          schema: { type: string }
+        - name: kyc_status
+          in: query
+          schema: { $ref: '#/components/schemas/KycStatus' }
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/UserStatus' }
+      responses:
+        '200':
+          description: A page of users.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags: [Users]
+      operationId: users.get
+      summary: Get a user
+      x-requirements: [FR-USER-07]
+      x-priority: P0
+      responses:
+        '200':
+          description: The user.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [Users]
+      operationId: users.update
+      summary: Update a user
+      description: Updates contact details and metadata. Identity data changes go through a new onboarding link.
+      x-requirements: [FR-USER-07]
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdateRequest' }
+      responses:
+        '200':
+          description: The updated user.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Users]
+      operationId: users.deactivate
+      summary: Deactivate a user
+      description: |
+        A deactivated user cannot send or receive funds and cannot be reactivated through the API.
+        Deactivation is refused with `409 user_has_balance` while any of the user's wallets holds
+        an available or pending balance, and with `409 user_has_open_transfers` while a transfer
+        involving the user is not in a final state. The integrator pays the balance out first.
+      x-requirements: [FR-USER-07]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The deactivated user.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/onboarding_links:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Users]
+      operationId: users.createOnboardingLinks
+      summary: Create onboarding links
+      description: |
+        Issues a hosted KYC link and a terms-of-service link in one call. Calling again issues
+        fresh links and expires the previous ones.
+      x-requirements: [FR-USER-03, SRV-KYC-01]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OnboardingLinksCreateRequest' }
+      responses:
+        '201':
+          description: Links issued.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OnboardingLinks' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Wallets
+  /users/{user_id}/wallets:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Wallets]
+      operationId: wallets.create
+      summary: Create a wallet
+      description: |
+        Creates a wallet for an approved user. A user holds at most one wallet per asset in 1.0;
+        a second create for the same asset returns `409 wallet_exists`. That wallet is the
+        user's default for the asset, which `transfers.send` resolves.
+      x-requirements: [FR-WAL-01, FR-USER-05]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WalletCreateRequest' }
+      responses:
+        '201':
+          description: Wallet created.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wallet' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [Wallets]
+      operationId: wallets.list
+      summary: List a user's wallets
+      x-requirements: [FR-WAL-04]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+        - name: asset
+          in: query
+          schema: { $ref: '#/components/schemas/Asset' }
+      responses:
+        '200':
+          description: A page of wallets.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Wallet' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/wallets/{wallet_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/WalletId'
+    get:
+      tags: [Wallets]
+      operationId: wallets.get
+      summary: Get a wallet
+      x-requirements: [FR-WAL-04]
+      x-priority: P0
+      responses:
+        '200':
+          description: The wallet, with its current balance.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Wallet' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/wallets/{wallet_id}/balance:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/WalletId'
+    get:
+      tags: [Wallets]
+      operationId: wallets.balance
+      summary: Get a wallet's balance
+      x-requirements: [FR-WAL-02, SRV-LED-05]
+      x-priority: P0
+      responses:
+        '200':
+          description: Available and pending balances.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WalletBalance' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/wallets/{wallet_id}/history:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/WalletId'
+    get:
+      tags: [Wallets]
+      operationId: wallets.history
+      summary: List a wallet's history
+      description: |
+        One entry per ledger posting line that touched the wallet. Summing `amount` (credits
+        positive, debits negative) over all entries for a bucket gives that bucket's balance
+        (NFR-REL-03).
+      x-requirements: [FR-WAL-03]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+        - $ref: '#/components/parameters/CreatedAfter'
+        - $ref: '#/components/parameters/CreatedBefore'
+      responses:
+        '200':
+          description: A page of history entries.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/WalletHistoryEntry' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Transfers
+  /transfers:
+    post:
+      tags: [Transfers]
+      operationId: transfers.create
+      summary: Create a transfer
+      description: |
+        One resource for every money movement (DC-04). The kind follows from the source and
+        destination:
+
+        | Source | Destination | Kind |
+        |---|---|---|
+        | `wallet` | another user's `wallet` in the same asset | `user_to_user` |
+        | `wallet` | the same user's `wallet` in another asset | `conversion` |
+        | `fiat` | `wallet` | `onramp` |
+        | `wallet` | `payout_account` | `offramp` |
+
+        Any other combination returns `422 unsupported_route`. A `user_to_user` transfer posts to
+        the ledger in one transaction and returns `completed` (or `in_review`) in the response
+        without calling the provider (SRV-LED-04). An `onramp` returns `awaiting_funds` with
+        deposit instructions. An `offramp` debits the source wallet when accepted and returns
+        `pending`.
+
+        A `conversion` buys or sells NdeipiCoin with Ndeipi Points. It needs a `quote_id` from
+        `POST /quotes` that matches its wallets and amount and has not expired. It settles from
+        Ndeipi's own stock in one ledger transaction and returns `completed`, so it never waits on
+        the OTC desk. Only cashable (purchased) points can buy NdeipiCoin; earned points return
+        `422 amount_exceeds_cashable`. Points from selling NdeipiCoin are cashable. Off-ramps and
+        on-ramps carry points only: NdeipiCoin is cashed out by converting it to points first.
+
+        With `dry_run: true` the request is validated exactly as a real one, including KYC,
+        balance, route and limit checks, and returns `200` with a `TransferPreview`. Nothing is
+        created and no funds move. A failing dry run returns the same error a real create would.
+      x-requirements: [FR-XFER-01, FR-XFER-02, FR-XFER-03, FR-XFER-06, FR-ON-02, FR-OFF-03, FR-RATE-03, FR-USER-05]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TransferCreateRequest' }
+            examples:
+              userToUser:
+                summary: User to user
+                value:
+                  source: { type: wallet, wallet_id: wal_01JA8Z4K2V9QW3H6Y7XKD2M0RS }
+                  destination: { type: wallet, wallet_id: wal_01JA8Z5B7C1DE2F3G4H5J6K7LM }
+                  amount: '25.00'
+                  integrator_reference: invoice-7781
+              onramp:
+                summary: One-off on-ramp
+                value:
+                  source: { type: fiat, currency: zar, rail: absa_eft }
+                  destination: { type: wallet, wallet_id: wal_01JA8Z4K2V9QW3H6Y7XKD2M0RS }
+                  amount: '100.00'
+              offramp:
+                summary: Off-ramp
+                value:
+                  source: { type: wallet, wallet_id: wal_01JA8Z5B7C1DE2F3G4H5J6K7LM }
+                  destination: { type: payout_account, payout_account_id: pa_01JA8Z6N3P4Q5R6S7T8U9V0WXY }
+                  amount: '20.00'
+      responses:
+        '200':
+          description: Dry run passed. Nothing was created.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransferPreview' }
+        '201':
+          description: Transfer created.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ProviderUnavailable' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [Transfers]
+      operationId: transfers.list
+      summary: List transfers
+      x-requirements: [FR-XFER-07]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+        - $ref: '#/components/parameters/CreatedAfter'
+        - $ref: '#/components/parameters/CreatedBefore'
+        - name: user_id
+          in: query
+          description: Transfers where this user owns the source or the destination.
+          schema: { $ref: '#/components/schemas/UserIdValue' }
+        - name: wallet_id
+          in: query
+          description: Transfers where this wallet is the source or the destination.
+          schema: { $ref: '#/components/schemas/WalletIdValue' }
+        - name: state
+          in: query
+          schema: { $ref: '#/components/schemas/TransferState' }
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/TransferKind' }
+        - name: integrator_reference
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: A page of transfers.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Transfer' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /transfers/{transfer_id}:
+    parameters:
+      - $ref: '#/components/parameters/TransferId'
+    get:
+      tags: [Transfers]
+      operationId: transfers.get
+      summary: Get a transfer
+      x-requirements: [FR-XFER-07]
+      x-priority: P0
+      responses:
+        '200':
+          description: The transfer.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /transfers/{transfer_id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/TransferId'
+    post:
+      tags: [Transfers]
+      operationId: transfers.cancel
+      summary: Cancel a transfer
+      description: |
+        Allowed only before the transfer's ledger posting: an `onramp` in `awaiting_funds`, or any
+        transfer in `pending` that has not yet posted. Otherwise returns
+        `409 transfer_not_cancelable`. Funds that arrive for a canceled on-ramp are returned to
+        the sender and reported with a `deposit.returned` event.
+      x-requirements: [FR-XFER-08, FR-ON-03]
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The canceled transfer.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Deposit accounts
+  /users/{user_id}/deposit_accounts:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Deposit accounts]
+      operationId: depositAccounts.create
+      summary: Create a standing deposit account
+      description: |
+        Returns permanent deposit details for one source currency and rail. Every deposit received
+        creates an `onramp` transfer into the destination wallet, so deposits share the transfer
+        state machine, receipts and events with one-off on-ramps.
+
+        Only bank rails have standing details. PayPal collects one payment at a time through an
+        approval link, so a `paypal` source returns `422 unsupported_route` here; use a one-off
+        on-ramp (`POST /transfers` with a `fiat` source) instead.
+      x-requirements: [FR-ON-01, FR-USER-05]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DepositAccountCreateRequest' }
+      responses:
+        '201':
+          description: Deposit account created.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepositAccount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ProviderUnavailable' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [Deposit accounts]
+      operationId: depositAccounts.list
+      summary: List a user's deposit accounts
+      x-requirements: [FR-ON-06]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+      responses:
+        '200':
+          description: A page of deposit accounts.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/DepositAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/deposit_accounts/{deposit_account_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/DepositAccountId'
+    get:
+      tags: [Deposit accounts]
+      operationId: depositAccounts.get
+      summary: Get a deposit account
+      x-requirements: [FR-ON-06]
+      x-priority: P0
+      responses:
+        '200':
+          description: The deposit account.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepositAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/deposit_accounts/{deposit_account_id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/DepositAccountId'
+    post:
+      tags: [Deposit accounts]
+      operationId: depositAccounts.deactivate
+      summary: Deactivate a deposit account
+      description: Deposits that arrive after deactivation are returned to the sender.
+      x-requirements: [FR-ON-07]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The deactivated deposit account.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepositAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/deposit_accounts/{deposit_account_id}/reactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/DepositAccountId'
+    post:
+      tags: [Deposit accounts]
+      operationId: depositAccounts.reactivate
+      summary: Reactivate a deposit account
+      x-requirements: [FR-ON-07]
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The reactivated deposit account.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DepositAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/deposit_accounts/{deposit_account_id}/activity:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/DepositAccountId'
+    get:
+      tags: [Deposit accounts]
+      operationId: depositAccounts.activity
+      summary: List deposits received
+      x-requirements: [FR-ON-04, FR-ON-06]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+        - $ref: '#/components/parameters/CreatedAfter'
+        - $ref: '#/components/parameters/CreatedBefore'
+      responses:
+        '200':
+          description: A page of deposits.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Deposit' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Payout accounts
+  /users/{user_id}/payout_accounts:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Payout accounts]
+      operationId: payoutAccounts.create
+      summary: Register a payout account
+      description: |
+        Registers a bank or mobile-money destination. Details are validated for their rail at
+        creation; failures return `422 validation_failed` with one entry per field in `details`.
+        Account and phone numbers are returned masked.
+      x-requirements: [FR-OFF-01, FR-OFF-02, FR-USER-05, SRV-KYC-03]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PayoutAccountCreateRequest' }
+      responses:
+        '201':
+          description: Payout account registered.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutAccount' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [Payout accounts]
+      operationId: payoutAccounts.list
+      summary: List a user's payout accounts
+      x-requirements: [FR-OFF-07]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+      responses:
+        '200':
+          description: A page of payout accounts.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/PayoutAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /users/{user_id}/payout_accounts/{payout_account_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/PayoutAccountId'
+    get:
+      tags: [Payout accounts]
+      operationId: payoutAccounts.get
+      summary: Get a payout account
+      x-requirements: [FR-OFF-07]
+      x-priority: P0
+      responses:
+        '200':
+          description: The payout account.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Payout accounts]
+      operationId: payoutAccounts.delete
+      summary: Delete a payout account
+      description: |
+        Removes the account as a destination for new transfers. Transfers already submitted to it
+        complete or are returned as normal. Returns `409 payout_account_in_use` while an off-ramp
+        to it is in `pending`.
+      x-requirements: [FR-OFF-01]
+      x-priority: P0
+      responses:
+        '200':
+          description: The deleted payout account.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PayoutAccount' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Rates and routes
+  /routes:
+    get:
+      tags: [Rates and routes]
+      operationId: routes.list
+      summary: List supported routes
+      description: |
+        Every source the server accepts, with the destinations it reaches, amount limits,
+        precision and settlement estimates. Rails appear only as data here; SDKs MUST NOT
+        hard-code them (FR-RATE-01, DC-08). Not paginated.
+      x-requirements: [FR-RATE-01]
+      x-priority: P0
+      parameters:
+        - name: kind
+          in: query
+          schema: { $ref: '#/components/schemas/TransferKind' }
+        - name: country
+          in: query
+          description: ISO 3166-1 alpha-2 country code.
+          schema: { $ref: '#/components/schemas/Country' }
+      responses:
+        '200':
+          description: All routes matching the filters.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Route' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /rates:
+    get:
+      tags: [Rates and routes]
+      operationId: rates.get
+      summary: Get the price of points in a currency
+      x-requirements: [FR-RATE-02]
+      x-priority: P0
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: Source currency or asset.
+          schema: { type: string, examples: [zar] }
+        - name: to
+          in: query
+          required: true
+          description: Destination currency or asset.
+          schema: { type: string, examples: [ndeipi-points] }
+      responses:
+        '200':
+          description: The current rate.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rate' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503': { $ref: '#/components/responses/ProviderUnavailable' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /quotes:
+    post:
+      tags: [Rates and routes]
+      operationId: quotes.create
+      summary: Lock a price for a conversion
+      description: |
+        Locks the price for converting an amount between Ndeipi Points and NdeipiCoin, for a
+        short time (`expires_at`, 30 seconds by default). Pass its `id` as `quote_id` on the
+        conversion transfer. The price includes Ndeipi's spread, shown separately in `fees`.
+
+        NdeipiCoin is bought for Ndeipi's stock through a manual OTC desk, so the price comes from
+        what Ndeipi last paid and is refreshed by its treasury team. A quote larger than Ndeipi's
+        stock, or than the treasury can back with new points, returns
+        `422 insufficient_liquidity`.
+      x-requirements: [FR-RATE-04, FR-XFER-10]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/QuoteCreateRequest' }
+      responses:
+        '201':
+          description: Quote locked.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '503':
+          description: |
+            NdeipiCoin has no current price: no OTC trade has been recorded, or the last one is
+            older than Ndeipi allows quoting from. Code `provider_unavailable`. Retry later.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /quotes/{quote_id}:
+    parameters:
+      - name: quote_id
+        in: path
+        required: true
+        schema: { type: string, pattern: '^qt_[0-9A-Z]{26}$' }
+    get:
+      tags: [Rates and routes]
+      operationId: quotes.get
+      summary: Get a quote
+      x-requirements: [FR-RATE-04]
+      x-priority: P0
+      responses:
+        '200':
+          description: The quote.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Webhooks
+  /webhook_endpoints:
+    post:
+      tags: [Webhooks]
+      operationId: webhookEndpoints.create
+      summary: Register a webhook endpoint
+      description: |
+        Registers an HTTPS URL and generates an Ed25519 key pair for it. The public key is returned
+        in `public_key_pem`; the private key never leaves the server. New endpoints start
+        `disabled` and are enabled by a successful test delivery or an update.
+      x-requirements: [FR-WH-01, FR-WH-07]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookEndpointCreateRequest' }
+      responses:
+        '201':
+          description: Endpoint registered.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    get:
+      tags: [Webhooks]
+      operationId: webhookEndpoints.list
+      summary: List webhook endpoints
+      x-requirements: [FR-WH-01]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+      responses:
+        '200':
+          description: A page of endpoints.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /webhook_endpoints/{webhook_endpoint_id}:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+    get:
+      tags: [Webhooks]
+      operationId: webhookEndpoints.get
+      summary: Get a webhook endpoint
+      x-requirements: [FR-WH-01]
+      x-priority: P0
+      responses:
+        '200':
+          description: The endpoint.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    patch:
+      tags: [Webhooks]
+      operationId: webhookEndpoints.update
+      summary: Update a webhook endpoint
+      x-requirements: [FR-WH-01]
+      x-priority: P0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/WebhookEndpointUpdateRequest' }
+      responses:
+        '200':
+          description: The updated endpoint.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+    delete:
+      tags: [Webhooks]
+      operationId: webhookEndpoints.delete
+      summary: Delete a webhook endpoint
+      x-requirements: [FR-WH-01]
+      x-priority: P0
+      responses:
+        '200':
+          description: The deleted endpoint.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /webhook_endpoints/{webhook_endpoint_id}/test:
+    parameters:
+      - $ref: '#/components/parameters/WebhookEndpointId'
+    post:
+      tags: [Webhooks]
+      operationId: webhookEndpoints.test
+      summary: Send a test event
+      description: |
+        Delivers a signed `webhook_endpoint.test` event synchronously. A `2xx` reply from the
+        endpoint enables it.
+      x-requirements: [FR-WH-07]
+      x-priority: P1
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The delivery attempt and the endpoint after it.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [delivery, endpoint]
+                properties:
+                  delivery: { $ref: '#/components/schemas/EventDelivery' }
+                  endpoint: { $ref: '#/components/schemas/WebhookEndpoint' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /events:
+    get:
+      tags: [Webhooks]
+      operationId: events.list
+      summary: List events
+      description: Events are kept for 30 days and can be listed whether or not they were delivered.
+      x-requirements: [SRV-OPS-05]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/StartingAfter'
+        - $ref: '#/components/parameters/EndingBefore'
+        - $ref: '#/components/parameters/CreatedAfter'
+        - $ref: '#/components/parameters/CreatedBefore'
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/EventType' }
+        - name: object_id
+          in: query
+          description: Events whose snapshot is this object.
+          schema: { type: string }
+      responses:
+        '200':
+          description: A page of events.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ListEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items: { $ref: '#/components/schemas/Event' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /events/{event_id}:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Webhooks]
+      operationId: events.get
+      summary: Get an event
+      x-requirements: [SRV-OPS-05]
+      x-priority: P0
+      responses:
+        '200':
+          description: The event.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /events/{event_id}/redeliver:
+    parameters:
+      - $ref: '#/components/parameters/EventId'
+    post:
+      tags: [Webhooks]
+      operationId: events.redeliver
+      summary: Redeliver an event
+      description: |
+        Queues a fresh delivery of the event to one endpoint, or to every enabled endpoint
+        subscribed to its type. The redelivery is signed with a new timestamp.
+      x-requirements: [SRV-OPS-05]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhook_endpoint_id:
+                  $ref: '#/components/schemas/WebhookEndpointIdValue'
+      responses:
+        '202':
+          description: Redelivery queued.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  # ---------------------------------------------------------------- Sandbox
+  /sandbox/users/{user_id}/kyc:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags: [Sandbox]
+      operationId: sandbox.setKycStatus
+      summary: Set a user's KYC outcome
+      description: Sets KYC and terms status as if the hosted flow had finished, and fires the same events.
+      x-requirements: [FR-SBX-02, FR-SBX-03]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxKycRequest' }
+      responses:
+        '200':
+          description: The updated user.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /sandbox/deposits:
+    post:
+      tags: [Sandbox]
+      operationId: sandbox.simulateDeposit
+      summary: Simulate an incoming deposit
+      description: |
+        Simulates fiat arriving at a standing deposit account or against a one-off on-ramp
+        transfer. Returns the on-ramp transfer it moves. The amount may differ from the expected
+        amount to test over- and under-payment.
+      x-requirements: [FR-SBX-02, FR-SBX-03]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxDepositRequest' }
+      responses:
+        '200':
+          description: The on-ramp transfer after the deposit.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+  /sandbox/transfers/{transfer_id}/payout_outcome:
+    parameters:
+      - $ref: '#/components/parameters/TransferId'
+    post:
+      tags: [Sandbox]
+      operationId: sandbox.setPayoutOutcome
+      summary: Set an off-ramp's payout outcome
+      description: |
+        Moves a `payout_submitted` off-ramp to its final outcome. `returned` and `undeliverable`
+        credit the source wallet and end the transfer in `refunded` (FR-OFF-05).
+      x-requirements: [FR-SBX-02, FR-SBX-03]
+      x-priority: P0
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SandboxPayoutOutcomeRequest' }
+      responses:
+        '200':
+          description: The transfer after the outcome.
+          headers:
+            Request-Id: { $ref: '#/components/headers/RequestId' }
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transfer' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '5XX': { $ref: '#/components/responses/ServerError' }
+
+webhooks:
+  event:
+    post:
+      summary: Event delivery
+      description: |
+        Sent to every enabled endpoint subscribed to the event's type. The body is one `Event`.
+
+        **Signature (FR-WH-02, FR-WH-03).** The `Ndeipi-Signature` header has the form
+        `t=<unix seconds>,v1=<base64 signature>`. `t` is the time of this delivery attempt, not
+        the event's creation time, so retries over the 2-day window verify within the receiver's
+        tolerance. The signature is Ed25519 over the bytes `<t>.<raw body>` with the endpoint's
+        private key: one standard sign operation with no pre-hashing, so the standard verify call
+        of any language checks it directly. During key rotation the header carries one `v1`
+        entry per active key; a receiver accepts the delivery if any one verifies.
+
+        **Receiver rules (FR-WH-05).** Verify over the raw body bytes before parsing. Reject a
+        delivery whose `t` is more than the tolerance (default 10 minutes) from the receiver's
+        clock. Deduplicate on `Event.id`. Use `object_version` to discard a snapshot older than
+        one already processed.
+
+        **Retries (FR-WH-04).** Any response other than `2xx` within 10 seconds is a failure.
+        Failures are retried with exponential backoff for up to 2 days, after which the event is
+        marked failed and stays available through `GET /events` and redelivery.
+      security: []
+      parameters:
+        - name: Ndeipi-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: '^t=\d+(,v1=[A-Za-z0-9+/]+={0,2})+$'
+            examples: ['t=1791302400,v1=3q2+7wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==']
+        - name: Ndeipi-Event-Id
+          in: header
+          required: true
+          schema: { type: string }
+        - name: Ndeipi-Delivery-Attempt
+          in: header
+          required: true
+          schema: { type: integer, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Event' }
+      responses:
+        '2XX':
+          description: Delivery accepted. Any other status is retried.
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: Api-Key
+      description: Integrator key. `nd_test_` prefix for sandbox, `nd_live_` for production.
+
+  headers:
+    RequestId:
+      description: Server request ID; matches the audit record (NFR-OBS-01).
+      schema: { type: string, examples: [req_01JA8ZC4QK7N2Y5W3V0T9S8R6P] }
+    IdempotentReplayed:
+      description: Present and `true` when this response is a replay of an earlier request with the same key.
+      schema: { type: boolean }
+    RetryAfter:
+      description: Seconds to wait before retrying.
+      schema: { type: integer, minimum: 0 }
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated key, unique per write. SDKs generate a UUID v4 when none is supplied and reuse it on retry (FR-CORE-06).
+      schema: { type: string, minLength: 1, maxLength: 255 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+    StartingAfter:
+      name: starting_after
+      in: query
+      description: Cursor; an object ID. Returns the page after it. Cannot be combined with `ending_before`.
+      schema: { type: string }
+    EndingBefore:
+      name: ending_before
+      in: query
+      description: Cursor; an object ID. Returns the page before it. Cannot be combined with `starting_after`.
+      schema: { type: string }
+    CreatedAfter:
+      name: created_after
+      in: query
+      schema: { type: string, format: date-time }
+    CreatedBefore:
+      name: created_before
+      in: query
+      schema: { type: string, format: date-time }
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/UserIdValue' }
+    WalletId:
+      name: wallet_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/WalletIdValue' }
+    TransferId:
+      name: transfer_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/TransferIdValue' }
+    DepositAccountId:
+      name: deposit_account_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/DepositAccountIdValue' }
+    PayoutAccountId:
+      name: payout_account_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/PayoutAccountIdValue' }
+    WebhookEndpointId:
+      name: webhook_endpoint_id
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/WebhookEndpointIdValue' }
+    EventId:
+      name: event_id
+      in: path
+      required: true
+      schema: { type: string, pattern: '^evt_[0-9A-Z]{26}$' }
+
+  responses:
+    BadRequest:
+      description: The request is malformed.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: The API key is missing, invalid or revoked.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The key may not perform this action, or the user is not approved.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: The object does not exist or belongs to another integrator.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: The request conflicts with the object's current state or an earlier request.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: The request is well formed but fails validation or a business rule.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: The key is over its rate limit.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ProviderUnavailable:
+      description: |
+        The on-ramp or off-ramp provider is unavailable and the request was refused rather than
+        queued (SRV-PROV-07). Code `provider_unavailable`. User-to-user transfers never return this.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+        Retry-After: { $ref: '#/components/headers/RetryAfter' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: Server error. Safe to retry with the same idempotency key.
+      headers:
+        Request-Id: { $ref: '#/components/headers/RequestId' }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # ---------------------------------------------------------- Primitives
+    UserIdValue:
+      type: string
+      pattern: '^usr_[0-9A-Z]{26}$'
+      examples: [usr_01JA8Z2F5G6H7J8K9M0N1P2Q3R]
+    WalletIdValue:
+      type: string
+      pattern: '^wal_[0-9A-Z]{26}$'
+    TransferIdValue:
+      type: string
+      pattern: '^trf_[0-9A-Z]{26}$'
+    DepositAccountIdValue:
+      type: string
+      pattern: '^da_[0-9A-Z]{26}$'
+    PayoutAccountIdValue:
+      type: string
+      pattern: '^pa_[0-9A-Z]{26}$'
+    WebhookEndpointIdValue:
+      type: string
+      pattern: '^we_[0-9A-Z]{26}$'
+    Amount:
+      description: Non-negative decimal string. Precision is limited per asset or currency (see `Route`).
+      type: string
+      pattern: '^(0|[1-9]\d{0,17})(\.\d{1,18})?$'
+      examples: ['25.00']
+    SignedAmount:
+      description: Decimal string; negative for debits.
+      type: string
+      pattern: '^-?(0|[1-9]\d{0,17})(\.\d{1,18})?$'
+    Asset:
+      description: |
+        A wallet asset code. The set is data on `GET /routes`. In 1.0 it holds two assets:
+
+        - `ndeipi-points`: Ndeipi Points, bought with fiat on Absa or PayPal at a fixed price per
+          currency and cashed out the same way. Every user's default asset.
+        - `ndeipi-coin`: NdeipiCoin, opt-in. Its price moves. It is bought and sold only by
+          converting points at a locked quote (`POST /quotes`), never directly with fiat. A
+          wallet needs `acknowledge_price_risk: true` to create.
+      type: string
+      pattern: '^[a-z0-9-]{2,32}$'
+      examples: [ndeipi-points, ndeipi-coin]
+    Currency:
+      description: Lower-case ISO 4217 fiat currency code.
+      type: string
+      pattern: '^[a-z]{3}$'
+      examples: [usd, zar, zwg]
+    Country:
+      description: ISO 3166-1 alpha-2 country code.
+      type: string
+      pattern: '^[A-Z]{2}$'
+      examples: [ZW]
+    Rail:
+      description: A payment rail code, published by `GET /routes`. Not an enum by design (DC-08).
+      type: string
+      pattern: '^[a-z0-9_]{2,32}$'
+      examples: [absa_eft, paypal]
+    Metadata:
+      description: Integrator key-value data, returned unchanged. Up to 50 keys; keys up to 40 characters, values up to 500.
+      type: object
+      maxProperties: 50
+      propertyNames: { maxLength: 40 }
+      additionalProperties: { type: string, maxLength: 500 }
+    Timestamp:
+      type: string
+      format: date-time
+    ListEnvelope:
+      type: object
+      required: [data, has_more]
+      properties:
+        data:
+          type: array
+          items: {}
+        has_more:
+          type: boolean
+          description: True when another page exists in the requested direction.
+    Reason:
+      description: Machine-readable reason with a human-readable description.
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, examples: [document_expired] }
+        message: { type: string }
+
+    # ---------------------------------------------------------- Errors
+    Error:
+      type: object
+      required: [code, message, request_id]
+      properties:
+        code:
+          type: string
+          description: |
+            Stable machine-readable code. Clients MUST accept unknown codes. Defined in 1.0:
+
+            | Code | Status | Meaning |
+            |---|---|---|
+            | `invalid_request` | 400 | Malformed JSON, unknown parameter or bad cursor |
+            | `idempotency_key_missing` | 400 | POST without `Idempotency-Key` |
+            | `unauthorized` | 401 | Missing, invalid or revoked key |
+            | `key_environment_mismatch` | 401 | Sandbox key on production or the reverse |
+            | `forbidden` | 403 | Key scope does not allow the action |
+            | `sandbox_only` | 403 | Sandbox endpoint called with a production key |
+            | `user_not_approved` | 403 | KYC or terms status is not `approved` (FR-USER-05) |
+            | `user_deactivated` | 403 | User is deactivated (FR-USER-07) |
+            | `not_found` | 404 | Object does not exist for this integrator |
+            | `idempotency_key_reused` | 409 | Same key, different body (FR-CORE-05) |
+            | `idempotency_request_in_progress` | 409 | Same key, original request still running |
+            | `external_reference_exists` | 409 | `field` is `external_reference`; `existing_id` names the user (FR-USER-02) |
+            | `wallet_exists` | 409 | User already has a wallet in this asset |
+            | `user_has_balance` | 409 | Deactivation refused while a wallet holds funds |
+            | `user_has_open_transfers` | 409 | Deactivation refused while a transfer is open |
+            | `transfer_not_cancelable` | 409 | Transfer has posted or is final |
+            | `payout_account_in_use` | 409 | A pending off-ramp targets this account |
+            | `invalid_state` | 409 | Object is not in a state that allows the action |
+            | `validation_failed` | 422 | One or more fields invalid; see `details` |
+            | `invalid_amount_precision` | 422 | More decimal places than the asset allows |
+            | `amount_below_minimum` | 422 | Below the route minimum |
+            | `amount_above_maximum` | 422 | Above the route maximum |
+            | `insufficient_funds` | 422 | Available balance too low (FR-XFER-03) |
+            | `amount_exceeds_cashable` | 422 | Off-ramp above the purchased points still held; earned points cannot be cashed out |
+            | `same_source_and_destination` | 422 | Source and destination wallet are the same (FR-XFER-03) |
+            | `asset_mismatch` | 422 | Wallets hold different assets, and this is not a conversion (FR-XFER-03) |
+            | `price_risk_not_acknowledged` | 422 | NdeipiCoin wallet created without `acknowledge_price_risk: true` |
+            | `quote_required` | 422 | Conversion without a `quote_id` |
+            | `quote_mismatch` | 422 | Quote's assets, wallets or amount differ from the transfer |
+            | `quote_expired` | 422 | Quote's `expires_at` has passed; request a new one |
+            | `quote_used` | 409 | Quote already settled a conversion |
+            | `insufficient_liquidity` | 422 | Ndeipi's NdeipiCoin stock, or the treasury backing new points, is too low for this size; try a smaller amount later |
+            | `unsupported_route` | 422 | No route for this source and destination |
+            | `limit_exceeded` | 422 | Per-user or per-transfer limit; `limit` names it (FR-XFER-09) |
+            | `sanctions_match` | 422 | Payout beneficiary failed screening |
+            | `rate_limited` | 429 | Over the key's rate limit |
+            | `provider_unavailable` | 503 | Ramp provider down; request refused (SRV-PROV-07) |
+            | `internal_error` | 500 | Unexpected server error |
+          examples: [insufficient_funds]
+        message:
+          type: string
+          description: Human-readable. Never contains the API key or personal data.
+        field:
+          type: string
+          description: JSON path of the offending request field, where there is one.
+          examples: [amount]
+        details:
+          description: Per-field failures for `validation_failed`.
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field: { type: string, examples: [bank.account_number] }
+              code: { type: string, examples: [invalid_format] }
+              message: { type: string }
+        existing_id:
+          type: string
+          description: For conflicts with an existing object, its ID.
+        limit:
+          type: object
+          description: For `limit_exceeded`, the limit breached.
+          properties:
+            name: { type: string, examples: [per_user_daily] }
+            amount: { $ref: '#/components/schemas/Amount' }
+            asset: { type: string }
+            resets_at: { $ref: '#/components/schemas/Timestamp' }
+        request_id:
+          type: string
+
+    # ---------------------------------------------------------- Users
+    UserType:
+      type: string
+      enum: [individual, business]
+    KycStatus:
+      type: string
+      enum: [not_started, under_review, incomplete, approved, rejected]
+    TermsStatus:
+      type: string
+      enum: [pending, approved]
+    UserStatus:
+      type: string
+      enum: [active, deactivated]
+    UserCreateRequest:
+      type: object
+      required: [type, external_reference]
+      properties:
+        type: { $ref: '#/components/schemas/UserType' }
+        external_reference:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Integrator's own ID for the user; unique per integrator.
+        email: { type: string, format: email }
+        phone:
+          type: string
+          description: E.164.
+          pattern: '^\+[1-9]\d{6,14}$'
+        first_name: { type: string, maxLength: 100, description: Individuals only. }
+        last_name: { type: string, maxLength: 100, description: Individuals only. }
+        business_name: { type: string, maxLength: 200, description: Businesses only; required for them. }
+        country: { $ref: '#/components/schemas/Country' }
+        metadata: { $ref: '#/components/schemas/Metadata' }
+    UserUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        email: { type: string, format: email }
+        phone:
+          type: string
+          pattern: '^\+[1-9]\d{6,14}$'
+        metadata: { $ref: '#/components/schemas/Metadata' }
+    User:
+      type: object
+      required: [id, object, type, external_reference, status, kyc_status, terms_status, rejection_reasons, version, created_at, updated_at]
+      properties:
+        id: { $ref: '#/components/schemas/UserIdValue' }
+        object: { const: user }
+        type: { $ref: '#/components/schemas/UserType' }
+        external_reference: { type: string }
+        email: { type: [string, 'null'], format: email }
+        phone: { type: [string, 'null'] }
+        first_name: { type: [string, 'null'] }
+        last_name: { type: [string, 'null'] }
+        business_name: { type: [string, 'null'] }
+        country: { oneOf: [{ $ref: '#/components/schemas/Country' }, { type: 'null' }] }
+        status: { $ref: '#/components/schemas/UserStatus' }
+        kyc_status: { $ref: '#/components/schemas/KycStatus' }
+        terms_status: { $ref: '#/components/schemas/TermsStatus' }
+        rejection_reasons:
+          description: Populated when `kyc_status` is `rejected` or `incomplete` (FR-USER-06).
+          type: array
+          items: { $ref: '#/components/schemas/Reason' }
+        metadata: { $ref: '#/components/schemas/Metadata' }
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    OnboardingLinksCreateRequest:
+      type: object
+      properties:
+        redirect_url:
+          type: string
+          format: uri
+          description: HTTPS URL the hosted flow returns the user to when finished.
+    OnboardingLink:
+      type: object
+      required: [url, status, expires_at]
+      properties:
+        url: { type: string, format: uri }
+        status:
+          description: '`KycStatus` for the KYC link, `TermsStatus` for the terms link.'
+          type: string
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    OnboardingLinks:
+      type: object
+      required: [object, user_id, kyc, terms]
+      properties:
+        object: { const: onboarding_links }
+        user_id: { $ref: '#/components/schemas/UserIdValue' }
+        kyc: { $ref: '#/components/schemas/OnboardingLink' }
+        terms: { $ref: '#/components/schemas/OnboardingLink' }
+
+    # ---------------------------------------------------------- Wallets
+    WalletCreateRequest:
+      type: object
+      required: [asset]
+      properties:
+        asset: { $ref: '#/components/schemas/Asset' }
+        acknowledge_price_risk:
+          type: boolean
+          description: |
+            Required and `true` for `ndeipi-coin`: the integrator confirms the user has been shown
+            that NdeipiCoin's price moves and a balance can fall in value. Without it the create
+            returns `422 price_risk_not_acknowledged`. The time of acknowledgement is recorded on
+            the wallet.
+        metadata: { $ref: '#/components/schemas/Metadata' }
+    WalletBalance:
+      type: object
+      required: [object, wallet_id, asset, available, pending, cashable, as_of]
+      properties:
+        object: { const: wallet_balance }
+        wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+        asset: { $ref: '#/components/schemas/Asset' }
+        available:
+          $ref: '#/components/schemas/Amount'
+          description: Spendable now. Never negative (SRV-LED-03).
+        pending:
+          $ref: '#/components/schemas/Amount'
+          description: In flight in suspense; deposits not yet credited and payouts not yet confirmed (SRV-LED-05).
+        cashable:
+          $ref: '#/components/schemas/Amount'
+          description: |
+            The part of `available` that can be cashed out: points bought with fiat and not yet
+            spent. Earned points (rewards) can be spent and sent but never cashed out, and spending
+            uses them first. An off-ramp above this returns `422 amount_exceeds_cashable`.
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+    Wallet:
+      type: object
+      required: [id, object, user_id, asset, decimals, status, balance, version, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/WalletIdValue' }
+        object: { const: wallet }
+        user_id: { $ref: '#/components/schemas/UserIdValue' }
+        asset: { $ref: '#/components/schemas/Asset' }
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 18
+          description: Decimal places this asset's amounts may carry.
+        status:
+          type: string
+          enum: [active, frozen]
+          description: '`frozen` while the owner is deactivated or under compliance hold.'
+        balance: { $ref: '#/components/schemas/WalletBalance' }
+        price_risk_acknowledged_at:
+          description: For `ndeipi-coin` wallets, when the user acknowledged the price risk.
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+        metadata: { $ref: '#/components/schemas/Metadata' }
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    WalletHistoryEntry:
+      type: object
+      required: [id, object, wallet_id, transfer_id, bucket, amount, balance_after, created_at]
+      properties:
+        id: { type: string, pattern: '^whe_[0-9A-Z]{26}$' }
+        object: { const: wallet_history_entry }
+        wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+        transfer_id: { $ref: '#/components/schemas/TransferIdValue' }
+        bucket:
+          type: string
+          enum: [available, pending]
+        amount:
+          $ref: '#/components/schemas/SignedAmount'
+          description: Positive for a credit, negative for a debit.
+        balance_after:
+          $ref: '#/components/schemas/Amount'
+          description: The bucket's balance after this entry.
+        description: { type: string, examples: ['Transfer to usr_01JA8Z5...'] }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+
+    # ---------------------------------------------------------- Transfers
+    TransferKind:
+      type: string
+      enum: [user_to_user, conversion, onramp, offramp]
+    TransferState:
+      description: |
+        One enum for every kind (DC-04). Which states a kind uses, and how it moves between them:
+
+        - `user_to_user`: `pending` → `completed`; or `pending` → `in_review` → `completed` or
+          `failed`; `pending` → `canceled` only before posting.
+        - `conversion`: `pending` → `completed`, or `pending` → `failed` (quote expired, stock or
+          treasury too low). Settles in one ledger transaction, so it is final in the response.
+        - `onramp`: `awaiting_funds` → `funds_received` → `completed`. Exceptions: `in_review`
+          (after funds arrive), `returned` (funds sent back to the sender, final),
+          `canceled` (from `awaiting_funds`, final), `failed`.
+        - `offramp`: `pending` → `payout_submitted` → `completed`. Exceptions: `in_review`
+          (before submission), `undeliverable` and `returned` (rail rejected the payout; both
+          move on to `refunded`), `refunded` (source wallet credited back, final), `failed`
+          (refused before the wallet was debited, final).
+
+        Final states: `completed`, `failed`, `canceled`, `returned` (on-ramp), `refunded`.
+        Each change emits `transfer.state_changed` (FR-XFER-04).
+      type: string
+      enum: [pending, awaiting_funds, funds_received, in_review, payout_submitted, completed, failed, canceled, returned, undeliverable, refunded]
+    WalletSource:
+      type: object
+      required: [type, wallet_id]
+      properties:
+        type: { const: wallet }
+        wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+    FiatSource:
+      type: object
+      required: [type, currency, rail]
+      properties:
+        type: { const: fiat }
+        currency: { $ref: '#/components/schemas/Currency' }
+        rail: { $ref: '#/components/schemas/Rail' }
+    TransferSource:
+      oneOf:
+        - $ref: '#/components/schemas/WalletSource'
+        - $ref: '#/components/schemas/FiatSource'
+      discriminator:
+        propertyName: type
+        mapping:
+          wallet: '#/components/schemas/WalletSource'
+          fiat: '#/components/schemas/FiatSource'
+    WalletDestination:
+      type: object
+      required: [type, wallet_id]
+      properties:
+        type: { const: wallet }
+        wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+    PayoutAccountDestination:
+      type: object
+      required: [type, payout_account_id]
+      properties:
+        type: { const: payout_account }
+        payout_account_id: { $ref: '#/components/schemas/PayoutAccountIdValue' }
+    TransferDestination:
+      oneOf:
+        - $ref: '#/components/schemas/WalletDestination'
+        - $ref: '#/components/schemas/PayoutAccountDestination'
+      discriminator:
+        propertyName: type
+        mapping:
+          wallet: '#/components/schemas/WalletDestination'
+          payout_account: '#/components/schemas/PayoutAccountDestination'
+    TransferCreateRequest:
+      type: object
+      required: [source, destination, amount]
+      properties:
+        source: { $ref: '#/components/schemas/TransferSource' }
+        destination: { $ref: '#/components/schemas/TransferDestination' }
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: |
+            In the source's unit: the wallet's asset for `wallet` sources, the fiat currency for
+            `fiat` sources. For an on-ramp this is the amount expected; what is credited depends
+            on what arrives (see `Transfer.receipt`).
+        quote_id:
+          type: string
+          pattern: '^qt_[0-9A-Z]{26}$'
+          description: |
+            Required for a `conversion`, refused on any other kind. The quote's assets, wallets and
+            amount must match this request (`422 quote_mismatch`) and it must not have expired
+            (`422 quote_expired`). A quote is used at most once (`409 quote_used`).
+        integrator_reference:
+          type: string
+          maxLength: 128
+          description: Returned unchanged (FR-XFER-06). Not required to be unique.
+        metadata: { $ref: '#/components/schemas/Metadata' }
+        dry_run:
+          type: boolean
+          default: false
+          description: Validate only; nothing is created and no funds move (FR-RATE-03).
+    TransferParty:
+      description: A resolved source or destination, as returned on a transfer.
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [wallet, fiat, payout_account]
+        wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+        payout_account_id: { $ref: '#/components/schemas/PayoutAccountIdValue' }
+        user_id:
+          $ref: '#/components/schemas/UserIdValue'
+          description: Owner of the wallet or payout account. Absent for a fiat source.
+        asset: { $ref: '#/components/schemas/Asset' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        rail: { $ref: '#/components/schemas/Rail' }
+    Fee:
+      type: object
+      required: [type, amount, unit]
+      properties:
+        type:
+          type: string
+          description: '`provider` for the provider''s charge, `ndeipi` for Ndeipi''s fee (SRV-PROV-08), `integrator` for the integrator''s fee (P1).'
+          examples: [ndeipi]
+        amount: { $ref: '#/components/schemas/Amount' }
+        unit:
+          type: string
+          description: Asset or currency code the fee is charged in.
+    Receipt:
+      description: |
+        Present once a transfer has moved funds. Fields that do not apply to the kind are absent.
+        For an on-ramp, `amount_received` is what actually arrived. Whatever arrives is converted
+        and credited, even if it differs from the amount expected, unless it is below the route
+        minimum, in which case it is returned and the transfer ends `returned`.
+      type: object
+      required: [initiated_at]
+      properties:
+        amount_expected:
+          $ref: '#/components/schemas/Amount'
+          description: On-ramp only. The amount from the create request.
+        amount_received:
+          $ref: '#/components/schemas/Amount'
+          description: On-ramp only. Fiat that arrived.
+        amount_debited:
+          $ref: '#/components/schemas/Amount'
+          description: Debited from the source wallet.
+        amount_credited:
+          $ref: '#/components/schemas/Amount'
+          description: Credited to the destination wallet.
+        amount_paid_out:
+          $ref: '#/components/schemas/Amount'
+          description: Off-ramp only. Sent to the payout account, in its currency.
+        rate:
+          type: string
+          description: Conversion rate applied, as destination units per source unit.
+        fees:
+          type: array
+          items: { $ref: '#/components/schemas/Fee' }
+        rail_reference:
+          type: string
+          description: The rail's own reference for the deposit or payout (FR-ON-04, FR-OFF-06).
+        initiated_at: { $ref: '#/components/schemas/Timestamp' }
+        completed_at: { $ref: '#/components/schemas/Timestamp' }
+    BankDepositInstructions:
+      type: object
+      required: [type, currency, rail, bank_name, account_name, account_number, reference]
+      properties:
+        type: { const: bank }
+        currency: { $ref: '#/components/schemas/Currency' }
+        rail: { $ref: '#/components/schemas/Rail' }
+        bank_name: { type: string }
+        bank_address: { type: string }
+        account_name: { type: string }
+        account_number: { type: string }
+        routing_code:
+          type: string
+          description: Branch, sort or routing code where the rail uses one.
+        swift_bic: { type: string }
+        reference:
+          type: string
+          description: Reference the sender MUST quote so the deposit is matched.
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: One-off on-ramps only. The amount to send.
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+          description: One-off on-ramps only. After this the transfer is canceled and late funds are returned.
+    MobileMoneyDepositInstructions:
+      type: object
+      required: [type, currency, rail, provider, reference]
+      properties:
+        type: { const: mobile_money }
+        currency: { $ref: '#/components/schemas/Currency' }
+        rail: { $ref: '#/components/schemas/Rail' }
+        provider: { type: string, examples: [ecocash] }
+        merchant_code:
+          type: string
+          description: Merchant, till or paybill number to pay.
+        phone_number:
+          type: string
+          description: Number to pay, where the provider uses one instead of a merchant code.
+        reference: { type: string }
+        amount: { $ref: '#/components/schemas/Amount' }
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+    PayPalDepositInstructions:
+      description: |
+        One-off on-ramps on the `paypal` rail. The payer opens `approval_url`, signs in to PayPal
+        and approves the payment; the transfer moves to `funds_received` when PayPal confirms it.
+      type: object
+      required: [type, currency, rail, approval_url, reference, amount, expires_at]
+      properties:
+        type: { const: paypal }
+        currency: { $ref: '#/components/schemas/Currency' }
+        rail: { $ref: '#/components/schemas/Rail' }
+        approval_url:
+          type: string
+          format: uri
+          description: PayPal's hosted approval page for this payment. Send the payer here.
+        reference: { type: string }
+        amount: { $ref: '#/components/schemas/Amount' }
+        expires_at:
+          $ref: '#/components/schemas/Timestamp'
+          description: After this the approval link stops working and the transfer is canceled.
+    DepositInstructions:
+      oneOf:
+        - $ref: '#/components/schemas/BankDepositInstructions'
+        - $ref: '#/components/schemas/MobileMoneyDepositInstructions'
+        - $ref: '#/components/schemas/PayPalDepositInstructions'
+      discriminator:
+        propertyName: type
+        mapping:
+          bank: '#/components/schemas/BankDepositInstructions'
+          mobile_money: '#/components/schemas/MobileMoneyDepositInstructions'
+          paypal: '#/components/schemas/PayPalDepositInstructions'
+    Transfer:
+      type: object
+      required: [id, object, kind, state, source, destination, amount, version, created_at, updated_at]
+      properties:
+        id: { $ref: '#/components/schemas/TransferIdValue' }
+        object: { const: transfer }
+        kind: { $ref: '#/components/schemas/TransferKind' }
+        state: { $ref: '#/components/schemas/TransferState' }
+        state_reason:
+          description: Why the transfer is in an exception state (`in_review`, `failed`, `returned`, `undeliverable`, `refunded`, `canceled`).
+          oneOf:
+            - $ref: '#/components/schemas/Reason'
+            - type: 'null'
+        source: { $ref: '#/components/schemas/TransferParty' }
+        destination: { $ref: '#/components/schemas/TransferParty' }
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: As requested, in the source's unit.
+        deposit_account_id:
+          $ref: '#/components/schemas/DepositAccountIdValue'
+          description: Set when the on-ramp was created by a deposit to a standing deposit account.
+        deposit_instructions:
+          description: One-off on-ramps only (FR-ON-02).
+          oneOf:
+            - $ref: '#/components/schemas/DepositInstructions'
+            - type: 'null'
+        receipt:
+          description: Present once funds have moved (FR-XFER-05, FR-OFF-06).
+          oneOf:
+            - $ref: '#/components/schemas/Receipt'
+            - type: 'null'
+        integrator_reference: { type: [string, 'null'] }
+        metadata: { $ref: '#/components/schemas/Metadata' }
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+        updated_at: { $ref: '#/components/schemas/Timestamp' }
+    TransferPreview:
+      description: Result of a dry run that passed every check.
+      type: object
+      required: [object, kind, source, destination, amount, estimated]
+      properties:
+        object: { const: transfer_preview }
+        kind: { $ref: '#/components/schemas/TransferKind' }
+        source: { $ref: '#/components/schemas/TransferParty' }
+        destination: { $ref: '#/components/schemas/TransferParty' }
+        amount: { $ref: '#/components/schemas/Amount' }
+        estimated:
+          description: Indicative figures at the current rate; not a quote.
+          type: object
+          properties:
+            rate: { type: string }
+            fees:
+              type: array
+              items: { $ref: '#/components/schemas/Fee' }
+            amount_credited: { $ref: '#/components/schemas/Amount' }
+            amount_paid_out: { $ref: '#/components/schemas/Amount' }
+            settlement_time_seconds: { type: integer }
+
+    # ---------------------------------------------------------- Deposit accounts
+    DepositAccountCreateRequest:
+      type: object
+      required: [source, destination]
+      properties:
+        source:
+          type: object
+          required: [currency, rail]
+          properties:
+            currency: { $ref: '#/components/schemas/Currency' }
+            rail: { $ref: '#/components/schemas/Rail' }
+        destination:
+          type: object
+          required: [wallet_id]
+          properties:
+            wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+        metadata: { $ref: '#/components/schemas/Metadata' }
+    DepositAccount:
+      type: object
+      required: [id, object, user_id, status, source, destination, deposit_instructions, version, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/DepositAccountIdValue' }
+        object: { const: deposit_account }
+        user_id: { $ref: '#/components/schemas/UserIdValue' }
+        status:
+          type: string
+          enum: [active, deactivated]
+        source:
+          type: object
+          required: [currency, rail]
+          properties:
+            currency: { $ref: '#/components/schemas/Currency' }
+            rail: { $ref: '#/components/schemas/Rail' }
+        destination:
+          type: object
+          required: [wallet_id, asset]
+          properties:
+            wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+            asset: { $ref: '#/components/schemas/Asset' }
+        deposit_instructions: { $ref: '#/components/schemas/DepositInstructions' }
+        metadata: { $ref: '#/components/schemas/Metadata' }
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+    Deposit:
+      description: One deposit received by a standing deposit account.
+      type: object
+      required: [id, object, deposit_account_id, transfer_id, state, amount_received, currency, created_at]
+      properties:
+        id: { type: string, pattern: '^dep_[0-9A-Z]{26}$' }
+        object: { const: deposit }
+        deposit_account_id: { $ref: '#/components/schemas/DepositAccountIdValue' }
+        transfer_id:
+          $ref: '#/components/schemas/TransferIdValue'
+          description: The on-ramp transfer this deposit created.
+        state: { $ref: '#/components/schemas/TransferState' }
+        amount_received: { $ref: '#/components/schemas/Amount' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        fees:
+          type: array
+          items: { $ref: '#/components/schemas/Fee' }
+        rate: { type: string }
+        amount_credited: { $ref: '#/components/schemas/Amount' }
+        rail_reference: { type: string }
+        return_reason:
+          description: Why the deposit was returned to the sender (FR-ON-05).
+          oneOf:
+            - $ref: '#/components/schemas/Reason'
+            - type: 'null'
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+
+    # ---------------------------------------------------------- Payout accounts
+    PayoutAccountType:
+      type: string
+      enum: [bank, mobile_money, paypal]
+      description: |
+        Which rails serve each type is data on `GET /routes`. In 1.0, `bank` is paid by Absa
+        (`absa_eft`) and `paypal` by PayPal. No `mobile_money` rail has a provider yet.
+    PayPalDetailsInput:
+      description: The PayPal account to pay. Exactly one of `email` or `phone`.
+      type: object
+      oneOf:
+        - required: [email]
+        - required: [phone]
+      properties:
+        email: { type: string, format: email }
+        phone:
+          type: string
+          pattern: '^\+[1-9]\d{6,14}$'
+    BankDetailsInput:
+      type: object
+      required: [bank_name, account_number]
+      properties:
+        bank_name: { type: string }
+        account_number: { type: string }
+        routing_code: { type: string, description: Branch, sort or routing code where the rail uses one. }
+        swift_bic: { type: string }
+        account_type:
+          type: string
+          enum: [checking, savings, other]
+    MobileMoneyDetailsInput:
+      type: object
+      required: [provider, phone_number]
+      properties:
+        provider: { type: string, examples: [ecocash] }
+        phone_number:
+          type: string
+          pattern: '^\+[1-9]\d{6,14}$'
+    PayoutAccountCreateRequest:
+      type: object
+      required: [type, currency, country, rail, account_owner_name]
+      properties:
+        type: { $ref: '#/components/schemas/PayoutAccountType' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        country: { $ref: '#/components/schemas/Country' }
+        rail: { $ref: '#/components/schemas/Rail' }
+        account_owner_name:
+          type: string
+          maxLength: 200
+          description: Screened against sanctions lists (SRV-KYC-03) and, where the rail supports it, checked against the account (FR-OFF-08).
+        bank:
+          $ref: '#/components/schemas/BankDetailsInput'
+          description: Required when `type` is `bank`.
+        mobile_money:
+          $ref: '#/components/schemas/MobileMoneyDetailsInput'
+          description: Required when `type` is `mobile_money`.
+        paypal:
+          $ref: '#/components/schemas/PayPalDetailsInput'
+          description: Required when `type` is `paypal`.
+        metadata: { $ref: '#/components/schemas/Metadata' }
+    PayoutAccount:
+      type: object
+      required: [id, object, user_id, type, currency, country, rail, account_owner_name, status, name_check, version, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/PayoutAccountIdValue' }
+        object: { const: payout_account }
+        user_id: { $ref: '#/components/schemas/UserIdValue' }
+        type: { $ref: '#/components/schemas/PayoutAccountType' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        country: { $ref: '#/components/schemas/Country' }
+        rail: { $ref: '#/components/schemas/Rail' }
+        account_owner_name: { type: string }
+        bank:
+          type: object
+          properties:
+            bank_name: { type: string }
+            account_number_last4: { type: string, pattern: '^\d{1,4}$' }
+            routing_code: { type: string }
+            swift_bic: { type: string }
+            account_type: { type: string }
+        mobile_money:
+          type: object
+          properties:
+            provider: { type: string }
+            phone_number_last4: { type: string, pattern: '^\d{1,4}$' }
+        paypal:
+          type: object
+          properties:
+            email_masked:
+              type: string
+              description: The email with most of the local part hidden, like `a***e@example.com`.
+            phone_number_last4: { type: string, pattern: '^\d{1,4}$' }
+        status:
+          type: string
+          enum: [active, deleted]
+        name_check:
+          type: string
+          enum: [not_supported, pending, match, partial_match, no_match]
+          description: Result of verifying `account_owner_name` with the rail (FR-OFF-08, P1). `not_supported` until then.
+        metadata: { $ref: '#/components/schemas/Metadata' }
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+
+    # ---------------------------------------------------------- Rates and routes
+    RouteEndpoint:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [wallet, fiat, payout_account]
+        asset: { $ref: '#/components/schemas/Asset' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        rail: { $ref: '#/components/schemas/Rail' }
+        country: { $ref: '#/components/schemas/Country' }
+        decimals:
+          type: integer
+          minimum: 0
+          maximum: 18
+          description: Decimal places amounts in this unit may carry.
+    Route:
+      type: object
+      required: [kind, source, destination, min_amount, max_amount]
+      properties:
+        kind: { $ref: '#/components/schemas/TransferKind' }
+        source: { $ref: '#/components/schemas/RouteEndpoint' }
+        destination: { $ref: '#/components/schemas/RouteEndpoint' }
+        min_amount:
+          $ref: '#/components/schemas/Amount'
+          description: In the source's unit.
+        max_amount:
+          $ref: '#/components/schemas/Amount'
+          description: Per transfer, in the source's unit. Per-user limits apply separately.
+        settlement_time_seconds:
+          type: integer
+          description: Typical time from submission to completion.
+        available:
+          type: boolean
+          description: False while the route's provider is down (SRV-PROV-07).
+    Rate:
+      type: object
+      required: [object, from, to, rate, type, as_of]
+      properties:
+        object: { const: rate }
+        from: { type: string }
+        to: { type: string }
+        rate:
+          type: string
+          pattern: '^\d+(\.\d+)?$'
+          description: Units of `to` per unit of `from`, before fees.
+        type:
+          type: string
+          enum: [fixed, indicative, locked]
+          description: |
+            `fixed` for points against fiat: Ndeipi sets one price per currency and changes it only
+            by announcement, so the rate a transfer gets is the rate shown. `indicative` for
+            NdeipiCoin against points: a guide only, since a conversion settles at the rate locked
+            by `POST /quotes`. `locked` is not returned here; quotes carry their own rate.
+        as_of: { $ref: '#/components/schemas/Timestamp' }
+        expires_at:
+          description: Locked rates only.
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+
+    QuoteCreateRequest:
+      type: object
+      required: [source_wallet_id, destination_wallet_id, amount]
+      properties:
+        source_wallet_id:
+          $ref: '#/components/schemas/WalletIdValue'
+          description: The wallet paying, in points to buy NdeipiCoin or in NdeipiCoin to sell it.
+        destination_wallet_id:
+          $ref: '#/components/schemas/WalletIdValue'
+          description: The same user's wallet in the other asset.
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: In the source wallet's asset.
+    Quote:
+      type: object
+      required: [id, object, source_wallet_id, destination_wallet_id, from, to, amount, rate, amount_out, fees, status, expires_at, created_at]
+      properties:
+        id: { type: string, pattern: '^qt_[0-9A-Z]{26}$' }
+        object: { const: quote }
+        source_wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+        destination_wallet_id: { $ref: '#/components/schemas/WalletIdValue' }
+        from: { $ref: '#/components/schemas/Asset' }
+        to: { $ref: '#/components/schemas/Asset' }
+        amount:
+          $ref: '#/components/schemas/Amount'
+          description: What the source wallet pays, in `from`.
+        rate:
+          type: string
+          pattern: '^\d+(\.\d+)?$'
+          description: Units of `to` per unit of `from`, after the spread.
+        amount_out:
+          $ref: '#/components/schemas/Amount'
+          description: What the destination wallet receives, in `to`. Rounded down.
+        fees:
+          type: array
+          items: { $ref: '#/components/schemas/Fee' }
+          description: Ndeipi's spread, as a `ndeipi` fee in `from`.
+        status:
+          type: string
+          enum: [open, used, expired]
+        transfer_id:
+          oneOf:
+            - $ref: '#/components/schemas/TransferIdValue'
+            - type: 'null'
+          description: The conversion that used the quote.
+        expires_at: { $ref: '#/components/schemas/Timestamp' }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+
+    # ---------------------------------------------------------- Webhooks and events
+    EventType:
+      type: string
+      description: |
+        Clients MUST accept types they do not recognise.
+
+        | Type | Object | Fired when |
+        |---|---|---|
+        | `user.created` | `User` | A user is created |
+        | `user.kyc_status_changed` | `User` | `kyc_status` changes (FR-USER-08) |
+        | `user.terms_status_changed` | `User` | `terms_status` changes (FR-USER-08) |
+        | `user.deactivated` | `User` | A user is deactivated |
+        | `transfer.created` | `Transfer` | A transfer is created, including one created by a deposit |
+        | `transfer.state_changed` | `Transfer` | Any state change (FR-XFER-04) |
+        | `deposit.received` | `Transfer` | Fiat arrives for an on-ramp (FR-ON-04) |
+        | `deposit.returned` | `Transfer` | Fiat is sent back to the sender (FR-ON-05) |
+        | `payout.returned` | `Transfer` | The rail returns or rejects a payout (FR-WH-06) |
+        | `deposit_account.deactivated` | `DepositAccount` | A deposit account is deactivated |
+        | `webhook_endpoint.test` | `WebhookEndpoint` | Test delivery (FR-WH-07) |
+      examples: [transfer.state_changed]
+    Event:
+      type: object
+      required: [id, object, type, api_version, created_at, object_type, object_version, data]
+      properties:
+        id:
+          type: string
+          pattern: '^evt_[0-9A-Z]{26}$'
+          description: Unique; receivers deduplicate on it.
+        object: { const: event }
+        type: { $ref: '#/components/schemas/EventType' }
+        api_version: { type: string, examples: [v1] }
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the change happened. Not the delivery time.
+        object_type:
+          type: string
+          enum: [user, transfer, deposit_account, webhook_endpoint]
+        object_version:
+          type: integer
+          minimum: 1
+          description: The snapshot's `version`. Discard a delivery whose version is lower than one already processed.
+        previous_attributes:
+          type: object
+          description: For change events, the prior values of the fields that changed.
+          additionalProperties: true
+        data:
+          description: Snapshot of the object after the change.
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - $ref: '#/components/schemas/Transfer'
+            - $ref: '#/components/schemas/DepositAccount'
+            - $ref: '#/components/schemas/WebhookEndpoint'
+    EventDelivery:
+      type: object
+      required: [event_id, webhook_endpoint_id, attempt, succeeded, attempted_at]
+      properties:
+        event_id: { type: string }
+        webhook_endpoint_id: { $ref: '#/components/schemas/WebhookEndpointIdValue' }
+        attempt: { type: integer, minimum: 1 }
+        succeeded: { type: boolean }
+        response_status: { type: [integer, 'null'] }
+        error: { type: [string, 'null'], description: Connection or timeout error, if any. }
+        attempted_at: { $ref: '#/components/schemas/Timestamp' }
+    WebhookEndpointCreateRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+        event_types:
+          description: Types to deliver. Omit or leave empty for all types.
+          type: array
+          items: { $ref: '#/components/schemas/EventType' }
+        description: { type: string, maxLength: 200 }
+    WebhookEndpointUpdateRequest:
+      type: object
+      minProperties: 1
+      properties:
+        url:
+          type: string
+          format: uri
+          pattern: '^https://'
+        event_types:
+          type: array
+          items: { $ref: '#/components/schemas/EventType' }
+        status:
+          type: string
+          enum: [enabled, disabled]
+        description: { type: string, maxLength: 200 }
+    WebhookEndpoint:
+      type: object
+      required: [id, object, url, status, event_types, public_key_pem, version, created_at]
+      properties:
+        id: { $ref: '#/components/schemas/WebhookEndpointIdValue' }
+        object: { const: webhook_endpoint }
+        url: { type: string, format: uri }
+        status:
+          type: string
+          enum: [enabled, disabled]
+        event_types:
+          type: array
+          items: { $ref: '#/components/schemas/EventType' }
+        description: { type: [string, 'null'] }
+        public_key_pem:
+          type: string
+          description: Ed25519 public key (SPKI, PEM) that verifies this endpoint's deliveries.
+          examples: ["-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----\n"]
+        version: { type: integer, minimum: 1 }
+        created_at: { $ref: '#/components/schemas/Timestamp' }
+
+    # ---------------------------------------------------------- Sandbox
+    SandboxKycRequest:
+      type: object
+      required: [kyc_status]
+      properties:
+        kyc_status: { $ref: '#/components/schemas/KycStatus' }
+        terms_status:
+          $ref: '#/components/schemas/TermsStatus'
+          description: Defaults to `approved` when `kyc_status` is `approved`.
+        rejection_reasons:
+          type: array
+          items: { $ref: '#/components/schemas/Reason' }
+    SandboxDepositRequest:
+      type: object
+      required: [amount]
+      description: Exactly one of `deposit_account_id` or `transfer_id`.
+      oneOf:
+        - required: [deposit_account_id]
+        - required: [transfer_id]
+      properties:
+        deposit_account_id: { $ref: '#/components/schemas/DepositAccountIdValue' }
+        transfer_id:
+          $ref: '#/components/schemas/TransferIdValue'
+          description: A one-off on-ramp in `awaiting_funds`.
+        amount: { $ref: '#/components/schemas/Amount' }
+        outcome:
+          type: string
+          enum: [credited, in_review, returned]
+          default: credited
+          description: Force a review or a return to test those paths.
+    SandboxPayoutOutcomeRequest:
+      type: object
+      required: [outcome]
+      properties:
+        outcome:
+          type: string
+          enum: [completed, returned, undeliverable]
+        reason: { $ref: '#/components/schemas/Reason' }
