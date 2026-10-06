@@ -165,8 +165,28 @@ public sealed class Transfer : IIntegratorOwned
     public string? DestinationWalletId { get; set; }
     public string? DestinationUserId { get; set; }
 
+    /// <summary>The source's unit: the source wallet's asset, or the fiat currency of an on-ramp.</summary>
     public required string Asset { get; set; }
     public decimal Amount { get; set; }
+
+    /// <summary>The destination's unit where it differs: the asset an on-ramp or conversion credits, the currency an off-ramp pays.</summary>
+    public string? DestinationAsset { get; set; }
+
+    /// <summary>On-ramp source rail, or off-ramp destination rail.</summary>
+    public string? Rail { get; set; }
+
+    public string? PayoutAccountId { get; set; }
+    public string? DepositAccountId { get; set; }
+    public string? QuoteId { get; set; }
+
+    /// <summary>JSON deposit instructions, for a one-off on-ramp (FR-ON-02).</summary>
+    public string? DepositInstructionsJson { get; set; }
+
+    /// <summary>When an on-ramp still awaiting funds is canceled.</summary>
+    public DateTimeOffset? ExpiresAt { get; set; }
+
+    /// <summary>The provider's own reference for the deposit or payout.</summary>
+    public string? ProviderReference { get; set; }
 
     /// <summary>JSON receipt once funds have moved (FR-XFER-05).</summary>
     public string? ReceiptJson { get; set; }
@@ -180,6 +200,98 @@ public sealed class Transfer : IIntegratorOwned
     public int Version { get; set; } = 1;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
+}
+
+// ------------------------------------------------------------------ Ramps and conversions (M4)
+
+public enum DepositAccountStatus { Active, Deactivated }
+
+/// <summary>Standing deposit details on a bank rail that credit one wallet with points (FR-ON-01).</summary>
+public sealed class DepositAccount : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string UserId { get; set; }
+    public required string WalletId { get; set; }
+    public required string Currency { get; set; }
+    public required string Rail { get; set; }
+    public DepositAccountStatus Status { get; set; }
+    public required string ProviderReference { get; set; }
+
+    /// <summary>The payment reference a depositor quotes, by which deposits are matched to this account.</summary>
+    public required string Reference { get; set; }
+
+    public required string InstructionsJson { get; set; }
+    public string MetadataJson { get; set; } = "{}";
+    public int Version { get; set; } = 1;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>One payment received into a standing deposit account; each creates an on-ramp transfer.</summary>
+public sealed class Deposit : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string DepositAccountId { get; set; }
+    public required string TransferId { get; set; }
+    public decimal AmountReceived { get; set; }
+    public required string Currency { get; set; }
+    public string? RailReference { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+// Spelled Paypal, not PayPal, so the wire name is "paypal" rather than "pay_pal".
+public enum PayoutAccountType { Bank, MobileMoney, Paypal }
+
+public enum PayoutAccountStatus { Active, Deleted }
+
+/// <summary>
+/// A user's bank or PayPal account for off-ramps (FR-OFF-01). The full details are encrypted at
+/// rest and read only to submit a payout; everything returned is masked.
+/// </summary>
+public sealed class PayoutAccount : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string UserId { get; set; }
+    public PayoutAccountType Type { get; set; }
+    public required string Currency { get; set; }
+    public required string Country { get; set; }
+    public required string Rail { get; set; }
+    public required string AccountOwnerName { get; set; }
+
+    /// <summary>The full destination details, encrypted with Data Protection.</summary>
+    public required string ProtectedDetails { get; set; }
+
+    /// <summary>JSON of what may be shown: bank name, last four digits, masked email.</summary>
+    public required string MaskedJson { get; set; }
+
+    public PayoutAccountStatus Status { get; set; }
+    public string MetadataJson { get; set; } = "{}";
+    public int Version { get; set; } = 1;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public enum QuoteStatus { Open, Used }
+
+/// <summary>A locked price for converting between Ndeipi Points and NdeipiCoin (FR-RATE-04), used at most once.</summary>
+public sealed class Quote : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string UserId { get; set; }
+    public required string SourceWalletId { get; set; }
+    public required string DestinationWalletId { get; set; }
+    public required string From { get; set; }
+    public required string To { get; set; }
+    public decimal Amount { get; set; }
+    public decimal Fee { get; set; }
+    public decimal AmountOut { get; set; }
+    public decimal Rate { get; set; }
+    public QuoteStatus Status { get; set; }
+    public string? TransferId { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 // ------------------------------------------------------------------ Ledger (M1)

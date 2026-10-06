@@ -183,12 +183,12 @@ public sealed class FoundationTests(PaymentsApp app) : IClassFixture<PaymentsApp
     {
         var acme = await app.CreateIntegratorAsync();
 
-        var response = await acme.PostAsync("/v1/quotes", new { amount = "25.00" });
+        var response = await acme.PostAsync("/v1/transfers/trf_01M495NOTBUILT0000000000000/cancel", null);
 
         Assert.Equal((HttpStatusCode)501, response.StatusCode);
         var error = await response.JsonAsync();
         Assert.Equal("not_implemented", error.GetProperty("code").GetString());
-        Assert.Contains("M4", error.GetProperty("message").GetString());
+        Assert.Contains("M6", error.GetProperty("message").GetString());
     }
 
     [Fact]
@@ -198,8 +198,8 @@ public sealed class FoundationTests(PaymentsApp app) : IClassFixture<PaymentsApp
         var key = Guid.NewGuid().ToString();
 
         // 501 stands in for any 5xx: nothing is stored, so the same key runs again rather than replaying.
-        await acme.PostAsync("/v1/quotes", new { amount = "1.00" }, key);
-        var retry = await acme.PostAsync("/v1/quotes", new { amount = "1.00" }, key);
+        await acme.PostAsync("/v1/transfers/trf_01M495NOTBUILT0000000000000/cancel", null, key);
+        var retry = await acme.PostAsync("/v1/transfers/trf_01M495NOTBUILT0000000000000/cancel", null, key);
 
         Assert.Equal((HttpStatusCode)501, retry.StatusCode);
         Assert.False(retry.Headers.Contains(IdempotencyMiddleware.ReplayedHeader));

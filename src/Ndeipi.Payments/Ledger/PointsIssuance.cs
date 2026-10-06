@@ -37,7 +37,7 @@ public sealed class PointsIssuance(PaymentsDbContext db, LedgerService ledger, I
     }
 
     /// <summary>The integrator's PointsIssued account for one kind of point, opened on first use.</summary>
-    async Task<string> IssuedAccountAsync(LedgerBucket bucket, CancellationToken ct)
+    public async Task<string> IssuedAccountAsync(LedgerBucket bucket, CancellationToken ct)
     {
         var existing = await FindAsync(bucket, ct);
         if (existing is not null)
@@ -49,7 +49,8 @@ public sealed class PointsIssuance(PaymentsDbContext db, LedgerService ledger, I
         catch (DbUpdateException)
         {
             // Opened at the same moment by another request.
-            db.ChangeTracker.Clear();
+            foreach (var entry in db.ChangeTracker.Entries<LedgerAccount>().Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
             return await FindAsync(bucket, ct) ?? throw new InvalidOperationException("PointsIssued account could not be opened.");
         }
     }

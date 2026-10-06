@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Ndeipi.Payments.Data;
+using Ndeipi.Payments.Providers;
 
 namespace Ndeipi.Payments.Treasury;
 
@@ -18,11 +19,11 @@ public sealed record OtcTradeEntry(
 /// landed. The server never calls the desk. The latest trade sets the NdeipiCoin price that
 /// conversions are quoted at (<see cref="CoinPricing"/>).
 ///
-/// Recording a trade does not post to the ledger yet. The postings (USD out of Treasury, NdeipiCoin
-/// into Inventory) belong to Ndeipi's house accounts, which no integrator owns; the ledger is
-/// scoped per integrator today, and house accounts arrive with conversions in M4.
+/// Recording a trade also posts both legs to Ndeipi's house accounts in the same transaction
+/// (<see cref="TreasuryService.PostOtcTradeAsync"/>): a purchase needs the USD in the treasury
+/// first, and a sale needs the NdeipiCoin in the inventory.
 /// </summary>
-public sealed class OtcDesk(PaymentsDbContext db, TimeProvider clock)
+public sealed class OtcDesk(PaymentsDbContext db, TreasuryService treasury, ProviderRegistry providers, TimeProvider clock)
 {
     public async Task<OtcTrade> RecordAsync(OtcTradeEntry entry, CancellationToken ct)
     {
@@ -46,6 +47,7 @@ public sealed class OtcDesk(PaymentsDbContext db, TimeProvider clock)
             ExecutedAt = entry.ExecutedAt,
             RecordedAt = now
         };
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         db.OtcTrades.Add(trade);
         try
         {
@@ -56,6 +58,9 @@ public sealed class OtcDesk(PaymentsDbContext db, TimeProvider clock)
             db.Entry(trade).State = EntityState.Detached;
             throw new InvalidOperationException($"Desk trade {trade.DeskReference} is already recorded.");
         }
+        // The USD leg settles through Ndeipi's Absa account.
+        await treasury.PostOtcTradeAsync(trade, providers.RailFor(RailCodes.AbsaEft).Name, ct);
+        await transaction.CommitAsync(ct);
         return trade;
     }
 
