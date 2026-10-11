@@ -29,7 +29,8 @@ public sealed class PaymentsOptions
     public PointsOptions Points { get; set; } = new();
 
     /// <summary>Whether any provider is simulated; production refuses to start if so (SC-06).</summary>
-    public bool UsesSimulatedProviders => FiatRails.Contains("simulated") || Exchange == "simulated" || KycProvider == "simulated";
+    public bool UsesSimulatedProviders =>
+        FiatRails.Contains("simulated") || Exchange == "simulated" || KycProvider == "simulated" || Banking.Provider == "simulated";
 
     /// <summary>"simulated" until a KYC provider is chosen (SRS §11).</summary>
     public string KycProvider { get; set; } = "simulated";
@@ -38,6 +39,9 @@ public sealed class PaymentsOptions
     public TimeSpan IdempotencyWindow { get; set; } = TimeSpan.FromHours(24);
 
     public RateLimitOptions RateLimit { get; set; } = new();
+
+    /// <summary>Ndeipi's own business banking at Meow (SRS-NDE-MEOW-001).</summary>
+    public Banking.BankingOptions Banking { get; set; } = new();
 
     /// <summary>Ndeipi Points: the wallet asset, bought and cashed out at a fixed price per currency.</summary>
     public sealed class PointsOptions

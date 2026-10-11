@@ -60,6 +60,16 @@ public sealed class PaymentsDbContext(
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<EventDelivery> EventDeliveries => Set<EventDelivery>();
 
+    public DbSet<TreasuryAccount> TreasuryAccounts => Set<TreasuryAccount>();
+    public DbSet<Payee> Payees => Set<Payee>();
+    public DbSet<TreasuryPayment> TreasuryPayments => Set<TreasuryPayment>();
+    public DbSet<PaymentApproval> PaymentApprovals => Set<PaymentApproval>();
+    public DbSet<CorporateCard> CorporateCards => Set<CorporateCard>();
+    public DbSet<BankWebhookEvent> BankWebhookEvents => Set<BankWebhookEvent>();
+    public DbSet<BankingJournalEntry> BankingJournal => Set<BankingJournalEntry>();
+    public DbSet<AssistantSession> AssistantSessions => Set<AssistantSession>();
+    public DbSet<AssistantMessage> AssistantMessages => Set<AssistantMessage>();
+
     /// <summary>The Data Protection key ring that encrypts webhook signing keys, shared by every instance.</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
@@ -361,6 +371,8 @@ public sealed class PaymentsDbContext(
             e.HasIndex(v => v.ObjectId);
             e.HasQueryFilter(v => v.IntegratorId == CurrentIntegratorId);
         });
+
+        BankingModel.Configure(model, identity);
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)

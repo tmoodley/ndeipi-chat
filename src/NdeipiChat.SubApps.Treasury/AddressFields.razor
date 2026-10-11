@@ -1,0 +1,36 @@
+@* A postal address as banks want it: street, city, state (US), postal code and two-letter country. *@
+
+<label class="tr-field">Street<input maxlength="100" @bind="Value.Line1" /></label>
+<label class="tr-field">Street, line 2 (optional)<input maxlength="100" @bind="Value.Line2" /></label>
+<div class="tr-two">
+    <label class="tr-field">City<input maxlength="60" @bind="Value.City" /></label>
+    <label class="tr-field">State (US)<input maxlength="3" style="text-transform: uppercase" @bind="Value.State" /></label>
+</div>
+<div class="tr-two">
+    <label class="tr-field">Postal code<input maxlength="16" @bind="Value.PostalCode" /></label>
+    <label class="tr-field">Country<input maxlength="2" placeholder="US" style="text-transform: uppercase" @bind="Value.Country" /></label>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Model Value { get; set; } = null!;
+
+    public sealed class Model
+    {
+        public string? Line1 { get; set; }
+        public string? Line2 { get; set; }
+        public string? City { get; set; }
+        public string? State { get; set; }
+        public string? PostalCode { get; set; }
+        public string? Country { get; set; } = "US";
+
+        public object ToRequest() => new
+        {
+            line1 = Line1?.Trim(),
+            line2 = string.IsNullOrWhiteSpace(Line2) ? null : Line2.Trim(),
+            city = City?.Trim(),
+            state = string.IsNullOrWhiteSpace(State) ? null : State.Trim().ToUpperInvariant(),
+            postal_code = PostalCode?.Trim(),
+            country = Country?.Trim().ToUpperInvariant()
+        };
+    }
+}

@@ -1,0 +1,171 @@
+@* Paying someone (FR-3): choose the payee (their kind decides the rail), the account, the amount and
+   what it's for. At or over the threshold it waits for another officer. The request carries one
+   Idempotency-Key for as long as the form is filled in, so a double tap or a retry after a dropped
+   connection still makes one payment (FR-3.2). *@
+
+@if (_payees is null || _accounts is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_payees.Count == 0)
+{
+    <section class="tr-card">
+        <p style="margin: 0">There's no one to pay yet. Add a payee first.</p>
+        <div class="tr-actions"><button class="primary" @onclick="() => App.Go(TreasuryTab.Payees)">Add a payee</button></div>
+    </section>
+}
+else if (_result is { } result)
+{
+    <PaymentCard P="result" Updated="p => _result = p" />
+    <div class="tr-actions">
+        <button class="primary" @onclick="Reset">Make another payment</button>
+        <button class="secondary" @onclick="() => App.Go(TreasuryTab.Payments)">All payments</button>
+    </div>
+}
+else
+{
+    <section class="tr-card">
+        <h2>Pay someone</h2>
+        <label class="tr-field">Payee
+            <select @bind="_payeeId" @bind:after="PayeeChanged">
+                <option value="">Choose…</option>
+                @foreach (var p in _payees)
+                {
+                    <option value="@p.Id">@p.Name · @Format.Kind(p.Kind) · @p.Display</option>
+                }
+            </select>
+        </label>
+        <label class="tr-field">From account
+            <select @bind="_accountId">
+                @foreach (var a in _accounts)
+                {
+                    <option value="@a.Id">@a.Name @(a.Last4 is null ? "" : $"••{a.Last4}") · @Format.Money(a.Available, a.Currency) available</option>
+                }
+            </select>
+        </label>
+        <div class="tr-two">
+            <label class="tr-field">Amount (USD)
+                <input type="number" inputmode="decimal" min="0.01" step="0.01" @bind="_amount" @bind:event="oninput" />
+            </label>
+            @if (Payee?.Kind == "international")
+            {
+                <label class="tr-field">They receive
+                    <input maxlength="3" style="text-transform: uppercase" @bind="_currency" />
+                    <small>Converted from US dollars at Meow's rate; a fee applies.</small>
+                </label>
+            }
+        </div>
+        <label class="tr-field">What it's for
+            <input maxlength="140" placeholder="e.g. Feed for the Chirundu herd" @bind="_purpose" @bind:event="oninput" />
+        </label>
+        <label class="tr-field">Reference for the payee (optional)
+            <input maxlength="140" placeholder="Invoice number" @bind="_memo" />
+            @if (Payee?.Kind == "ach")
+            {
+                <small>ACH shows only the first 10 characters on their statement.</small>
+            }
+        </label>
+
+        @if (Payee is { } payee && _amount is > 0 && App.Settings is { } settings)
+        {
+            <div class="tr-note @(_amount >= settings.ApprovalThreshold ? "warn" : "")">
+                @if (_amount >= settings.ApprovalThreshold)
+                {
+                    <span>@Format.Money(_amount.Value) is at or over @Format.Money(settings.ApprovalThreshold): @settings.RequiredApprovals other officer@(settings.RequiredApprovals == 1 ? "" : "s") must approve before it goes to the bank.</span>
+                }
+                else
+                {
+                    <span>Sends @Format.Money(_amount.Value) by @Format.Rail(payee.Kind) to @payee.Name as soon as you confirm.</span>
+                }
+            </div>
+        }
+        @if (_error is not null)
+        {
+            <div class="tr-note warn">@_error</div>
+        }
+        <div class="tr-actions">
+            <button class="primary" disabled="@(_busy || !Ready)" @onclick="SubmitAsync">@(_busy ? "Sending…" : "Confirm payment")</button>
+        </div>
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    IReadOnlyList<TreasuryPayeeDto>? _payees;
+    IReadOnlyList<TreasuryAccountDto>? _accounts;
+    TreasuryPaymentDto? _result;
+    string _payeeId = "", _accountId = "", _purpose = "";
+    string? _memo, _currency, _error;
+    decimal? _amount;
+    bool _busy;
+    string _key = Guid.NewGuid().ToString();
+
+    TreasuryPayeeDto? Payee => _payees?.FirstOrDefault(p => p.Id == _payeeId);
+
+    bool Ready => Payee is not null && _accountId.Length > 0 && _amount is > 0 && !string.IsNullOrWhiteSpace(_purpose)
+        && (Payee.Kind != "international" || _currency is { Length: 3 });
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var payees = App.Api.GetAsync<TreasuryList<TreasuryPayeeDto>>("payees");
+            var accounts = App.Api.GetAsync<TreasuryList<TreasuryAccountDto>>("accounts");
+            (_payees, _accounts) = ((await payees).Data, (await accounts).Data);
+            _accountId = App.SelectedAccountId ?? _accounts.FirstOrDefault()?.Id ?? "";
+            if (App.PayPayeeId is { } preselected)
+            {
+                _payeeId = preselected;
+                App.PayPayeeId = null;
+                PayeeChanged();
+            }
+        }
+        catch (TreasuryException e)
+        {
+            (_payees, _accounts, _error) = ([], [], e.Message);
+        }
+    }
+
+    void PayeeChanged()
+    {
+        _currency = Payee?.Currency;
+        // A USDC payee is paid from the wallet when there is one.
+        if (Payee?.Kind == "crypto" && _accounts?.FirstOrDefault(a => a.Type == "DIGITALWALLET") is { } wallet)
+            _accountId = wallet.Id;
+    }
+
+    async Task SubmitAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            _result = await App.Api.SendAsync<TreasuryPaymentDto>(HttpMethod.Post, "payments", new
+            {
+                rail = Payee!.Kind,
+                account_id = _accountId,
+                payee_id = _payeeId,
+                amount = _amount!.Value.ToString("0.00", CultureInfo.InvariantCulture),
+                recipient_currency = Payee.Kind == "international" ? _currency?.ToUpperInvariant() : null,
+                purpose = _purpose.Trim(),
+                memo = string.IsNullOrWhiteSpace(_memo) ? null : _memo.Trim()
+            }, _key);
+            await App.CountWaitingAsync();
+        }
+        catch (TreasuryException e)
+        {
+            // Same key on a retry: if the first attempt reached the server, this returns that payment.
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    void Reset()
+    {
+        (_result, _payeeId, _purpose, _memo, _amount, _error) = (null, "", "", null, null, null);
+        _key = Guid.NewGuid().ToString();
+    }
+}

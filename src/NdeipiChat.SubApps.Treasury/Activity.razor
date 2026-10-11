@@ -1,0 +1,125 @@
+@implements IDisposable
+
+@* The treasury's write-once journal (NFR-SEC-03): every payment step, approval, card change, bank
+   event and assistant tool call, with who did it. Assistant actions name the conversation and model
+   (FR-5.3). *@
+
+@if (_error is not null)
+{
+    <div class="tr-note warn">@_error</div>
+}
+@if (_entries is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_entries.Count == 0)
+{
+    <section class="tr-card"><p class="muted" style="margin: 0">Nothing has happened yet.</p></section>
+}
+else
+{
+    <section class="tr-card">
+        <div class="tr-list">
+            @foreach (var e in _entries)
+            {
+                <div class="tr-row" @key="e.Id">
+                    <span class="grow">
+                        <b>@Describe(e.Action)</b>
+                        <small>
+                            @Format.When(e.At) · @e.Actor
+                            @if (e.ActorType == "agent")
+                            {
+                                <span class="tr-badge agent" title="Conversation @e.AgentSessionId">✨ @e.AgentModel</span>
+                            }
+                            @(e.Detail is null ? "" : $" · {e.Detail}")
+                        </small>
+                    </span>
+                </div>
+            }
+        </div>
+        @if (_more)
+        {
+            <button class="secondary" @onclick="MoreAsync">Show older</button>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    List<TreasuryJournalEntryDto>? _entries;
+    string? _error;
+    bool _more;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            var page = (await App.Api.GetAsync<TreasuryList<TreasuryJournalEntryDto>>("journal?limit=50")).Data;
+            (_entries, _more) = (page.ToList(), page.Count == 50);
+        }
+        catch (TreasuryException e)
+        {
+            (_entries, _error) = (_entries ?? [], e.Message);
+        }
+    }
+
+    async Task MoreAsync()
+    {
+        try
+        {
+            var page = (await App.Api.GetAsync<TreasuryList<TreasuryJournalEntryDto>>($"journal?limit=50&before={_entries![^1].Id}")).Data;
+            _entries.AddRange(page);
+            _more = page.Count == 50;
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    static string Describe(string action) => action switch
+    {
+        "payment.requested" => "💸 Payment requested",
+        "payment.drafted" => "✨ Payment drafted by the assistant",
+        "payment.confirmed" => "Draft confirmed",
+        "payment.approval_added" => "✅ Approval added",
+        "payment.approved" => "✅ Payment approved",
+        "payment.rejected" => "⛔ Payment rejected",
+        "payment.canceled" => "Payment withdrawn",
+        "payment.dispatched" => "🏦 Sent to the bank",
+        "payment.dispatch_retry" => "⏳ Bank unreachable; will retry",
+        "payment.refused" => "⛔ Bank refused the payment",
+        "payment.sent" => "✅ Payment sent",
+        "payment.returned" => "↩ Payment returned",
+        "payment.failed" => "⛔ Payment failed",
+        "payment.blocked" => "🚫 Blocked by sanctions screening",
+        "payment.expired" => "Approval window closed",
+        "payee.created" => "👤 Payee added",
+        "payee.archived" => "Payee removed",
+        "payee.blocked" => "🚫 Payee refused by sanctions screening",
+        "card.issued" => "💳 Card issued",
+        "card.frozen" => "❄ Card frozen",
+        "card.unfrozen" => "Card unfrozen",
+        "card.updated" => "Card limits changed",
+        "card.revoked" => "Card revoked",
+        "card.number_revealed" => "🔐 Card number shown",
+        "deposit.received" => "💰 Money received",
+        "assistant.tool" => "✨ Assistant looked something up",
+        _ => action
+    };
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

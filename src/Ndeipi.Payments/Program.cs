@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Ndeipi.Payments.Api;
+using Ndeipi.Payments.Banking;
 using Ndeipi.Payments.Data;
 using Ndeipi.Payments.Ledger;
 using Ndeipi.Payments.Ops;
@@ -76,12 +77,13 @@ builder.Services.AddRamps();
 builder.Services.AddWebhooks();
 builder.Services.AddOps();
 builder.Services.AddScoped<ReconciliationService>();
+builder.Services.AddBanking();
 
 var app = builder.Build();
 
 var options = app.Services.GetRequiredService<IOptions<PaymentsOptions>>().Value;
 if (options.Environment == PaymentsEnvironment.Production && options.UsesSimulatedProviders)
-    throw new InvalidOperationException("Production cannot run on simulated providers (SC-06). Set Payments:FiatRails, Payments:Exchange and Payments:KycProvider.");
+    throw new InvalidOperationException("Production cannot run on simulated providers (SC-06). Set Payments:FiatRails, Payments:Exchange, Payments:KycProvider and Payments:Banking:Provider.");
 
 if (app.Configuration.GetValue("Database:MigrateOnStartup", false))
 {
@@ -131,6 +133,37 @@ if (args is ["issue-operator-key", var operatorName])
     return;
 }
 
+// `dotnet run -- issue-gateway-key "<name>"`: a key for the Ndeipi app's server, which signs treasury
+// officers in itself and names the officer on each banking request. Printed once.
+if (args is ["issue-gateway-key", var gatewayName])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var (_, key) = await scope.ServiceProvider.GetRequiredService<OperatorKeyService>().IssueAsync(gatewayName, default, actsForOfficers: true);
+    Console.WriteLine($"Gateway key for {gatewayName} (shown once): {key}");
+    return;
+}
+
+// `dotnet run -- meow-check`: confirms the Meow key works by listing the accounts it reaches
+// (names and last four digits only).
+if (args is ["meow-check"])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    foreach (var account in await scope.ServiceProvider.GetRequiredService<IBusinessBank>().ListAccountsAsync(default))
+        Console.WriteLine($"{account.Name} ({account.Type}, ••{account.Last4}, {account.Status}): {account.Available:0.00} {account.Currency} available");
+    return;
+}
+
+// `dotnet run -- meow-subscribe <https url of /webhooks/meow>`: subscribes Ndeipi to Meow's events.
+// Meow shows the signing secret once; it is printed for you to store as Payments:Banking:Meow:WebhookSecret.
+if (args is ["meow-subscribe", var webhookUrl])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var (subscriptionId, secret) = await scope.ServiceProvider.GetRequiredService<MeowBank>().SubscribeAsync(webhookUrl, default);
+    Console.WriteLine($"Subscription {subscriptionId} created.");
+    Console.WriteLine($"Signing secret (shown once; store it as Payments:Banking:Meow:WebhookSecret): {secret}");
+    return;
+}
+
 // `dotnet run -- treasury-deposit <rail> <currency> <amount> "<description>"`: Ndeipi's own money
 // arriving in its account on a rail, into the treasury.
 if (args is ["treasury-deposit", var depositRail, var depositCurrency, var depositAmount, var depositDescription])
@@ -154,6 +187,9 @@ if (args is ["treasury-buy-points", var pointsCurrency, var pointsFiat])
     return;
 }
 
+// After the commands above, so meow-subscribe can run before a webhook secret exists.
+app.ValidateBanking();
+
 app.UseRequestIds();
 app.UsePaymentsErrors();
 app.UseMiddleware<AuditMiddleware>();
@@ -173,6 +209,7 @@ v1.MapRamps();
 v1.MapWebhooks();
 v1.MapSandbox();
 app.MapOps();
+app.MapBanking();
 
 app.Run();
 

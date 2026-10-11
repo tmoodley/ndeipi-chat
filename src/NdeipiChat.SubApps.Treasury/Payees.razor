@@ -1,0 +1,228 @@
+@* Who the treasury pays (FR-1.3): US bank accounts by ACH or wire, international beneficiaries, and
+   USDC wallets. Each is screened against OFAC's sanctions list before it's saved; only a masked
+   summary is shown afterwards. *@
+
+@if (_error is not null && !_adding)
+{
+    <div class="tr-note warn">@_error</div>
+}
+
+@if (_adding)
+{
+    <section class="tr-card">
+        <h2>Add a payee</h2>
+        <div class="tr-chips">
+            @foreach (var (kind, label) in Kinds)
+            {
+                <button class="@(_kind == kind ? "on" : "")" @onclick="() => _kind = kind">@label</button>
+            }
+        </div>
+        <label class="tr-field">Name<small>As their bank knows them.</small>
+            <input maxlength="140" @bind="_name" @bind:event="oninput" />
+        </label>
+
+        @switch (_kind)
+        {
+            case "ach" or "wire":
+                <div class="tr-two">
+                    <label class="tr-field">@(_kind == "ach" ? "Routing number" : "Routing number or SWIFT/BIC")
+                        <input inputmode="@(_kind == "ach" ? "numeric" : "text")" maxlength="11" @bind="_routing" />
+                    </label>
+                    <label class="tr-field">Account number
+                        <input inputmode="numeric" maxlength="34" @bind="_account" />
+                    </label>
+                </div>
+                @if (_kind == "ach")
+                {
+                    <div class="tr-chips">
+                        <button class="@(_accountType == "checking" ? "on" : "")" @onclick='() => _accountType = "checking"'>Checking</button>
+                        <button class="@(_accountType == "savings" ? "on" : "")" @onclick='() => _accountType = "savings"'>Savings</button>
+                    </div>
+                }
+                else
+                {
+                    <label class="tr-field">Bank name<input maxlength="400" @bind="_bankName" /></label>
+                }
+                <h3>Their address</h3>
+                <AddressFields Value="_address" />
+                @if (_kind == "wire")
+                {
+                    <h3>The bank's address</h3>
+                    <AddressFields Value="_bankAddress" />
+                }
+                break;
+
+            case "international":
+                <div class="tr-chips">
+                    <button class="@(_beneficiaryType == "company" ? "on" : "")" @onclick='() => _beneficiaryType = "company"'>A company</button>
+                    <button class="@(_beneficiaryType == "individual" ? "on" : "")" @onclick='() => _beneficiaryType = "individual"'>A person</button>
+                </div>
+                <div class="tr-three">
+                    <label class="tr-field">Paid in<input maxlength="3" placeholder="ZAR" style="text-transform: uppercase" @bind="_currency" /></label>
+                    <label class="tr-field">Bank country<input maxlength="2" placeholder="ZA" style="text-transform: uppercase" @bind="_bankCountry" /></label>
+                    <label class="tr-field">SWIFT/BIC<input maxlength="11" style="text-transform: uppercase" @bind="_swift" /></label>
+                </div>
+                <div class="tr-two">
+                    <label class="tr-field">IBAN<input maxlength="34" @bind="_iban" /></label>
+                    <label class="tr-field">or account number<input maxlength="34" @bind="_account" /></label>
+                </div>
+                <label class="tr-field">Bank name<input maxlength="400" @bind="_bankName" /></label>
+                break;
+
+            default:
+                <label class="tr-field">Wallet address<input maxlength="66" spellcheck="false" style="font-family: ui-monospace, monospace" @bind="_wallet" /></label>
+                <div class="tr-two">
+                    <label class="tr-field">Network
+                        <select @bind="_network">
+                            @foreach (var n in Networks)
+                            {
+                                <option value="@n">@n</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="tr-field">Coin
+                        <select @bind="_coin">
+                            <option value="usdc">USDC</option>
+                            <option value="usdt">USDT</option>
+                            <option value="pyusd">PYUSD</option>
+                            <option value="usdg">USDG</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="tr-note small">Check the address and network twice: a payment to the wrong address can't be reversed.</div>
+                break;
+        }
+
+        <label class="tr-field">Email for remittance notices (optional)<input type="email" @bind="_email" /></label>
+        @if (_error is not null)
+        {
+            <div class="tr-note warn">@_error</div>
+        }
+        <div class="tr-actions">
+            <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" @onclick="SaveAsync">@(_busy ? "Saving…" : "Save payee")</button>
+            <button class="secondary" @onclick="() => (_adding, _error) = (false, null)">Cancel</button>
+        </div>
+    </section>
+}
+else
+{
+    <div class="tr-actions"><button class="primary" @onclick="Start">+ Add a payee</button></div>
+}
+
+@if (_payees is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_payees.Count == 0 && !_adding)
+{
+    <section class="tr-card"><p class="muted" style="margin: 0">No payees yet.</p></section>
+}
+else if (_payees.Count > 0)
+{
+    <section class="tr-card">
+        <div class="tr-list">
+            @foreach (var p in _payees)
+            {
+                <div class="tr-row" @key="p.Id">
+                    <span class="grow">
+                        <b>@p.Name</b>
+                        <small>@Format.Kind(p.Kind) · @p.Display · added by @p.CreatedBy</small>
+                    </span>
+                    <button class="secondary" @onclick="() => Pay(p.Id)">Pay</button>
+                    <button class="link" title="Remove @p.Name" @onclick="() => ArchiveAsync(p)">Remove</button>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    static readonly (string Kind, string Label)[] Kinds = [("ach", "🏦 ACH (US)"), ("wire", "🌐 Wire"), ("international", "🌍 International"), ("crypto", "🪙 USDC wallet")];
+    static readonly string[] Networks = ["base", "ethereum", "polygon", "arbitrum", "optimism", "solana", "stellar", "avalanche_c_chain", "tron", "sui"];
+
+    List<TreasuryPayeeDto>? _payees;
+    bool _adding, _busy;
+    string _kind = "ach", _accountType = "checking", _beneficiaryType = "company", _network = "base", _coin = "usdc";
+    string? _name, _routing, _account, _bankName, _currency, _bankCountry, _swift, _iban, _wallet, _email, _error;
+    AddressFields.Model _address = new(), _bankAddress = new();
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _payees = (await App.Api.GetAsync<TreasuryList<TreasuryPayeeDto>>("payees")).Data.ToList();
+        }
+        catch (TreasuryException e)
+        {
+            (_payees, _error) = ([], e.Message);
+        }
+    }
+
+    void Start()
+    {
+        (_adding, _error, _name, _routing, _account, _bankName, _currency, _bankCountry, _swift, _iban, _wallet, _email) =
+            (true, null, null, null, null, null, null, null, null, null, null, null);
+        (_address, _bankAddress) = (new(), new());
+    }
+
+    async Task SaveAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await App.Api.SendAsync<TreasuryPayeeDto>(HttpMethod.Post, "payees", new
+            {
+                kind = _kind,
+                name = _name?.Trim(),
+                email = string.IsNullOrWhiteSpace(_email) ? null : _email.Trim(),
+                routing_number = _routing?.Trim(),
+                account_number = _account?.Trim(),
+                account_type = _kind == "ach" ? _accountType : null,
+                address = _kind is "ach" or "wire" ? _address.ToRequest() : null,
+                bank_name = _bankName?.Trim(),
+                bank_address = _kind == "wire" ? _bankAddress.ToRequest() : null,
+                beneficiary_type = _kind == "international" ? _beneficiaryType : null,
+                currency = _currency?.Trim().ToUpperInvariant(),
+                bank_country = _bankCountry?.Trim().ToUpperInvariant(),
+                iban = string.IsNullOrWhiteSpace(_iban) ? null : _iban.Trim(),
+                swift_bic = string.IsNullOrWhiteSpace(_swift) ? null : _swift.Trim().ToUpperInvariant(),
+                wallet_address = _wallet?.Trim(),
+                network = _kind == "crypto" ? _network : null,
+                coin = _kind == "crypto" ? _coin : null
+            });
+            _adding = false;
+            await LoadAsync();
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    void Pay(string payeeId)
+    {
+        App.PayPayeeId = payeeId;
+        App.Go(TreasuryTab.Pay);
+    }
+
+    async Task ArchiveAsync(TreasuryPayeeDto p)
+    {
+        try
+        {
+            await App.Api.SendAsync<object>(HttpMethod.Delete, $"payees/{p.Id}", null);
+            _payees!.Remove(p);
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+    }
+}

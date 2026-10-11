@@ -1,0 +1,24 @@
+@* A card's spending limits, in whole dollars: per purchase (required), and optional daily and monthly caps. *@
+
+<div class="tr-three">
+    <label class="tr-field">Per purchase ($)
+        <input type="number" min="1" max="200000" step="1" value="@PerTransaction" @onchange="e => PerTransactionChanged.InvokeAsync(Parse(e))" />
+    </label>
+    <label class="tr-field">A day ($, optional)
+        <input type="number" min="0" step="1" value="@Daily" @onchange="e => DailyChanged.InvokeAsync(Parse(e))" />
+    </label>
+    <label class="tr-field">A month ($, optional)
+        <input type="number" min="0" step="1" value="@Monthly" @onchange="e => MonthlyChanged.InvokeAsync(Parse(e))" />
+    </label>
+</div>
+
+@code {
+    [Parameter] public int? PerTransaction { get; set; }
+    [Parameter] public int? Daily { get; set; }
+    [Parameter] public int? Monthly { get; set; }
+    [Parameter] public EventCallback<int?> PerTransactionChanged { get; set; }
+    [Parameter] public EventCallback<int?> DailyChanged { get; set; }
+    [Parameter] public EventCallback<int?> MonthlyChanged { get; set; }
+
+    static int? Parse(ChangeEventArgs e) => int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+}
