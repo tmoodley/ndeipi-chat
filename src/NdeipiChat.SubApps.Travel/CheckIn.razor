@@ -1,0 +1,128 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@* Checking guests in (FR-5.1): scan the voucher's rolling code with the camera, the printed PDF's
+   code, or type the booking reference. Each booking checks in once; another vendor's is refused. *@
+
+<section class="lt-card">
+    <h3>Check a guest in</h3>
+    <video @ref="_video" playsinline muted style="width: 100%; max-height: 320px; border-radius: 14px; background: #000; display: @(_scanning ? "block" : "none")"></video>
+    <div class="lt-actions">
+        @if (_scanning)
+        {
+            <button class="secondary" @onclick="StopAsync">Stop camera</button>
+        }
+        else
+        {
+            <button class="primary" @onclick="StartAsync">📷 Scan a voucher</button>
+        }
+    </div>
+    <form class="lt-row" @onsubmit="() => CheckAsync(_code)" @onsubmit:preventDefault>
+        <input class="grow" placeholder="Or type the reference, e.g. LT-7KQ2M9" aria-label="Voucher code or booking reference" @bind="_code" />
+        <button class="secondary" type="submit" disabled="@(_busy || string.IsNullOrWhiteSpace(_code))">Check in</button>
+    </form>
+    @if (_message is not null)
+    {
+        <div class="lt-note">@_message</div>
+    }
+</section>
+
+@if (_result is { } r)
+{
+    <section class="lt-card" style="border-color: @(r.Outcome == CheckInOutcomes.CheckedIn ? "var(--success)" : "var(--danger)")">
+        <h2>@(r.Outcome switch { CheckInOutcomes.CheckedIn => "✅ Checked in", CheckInOutcomes.AlreadyCheckedIn => "⚠️ Already checked in", _ => "⛔ Not valid" })</h2>
+        <span>@r.Message</span>
+        @if (r.Booking is { } b)
+        {
+            var item = b.Items[0];
+            <dl class="lt-facts">
+                <dt>Guest</dt><dd>@b.LeadGuestName@(b.IdNumber is { } id ? $" · ID {id}" : "")</dd>
+                <dt>Booking</dt><dd>@b.Reference · @item.Title</dd>
+                <dt>For</dt><dd>@item.Subtitle · @Format.Dates(item) · @item.Guests guest@(item.Guests == 1 ? "" : "s")</dd>
+                @if (b.SpecialRequests is { } requests)
+                {
+                    <dt>Requests</dt><dd>@requests</dd>
+                }
+            </dl>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+
+    ElementReference _video;
+    IJSObjectReference? _scanner;
+    DotNetObjectReference<CheckIn>? _self;
+    CheckInResultDto? _result;
+    string? _code, _message;
+    bool _scanning, _busy;
+
+    [JSInvokable]
+    public Task OnScanned(string code) => InvokeAsync(() => CheckAsync(code));
+
+    async Task CheckAsync(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code) || _busy)
+            return;
+        (_busy, _message) = (true, null);
+        try
+        {
+            _result = await App.Api.SendAsync<CheckInResultDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/check-in", new CheckInRequest(code.Trim()));
+            _code = null;
+        }
+        catch (TravelException e)
+        {
+            _message = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task StartAsync()
+    {
+        try
+        {
+            _scanner ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/NdeipiChat.SubApps.Travel/scanner.js");
+            _self ??= DotNetObjectReference.Create(this);
+            _scanning = true;
+            StateHasChanged();
+            if (!await _scanner.InvokeAsync<bool>("start", _video, _self))
+            {
+                _scanning = false;
+                _message = "This browser can't read QR codes from the camera. Type the booking reference instead, or use a handheld scanner.";
+            }
+        }
+        catch (JSException)
+        {
+            _scanning = false;
+            _message = "The camera isn't available. Allow it in the browser, or type the booking reference.";
+        }
+    }
+
+    async Task StopAsync()
+    {
+        if (_scanner is not null)
+            await _scanner.InvokeVoidAsync("stop", _video);
+        _scanning = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_scanner is not null)
+            {
+                await _scanner.InvokeVoidAsync("stop", _video);
+                await _scanner.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        _self?.Dispose();
+    }
+}

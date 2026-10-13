@@ -1,0 +1,70 @@
+@* A listing's photos: add (re-encoded on the server, location data stripped), remove. The first is the cover. *@
+
+<div class="lt-thumbs">
+    @foreach (var p in Photos)
+    {
+        <div class="lt-photo" @key="p.Id">
+            <img src="@p.ThumbUrl" alt="" />
+            <button title="Remove this photo" disabled="@_busy" @onclick="() => RemoveAsync(p.Id)">✕</button>
+        </div>
+    }
+    @if (Photos.Count < TravelContract.MaxPhotos)
+    {
+        <label class="lt-add" title="Add a photo">
+            @(_busy ? "…" : "+")
+            <InputFile accept="image/*" OnChange="UploadAsync" disabled="@_busy" />
+        </label>
+    }
+</div>
+@if (_error is not null)
+{
+    <div class="lt-note warn small">@_error</div>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public string Type { get; set; } = "";
+    [Parameter, EditorRequired] public Guid Id { get; set; }
+    [Parameter, EditorRequired] public IReadOnlyList<TravelPhotoDto> Photos { get; set; } = [];
+    [Parameter] public EventCallback<IReadOnlyList<TravelPhotoDto>> PhotosChanged { get; set; }
+
+    bool _busy;
+    string? _error;
+
+    async Task UploadAsync(InputFileChangeEventArgs e)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await using var stream = e.File.OpenReadStream(15 * 1024 * 1024);
+            var photos = await App.Api.UploadAsync<List<TravelPhotoDto>>($"{TravelApi.Base}/vendor/{Type}/{Id}/photos", stream, e.File.Name, e.File.ContentType);
+            await PhotosChanged.InvokeAsync(photos);
+        }
+        catch (Exception ex) when (ex is TravelException or IOException)
+        {
+            _error = ex is TravelException ? ex.Message : "Photos can be up to 15 MB.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task RemoveAsync(Guid photoId)
+    {
+        _busy = true;
+        try
+        {
+            var photos = await App.Api.SendAsync<List<TravelPhotoDto>>(HttpMethod.Delete, $"{TravelApi.Base}/vendor/{Type}/{Id}/photos/{photoId}", null);
+            await PhotosChanged.InvokeAsync(photos!);
+        }
+        catch (TravelException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

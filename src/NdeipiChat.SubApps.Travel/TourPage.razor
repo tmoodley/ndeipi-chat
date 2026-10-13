@@ -1,0 +1,191 @@
+@* A guided tour (FR-3): its departures with the seats left, the extras (park fees are included
+   whenever they're mandatory), and the price for the party. Reserving holds the seats for 15 minutes. *@
+
+@if (_tour is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var t = _tour;
+    <div class="lt-hero" style="@Format.Cover(_photo ?? t.Photos.FirstOrDefault()?.Url)">
+        <div class="over">
+            <h2>@t.Title</h2>
+            <span>@Format.Icon(t.Kind) @Format.Label(TravelContract.TourKinds, t.Kind) · @t.City, @t.Country · @Hours(t.DurationHours)</span>
+        </div>
+    </div>
+    @if (t.Photos.Count > 1)
+    {
+        <div class="lt-thumbs">
+            @foreach (var photo in t.Photos)
+            {
+                <img src="@photo.ThumbUrl" alt="" loading="lazy" @onclick="() => _photo = photo.Url" />
+            }
+        </div>
+    }
+    @if (t.Status != "published")
+    {
+        <div class="lt-note warn">@(t.Status == "suspended" ? "Suspended by Ndeipi: travellers can't see or book this." : "Draft: only you can see this until you publish it.")</div>
+    }
+
+    <section class="lt-card">
+        @if (t.Description is { } description)
+        {
+            <p style="margin: 0; white-space: pre-wrap; line-height: 1.5">@description</p>
+        }
+        <dl class="lt-facts">
+            <dt>Run by</dt><dd>@t.VendorName</dd>
+            <dt>Effort</dt><dd>@Format.Label(TravelContract.Difficulties, t.Difficulty)</dd>
+            <dt>Group</dt><dd>Up to @t.MaxCapacity people</dd>
+            @if (t.Includes is { } includes)
+            {
+                <dt>Includes</dt><dd>@includes</dd>
+            }
+            @if (t.MeetingPoint is { } meeting)
+            {
+                <dt>Meet at</dt><dd>@meeting</dd>
+            }
+        </dl>
+        @if (t.WeatherDependent)
+        {
+            <div class="lt-note small">🌦️ Weather permitting: if conditions are unsafe the operator moves or cancels the departure, and you're told at once (cancelled departures are refunded in full).</div>
+        }
+        @if (t.IsMine)
+        {
+            <div class="lt-actions"><button class="secondary" @onclick="() => App.Go(new TravelView.EditTour(t.Id))">✏️ Edit this tour</button></div>
+        }
+        @if (App.Me?.IsAdmin == true && !t.IsMine)
+        {
+            <div class="lt-actions">
+                <button class="link" @onclick='() => AdminAsync(t.Status == "suspended" ? "active" : "suspended")'>@(t.Status == "suspended" ? "Restore listing (admin)" : "Suspend listing (admin)")</button>
+            </div>
+        }
+    </section>
+
+    <section class="lt-card">
+        <div class="lt-row">
+            <h3 class="grow">Departures</h3>
+            <label class="lt-field" style="flex-direction: row; align-items: center; gap: 8px">People <input type="number" min="1" max="@TravelContract.MaxGuestsPerTour" style="width: 80px" @bind="_guests" /></label>
+        </div>
+        @if (!t.Departures.Any(d => d.Status != DepartureStatuses.Canceled))
+        {
+            <p class="muted" style="margin: 0">No departures scheduled yet.</p>
+        }
+        <div class="lt-list">
+            @foreach (var d in t.Departures.Where(d => d.Status != DepartureStatuses.Canceled))
+            {
+                var chosen = _departure == d.Id;
+                <div class="lt-row" role="radio" aria-checked="@chosen" tabindex="0" style="cursor: pointer; @(chosen ? "outline: 2px solid var(--brand); border-radius: 10px; padding-left: 8px" : "")"
+                     @key="d.Id" @onclick="() => _departure = d.Id" @onkeydown='e => { if (e.Key is "Enter" or " ") _departure = d.Id; }'>
+                    <span class="grow">
+                        <b>@Format.When(d.StartsAt)</b>
+                        <small>@(d.Guide is { } g ? $"Guide: {g} · " : "")@(d.Status == DepartureStatuses.Rescheduled ? "Moved: " + d.Note : "")</small>
+                    </span>
+                    <span class="lt-badge @(d.Available >= _guests ? "ok" : "bad")">@(d.Available == 0 ? "Full" : $"{d.Available} seat{(d.Available == 1 ? "" : "s")} left")</span>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="lt-card">
+        <h3>Extras</h3>
+        @foreach (var a in t.AddOns)
+        {
+            <label class="lt-row" style="cursor: @(a.Mandatory ? "default" : "pointer")" @key="a.Id">
+                <input type="checkbox" style="width: 18px; height: 18px" checked="@(a.Mandatory || _addOns.Contains(a.Id))" disabled="@a.Mandatory" @onchange="() => Toggle(a.Id)" />
+                <span class="grow">@a.Name<small>@(a.Mandatory ? "Required" : "Optional") · @Format.Money(a.Price) @(a.PerPerson ? "per person" : "per booking")</small></span>
+            </label>
+        }
+        <div class="lt-lines">
+            <span>@_guests × @Format.Money(t.PricePerPerson)</span><span>@Format.Money(t.PricePerPerson * _guests)</span>
+            @foreach (var a in t.AddOns.Where(a => a.Mandatory || _addOns.Contains(a.Id)))
+            {
+                <span>@a.Name</span><span>@Format.Money(a.PerPerson ? a.Price * _guests : a.Price)</span>
+            }
+            <span class="total">Total</span><span class="total">@Format.Money(Total(t))</span>
+        </div>
+        @if (_error is not null)
+        {
+            <div class="lt-note warn">@_error</div>
+        }
+        @if (!t.IsMine)
+        {
+            <div class="lt-actions">
+                <button class="primary" disabled="@(_busy || _departure is null || _guests < 1)" @onclick="ReserveAsync">@(_departure is null ? "Choose a departure" : $"Reserve for {_guests}")</button>
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public TravelView.Tour View { get; set; } = null!;
+
+    TourDto? _tour;
+    Guid? _departure;
+    readonly HashSet<Guid> _addOns = [];
+    int _guests = 2;
+    string? _error, _photo;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _guests = View.Guests;
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _tour = await App.Api.GetAsync<TourDto>($"{TravelApi.Base}/tours/{View.Id}");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    void Toggle(Guid id)
+    {
+        if (!_addOns.Remove(id))
+            _addOns.Add(id);
+    }
+
+    decimal Total(TourDto t) => t.PricePerPerson * _guests + t.AddOns.Where(a => a.Mandatory || _addOns.Contains(a.Id)).Sum(a => a.PerPerson ? a.Price * _guests : a.Price);
+
+    async Task ReserveAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var hold = await App.Api.SendAsync<TravelHoldDto>(HttpMethod.Post, $"{TravelApi.Base}/holds",
+                new TravelHoldRequest(TravelItemTypes.Tour, _departure!.Value, Quantity: _guests, Guests: _guests, AddOnIds: [.. _addOns]));
+            App.Go(new TravelView.Checkout(hold!.Id));
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task AdminAsync(string status)
+    {
+        try
+        {
+            await App.Api.SendAsync(HttpMethod.Put, $"{TravelApi.Base}/admin/tour/{View.Id}/status", new SetStatusRequest(status, null));
+            await LoadAsync();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    static string Hours(double h) => h >= 24 ? $"{Math.Round(h / 24, 1)} days" : $"{h:0.#} hours";
+}

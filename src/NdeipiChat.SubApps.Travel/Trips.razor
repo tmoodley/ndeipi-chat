@@ -1,0 +1,91 @@
+@implements IDisposable
+
+@* The traveller's bookings: upcoming first, then past and cancelled. Updates live as payments confirm
+   or a departure moves. *@
+
+@if (_error is not null)
+{
+    <div class="lt-note warn">@_error</div>
+}
+@if (_bookings is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_bookings.Count == 0)
+{
+    <section class="lt-card">
+        <p style="margin: 0">No trips yet.</p>
+        <div class="lt-actions"><button class="primary" @onclick="() => App.Go(new TravelView.Explore(), root: true)">Find a stay or a tour</button></div>
+    </section>
+}
+else
+{
+    @foreach (var (title, list) in Groups())
+    {
+        if (list.Count == 0)
+            continue;
+        <h3>@title</h3>
+        @foreach (var b in list)
+        {
+            var item = b.Items[0];
+            <div class="lt-card" role="link" tabindex="0" style="cursor: pointer" @key="b.Id" @onclick="() => App.Go(new TravelView.Booking(b.Id))" @onkeydown='e => { if (e.Key is "Enter" or " ") App.Go(new TravelView.Booking(b.Id)); }'>
+                <div class="lt-row">
+                    <span class="grow"><b>@item.Title</b><small>@item.Subtitle</small></span>
+                    <span class="lt-badge @Format.Tone(b.Status)">@Format.Status(b.Status)</span>
+                </div>
+                <div class="lt-row small">
+                    <span class="grow">@Format.Dates(item) · @b.Reference</span>
+                    <span class="lt-price" style="font-size: 15px">@Format.Money(b.Total - b.Discount)</span>
+                </div>
+                @if (b.Notice is { } notice)
+                {
+                    <div class="lt-note warn small">@notice</div>
+                }
+            </div>
+        }
+    }
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+
+    List<TravelBookingDto>? _bookings;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _bookings = await App.Api.GetAsync<List<TravelBookingDto>>($"{TravelApi.Base}/bookings");
+            _error = null;
+        }
+        catch (TravelException e)
+        {
+            (_bookings, _error) = (_bookings ?? [], e.Message);
+        }
+    }
+
+    IEnumerable<(string, List<TravelBookingDto>)> Groups()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        bool Ahead(TravelBookingDto b) => b.Items[0] is var i && (i.CheckOut is { } o ? o >= today : i.StartsAt >= DateTimeOffset.UtcNow.AddHours(-12));
+        var live = _bookings!.Where(b => b.Status is TravelBookingStatuses.Confirmed or TravelBookingStatuses.PendingPayment or TravelBookingStatuses.CheckedIn).ToList();
+        yield return ("Upcoming", [.. live.Where(Ahead).OrderBy(b => b.Items[0].CheckIn?.ToDateTime(TimeOnly.MinValue) ?? b.Items[0].StartsAt?.UtcDateTime)]);
+        yield return ("Past", [.. live.Where(b => !Ahead(b))]);
+        yield return ("Cancelled or not paid", [.. _bookings!.Except(live)]);
+    }
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

@@ -194,6 +194,38 @@ public sealed class LocalPreview
             "An hour of your questions on poultry disease.", null, PostAccess.PayPerView, insider.Id, 2m, null));
         await tendai.PostAsync<CreatorSubscriptionDto>($"api/creators/{me.Id}/subscribe", new CreatorSubscribeRequest(supporter.Id, BillingPeriods.Monthly, ShareProfile: true));
 
+        // Lets Travel: Tendai runs a lodge and a river cruise at Victoria Falls; I have a stay booked there.
+        using (var vendor = await tendai.Http.PutAsJsonAsync("api/travel/vendor", new SaveVendorRequest("Zambezi Sands Travel", "Lodges and river trips around the Falls.", "+260 97 555 0101", null), ContractJson.Options))
+            vendor.EnsureSuccessStatusCode();
+        var lodge = await tendai.PostAsync<PropertyDto>("api/travel/vendor/properties", new SavePropertyRequest("Zambezi Sands River Lodge", "lodge",
+            "Twelve thatched chalets on the banks of the Zambezi, twenty minutes upstream from the Falls. Sundowners on the deck, elephants on the lawn.",
+            "Victoria Falls", "Zambia", "Plot 9, Riverside Drive, Livingstone", -17.85, 25.85, 4, ["wifi", "pool", "game_drives", "boat_trips", "restaurant"], "moderate", "14:00", "10:00"));
+        var chalet = await tendai.PostAsync<RoomTypeDto>($"api/travel/vendor/properties/{lodge.Id}/rooms",
+            new SaveRoomTypeRequest("Deluxe river chalet", "deluxe", "full_board", 2, 4, 240m, "Private deck over the river, outdoor shower."));
+        await tendai.PostAsync<RoomTypeDto>($"api/travel/vendor/properties/{lodge.Id}/rooms",
+            new SaveRoomTypeRequest("Garden room", "standard", "bed_breakfast", 3, 6, 140m, "Garden views, sleeps a family of three."));
+        foreach (var colour in new[] { new SkiaSharp.SKColor(0xC2, 0x41, 0x0C), new SkiaSharp.SKColor(0x1F, 0xA9, 0x71) })
+        {
+            using var bitmap = new SkiaSharp.SKBitmap(1200, 800);
+            using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+                canvas.Clear(colour);
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(SkiaSharp.SKImage.FromBitmap(bitmap).Encode(SkiaSharp.SKEncodedImageFormat.Png, 100).ToArray()), "file", "lodge.png");
+            (await tendai.Http.PostAsync($"api/travel/vendor/stay/{lodge.Id}/photos", form)).EnsureSuccessStatusCode();
+        }
+        (await tendai.Http.PostAsJsonAsync($"api/travel/vendor/stay/{lodge.Id}/publish", new { published = true })).EnsureSuccessStatusCode();
+        var cruise = await tendai.PostAsync<TourDto>("api/travel/vendor/tours", new SaveTourRequest("Zambezi sunset cruise", "river_cruise",
+            "Two and a half hours upriver at sundown: hippos, elephants on the islands, and the spray of the Falls behind you.",
+            "Victoria Falls", "Zambia", -17.9, 25.84, 2.5, 12, "easy", 65m, true, "Drinks and snacks", "Boat club jetty, Riverside Drive"));
+        await tendai.PostAsync<TourAddOnDto>($"api/travel/vendor/tours/{cruise.Id}/addons", new SaveAddOnRequest("National park fee", 10m, true, true));
+        await tendai.PostAsync<TourAddOnDto>($"api/travel/vendor/tours/{cruise.Id}/addons", new SaveAddOnRequest("Hotel transfer", 15m, false, false));
+        for (var day = 3; day <= 9; day += 2)
+            await tendai.PostAsync<DepartureDto>($"api/travel/vendor/tours/{cruise.Id}/departures", new SaveDepartureRequest(DateTimeOffset.UtcNow.Date.AddDays(day).AddHours(14.5), null, "Mwila"));
+        (await tendai.Http.PostAsJsonAsync($"api/travel/vendor/tour/{cruise.Id}/publish", new { published = true })).EnsureSuccessStatusCode();
+        var checkIn = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14));
+        var stayHold = await me.PostAsync<TravelHoldDto>("api/travel/holds", new TravelHoldRequest(TravelItemTypes.Stay, chalet.Id, checkIn, checkIn.AddDays(3), 1, 2));
+        await me.PostAsync<TravelBookingDto>($"api/travel/holds/{stayHold.Id}/checkout", new TravelCheckoutRequest("Ty Preview", "+263 77 000 0000", null, "Anniversary trip!"));
+
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };
         foreach (var (user, file) in new[] { (me, tokensFile), (tendai, tokensFile + ".tendai") })

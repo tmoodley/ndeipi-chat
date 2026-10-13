@@ -42,6 +42,18 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<DonationCampaign> DonationCampaigns => Set<DonationCampaign>();
     public DbSet<Donation> Donations => Set<Donation>();
     public DbSet<PointsEntry> Points => Set<PointsEntry>();
+    public DbSet<Travel.TravelVendor> TravelVendors => Set<Travel.TravelVendor>();
+    public DbSet<Travel.TravelProperty> TravelProperties => Set<Travel.TravelProperty>();
+    public DbSet<Travel.RoomType> RoomTypes => Set<Travel.RoomType>();
+    public DbSet<Travel.RoomNight> RoomNights => Set<Travel.RoomNight>();
+    public DbSet<Travel.TourPackage> TourPackages => Set<Travel.TourPackage>();
+    public DbSet<Travel.TourAddOn> TourAddOns => Set<Travel.TourAddOn>();
+    public DbSet<Travel.TourDeparture> TourDepartures => Set<Travel.TourDeparture>();
+    public DbSet<Travel.TravelHold> TravelHolds => Set<Travel.TravelHold>();
+    public DbSet<Travel.TravelBooking> TravelBookings => Set<Travel.TravelBooking>();
+    public DbSet<Travel.TravelBookingItem> TravelBookingItems => Set<Travel.TravelBookingItem>();
+    public DbSet<Travel.TravelPhoto> TravelPhotos => Set<Travel.TravelPhoto>();
+    public DbSet<Travel.TravelSigningKey> TravelSigningKeys => Set<Travel.TravelSigningKey>();
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<CreatorTier> CreatorTiers => Set<CreatorTier>();
     public DbSet<CreatorPost> CreatorPosts => Set<CreatorPost>();
@@ -269,6 +281,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         NdeipiChat.Api.Pos.PosModel.Configure(model);
         NdeipiChat.Api.Donations.DonationsModel.Configure(model);
         NdeipiChat.Api.Creators.CreatorsModel.Configure(model);
+        NdeipiChat.Api.Travel.TravelModel.Configure(model);
         NdeipiChat.Api.Market.MarketModel.Configure(model);
         NdeipiChat.Api.Finance.FinanceModel.Configure(model);
         NdeipiChat.Api.Trust.TrustModel.Configure(model);

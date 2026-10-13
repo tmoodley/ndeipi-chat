@@ -1,0 +1,50 @@
+@* The vendor's business profile: the name travellers see, and how to reach them. *@
+
+<label class="lt-field">Business name<input maxlength="@TravelContract.MaxNameLength" @bind="_name" @bind:event="oninput" /></label>
+<label class="lt-field">About your business (optional)<textarea rows="3" maxlength="1000" @bind="_description"></textarea></label>
+<div class="lt-two">
+    <label class="lt-field">Phone (optional)<input type="tel" maxlength="40" @bind="_phone" /></label>
+    <label class="lt-field">Email (optional)<input type="email" maxlength="200" @bind="_email" /></label>
+</div>
+@if (_error is not null)
+{
+    <div class="lt-note warn">@_error</div>
+}
+@if (_saved)
+{
+    <div class="lt-note ok">Saved.</div>
+}
+<div class="lt-actions">
+    <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_name))" @onclick="SaveAsync">@(Vendor is null ? "Become a vendor" : "Save")</button>
+</div>
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public TravelVendorDto? Vendor { get; set; }
+    [Parameter] public EventCallback Saved { get; set; }
+
+    string? _name, _description, _phone, _email, _error;
+    bool _busy, _saved;
+
+    protected override void OnInitialized() =>
+        (_name, _description, _phone, _email) = (Vendor?.Name, Vendor?.Description, Vendor?.Phone, Vendor?.Email);
+
+    async Task SaveAsync()
+    {
+        (_busy, _error, _saved) = (true, null, false);
+        try
+        {
+            await App.Api.SendAsync<TravelVendorDto>(HttpMethod.Put, $"{TravelApi.Base}/vendor", new SaveVendorRequest(_name!.Trim(), _description, _phone, _email));
+            _saved = Vendor is not null;
+            await Saved.InvokeAsync();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

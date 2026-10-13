@@ -1,0 +1,216 @@
+@implements IDisposable
+@inject IJSRuntime JS
+
+@* One booking, for the traveller or the vendor: what, when and where, the price paid, the voucher
+   (FR-5.1), the signed invoice and PDF (FR-4.4), and the chat with the other side (FR-5.3). The vendor
+   can cancel and refund in full. *@
+
+@if (_booking is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var b = _booking;
+    var item = b.Items[0];
+    <section class="lt-card">
+        <div class="lt-row">
+            <span class="grow"><h2>@item.Title</h2><small>@item.Subtitle</small></span>
+            <span class="lt-badge @Format.Tone(b.Status)">@Format.Status(b.Status)</span>
+        </div>
+        @if (b.Notice is { } notice)
+        {
+            <div class="lt-note warn">@notice</div>
+        }
+        @if (b.Status == TravelBookingStatuses.PendingPayment)
+        {
+            <div class="lt-note">Your payment is on its way; this page updates when it's confirmed.</div>
+        }
+        @if (b.Error is { } error)
+        {
+            <div class="lt-note warn">@error</div>
+        }
+        <dl class="lt-facts">
+            <dt>Reference</dt><dd><b>@b.Reference</b></dd>
+            <dt>When</dt><dd>@Format.Dates(item)</dd>
+            <dt>Guests</dt><dd>@item.Guests · lead guest @b.LeadGuestName@(b.Phone is { } p ? $" · {p}" : "")</dd>
+            @if (b.IdNumber is { } id)
+            {
+                <dt>ID / passport</dt><dd>@id</dd>
+            }
+            @if (b.Address is { } address)
+            {
+                <dt>Address</dt><dd>@address</dd>
+            }
+            @if (b.MeetingPoint is { } meeting)
+            {
+                <dt>Meet at</dt><dd>@meeting</dd>
+            }
+            <dt>@(b.IsMine ? "With" : "Guest")</dt><dd>@(b.IsMine ? b.VendorName : b.TravelerName)</dd>
+            @if (b.SpecialRequests is { } requests)
+            {
+                <dt>Requests</dt><dd>@requests</dd>
+            }
+            @if (b.CheckedInAt is { } checkedIn)
+            {
+                <dt>Checked in</dt><dd>@Format.When(checkedIn)</dd>
+            }
+        </dl>
+        <div class="lt-lines">
+            @foreach (var l in item.Lines)
+            {
+                <span>@l.Label</span><span>@Format.Money(l.Amount)</span>
+            }
+            @if (b.Discount > 0)
+            {
+                <span>Believe Points (@b.PointsRedeemed)</span><span>−@Format.Money(b.Discount)</span>
+            }
+            <span class="total">Paid</span><span class="total">@Format.Money(b.Total - b.Discount)</span>
+            @if (!b.IsMine)
+            {
+                <span class="small muted">Ndeipi fee (@(App.Me?.Vendor?.FeePercent ?? 5)%)</span><span class="small muted">−@Format.Money(b.Fee)</span>
+                <span class="small"><b>You receive</b></span><span class="small"><b>@Format.Money(b.Total - b.Fee)</b></span>
+            }
+        </div>
+        <div class="lt-actions">
+            @if (b.IsMine && b.Status is TravelBookingStatuses.Confirmed)
+            {
+                <button class="primary" @onclick="() => App.Go(new TravelView.Voucher(b.Id))">🎫 Show voucher</button>
+            }
+            @if (b.ConversationId is { } chat)
+            {
+                <a class="button secondary" href="chat/@chat" style="text-decoration: none">💬 Message @(b.IsMine ? b.VendorName : b.TravelerName)</a>
+            }
+            @if (b.Status is TravelBookingStatuses.Confirmed or TravelBookingStatuses.CheckedIn or TravelBookingStatuses.Canceled && b.ConfirmedAt is not null)
+            {
+                <button class="secondary" disabled="@_busy" @onclick="PdfAsync">⬇ Voucher & invoice (PDF)</button>
+                <button class="link" disabled="@_busy" @onclick="InvoiceAsync">@(_invoice is null ? "Check the invoice signature" : "Hide invoice")</button>
+            }
+        </div>
+        @if (_invoice is { } invoice)
+        {
+            <div class="lt-note small" style="overflow-wrap: anywhere">
+                <b>Tax invoice @invoice.Number</b><br />
+                Signed by Lets Travel with key <code>@invoice.KeyId</code> (ECDSA P-256, SHA-256). The signature covers exactly this text:
+                <pre style="white-space: pre-wrap; font-size: 12px; margin: 6px 0">@invoice.Canonical</pre>
+                Signature: <code>@invoice.Signature</code><br />
+                Public key: <code>@invoice.PublicKey</code>
+            </div>
+        }
+        @if (!b.IsMine && b.Status == TravelBookingStatuses.Confirmed)
+        {
+            @if (_canceling)
+            {
+                <label class="lt-field">Why are you cancelling? The guest sees this.<textarea rows="2" maxlength="300" @bind="_reason"></textarea></label>
+                <div class="lt-note small">The guest is refunded @Format.Money(b.Total - b.Discount) in full from your wallet.</div>
+                <div class="lt-actions">
+                    <button class="danger" disabled="@_busy" @onclick="CancelAsync">Cancel and refund</button>
+                    <button class="secondary" @onclick="() => _canceling = false">Keep the booking</button>
+                </div>
+            }
+            else
+            {
+                <div class="lt-actions"><button class="link" @onclick="() => _canceling = true">Cancel and refund this booking</button></div>
+            }
+        }
+        @if (_error is not null)
+        {
+            <div class="lt-note warn">@_error</div>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    TravelBookingDto? _booking;
+    TravelInvoiceDto? _invoice;
+    string? _error, _reason;
+    bool _busy, _canceling;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _booking = await App.Api.GetAsync<TravelBookingDto>($"{TravelApi.Base}/bookings/{Id}");
+            // UI-2: kept on this device, so the voucher opens with no signal.
+            if (_booking.IsMine && App.Context.Device is { } device)
+                await device.SetValueAsync($"booking.{Id:N}", ContractJson.Write(_booking));
+        }
+        catch (TravelException e)
+        {
+            if (e.Offline && App.Context.Device is { } device && await device.GetValueAsync($"booking.{Id:N}") is { } json)
+                (_booking, _error) = (ContractJson.Read<TravelBookingDto>(json), "You're offline: showing what this phone saved.");
+            else
+                _error = e.Message;
+        }
+    }
+
+    async Task InvoiceAsync()
+    {
+        if (_invoice is not null)
+        {
+            _invoice = null;
+            return;
+        }
+        try
+        {
+            _invoice = await App.Api.GetAsync<TravelInvoiceDto>($"{TravelApi.Base}/bookings/{Id}/invoice");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task PdfAsync()
+    {
+        _busy = true;
+        try
+        {
+            var pdf = await App.Api.DownloadAsync($"{TravelApi.Base}/bookings/{Id}/voucher.pdf");
+            await JS.InvokeVoidAsync("ndeipi.saveFile", pdf, $"LetsTravel-{_booking!.Reference}.pdf", "application/pdf");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task CancelAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            _booking = await App.Api.SendAsync<TravelBookingDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/bookings/{Id}/cancel", new { reason = _reason });
+            _canceling = false;
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

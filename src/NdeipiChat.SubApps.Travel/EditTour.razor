@@ -1,0 +1,252 @@
+@* Listing a tour (FR-3): the details, photos, extras (park fees, equipment, transfers; some
+   mandatory), departures with their seats and guide, and moving or calling off a departure when the
+   weather turns (FR-3.3), which tells everyone booked and refunds a cancellation. *@
+
+<section class="lt-card">
+    <h2>@(Id is null ? "Add a tour" : "Edit tour")</h2>
+    <div class="lt-two">
+        <label class="lt-field">Name<input maxlength="@TravelContract.MaxNameLength" @bind="_f.Title" @bind:event="oninput" /></label>
+        <label class="lt-field">Kind
+            <select @bind="_f.Kind">
+                @foreach (var (c, label) in TravelContract.TourKinds)
+                {
+                    <option value="@c">@label</option>
+                }
+            </select>
+        </label>
+    </div>
+    <label class="lt-field">Description<textarea rows="4" maxlength="@TravelContract.MaxDescriptionLength" @bind="_f.Description"></textarea></label>
+    <div class="lt-three">
+        <label class="lt-field">Town or area<input maxlength="80" @bind="_f.City" /></label>
+        <label class="lt-field">Country<input maxlength="80" @bind="_f.Country" /></label>
+        <label class="lt-field">Effort
+            <select @bind="_f.Difficulty">
+                @foreach (var (c, label) in TravelContract.Difficulties)
+                {
+                    <option value="@c">@label</option>
+                }
+            </select>
+        </label>
+    </div>
+    <div class="lt-three">
+        <label class="lt-field">Price per person (USD)<input type="number" min="1" step="0.01" @bind="_f.Price" /></label>
+        <label class="lt-field">Hours<input type="number" min="0.5" step="0.5" @bind="_f.Hours" /></label>
+        <label class="lt-field">People per departure<input type="number" min="1" max="200" @bind="_f.Capacity" /></label>
+    </div>
+    <div class="lt-two">
+        <label class="lt-field">Meeting point<input maxlength="300" @bind="_f.MeetingPoint" /></label>
+        <label class="lt-field">Includes<input maxlength="1000" placeholder="Drinks, binoculars, park entry…" @bind="_f.Includes" /></label>
+    </div>
+    <div class="lt-two">
+        <label class="lt-field">Latitude (optional)<input type="number" step="any" @bind="_f.Lat" /></label>
+        <label class="lt-field">Longitude (optional)<input type="number" step="any" @bind="_f.Lng" /></label>
+    </div>
+    <label class="lt-row" style="cursor: pointer">
+        <input type="checkbox" style="width: 18px; height: 18px" @bind="_f.Weather" />
+        <span class="grow">Weather permitting<small>Travellers are told this tour may move or be cancelled for the weather.</small></span>
+    </label>
+    @if (_error is not null)
+    {
+        <div class="lt-note warn">@_error</div>
+    }
+    <div class="lt-actions">
+        <button class="primary" disabled="@_busy" @onclick="SaveAsync">@(Id is null ? "Save and continue" : "Save")</button>
+        @if (_tour is { } t)
+        {
+            @if (t.Status == "published")
+            {
+                <button class="secondary" disabled="@_busy" @onclick="() => PublishAsync(false)">Unpublish</button>
+            }
+            else if (t.Status == "draft")
+            {
+                <button class="secondary" disabled="@_busy" @onclick="() => PublishAsync(true)">Publish</button>
+            }
+            <span class="lt-badge @Format.Tone(t.Status)">@t.Status</span>
+            <button class="link" @onclick="() => App.Go(new TravelView.Tour(t.Id, 2))">See it as travellers do</button>
+        }
+    </div>
+</section>
+
+@if (_tour is { } tour)
+{
+    <section class="lt-card">
+        <h3>Photos</h3>
+        <PhotoStrip Type="tour" Id="tour.Id" Photos="tour.Photos" PhotosChanged="photos => _tour = tour with { Photos = photos }" />
+    </section>
+
+    <section class="lt-card">
+        <h3>Extras</h3>
+        @foreach (var a in tour.AddOns)
+        {
+            <div class="lt-row" @key="a.Id">
+                <span class="grow"><b>@a.Name</b><small>@Format.Money(a.Price) @(a.PerPerson ? "per person" : "per booking") · @(a.Mandatory ? "required" : "optional")</small></span>
+                <button class="link" disabled="@_busy" @onclick="() => RemoveAddOnAsync(a.Id)">Remove</button>
+            </div>
+        }
+        <div class="lt-three">
+            <label class="lt-field">Name<input maxlength="80" placeholder="National park fee" @bind="_addOnName" /></label>
+            <label class="lt-field">Price (USD)<input type="number" min="0" step="0.01" @bind="_addOnPrice" /></label>
+            <span class="lt-field">&nbsp;
+                <span class="lt-row">
+                    <label><input type="checkbox" @bind="_addOnPerPerson" /> per person</label>
+                    <label><input type="checkbox" @bind="_addOnMandatory" /> required</label>
+                </span>
+            </span>
+        </div>
+        <div class="lt-actions"><button class="secondary" disabled="@(_busy || string.IsNullOrWhiteSpace(_addOnName))" @onclick="AddAddOnAsync">Add extra</button></div>
+    </section>
+
+    <section class="lt-card">
+        <h3>Departures</h3>
+        @foreach (var d in tour.Departures)
+        {
+            <div class="lt-row" @key="d.Id">
+                <span class="grow">
+                    <b>@Format.When(d.StartsAt)</b>
+                    <small>@(d.Seats - d.Available) booked of @d.Seats@(d.Guide is { } g ? $" · {g}" : "")@(d.Note is { } n ? $" · {n}" : "")</small>
+                </span>
+                <span class="lt-badge @Format.Tone(d.Status)">@d.Status</span>
+                @if (d.Status != DepartureStatuses.Canceled && d.StartsAt > DateTimeOffset.UtcNow)
+                {
+                    <button class="link" @onclick="() => (_changing, _newStart, _reason) = (d.Id, d.StartsAt.ToLocalTime().DateTime, null)">Move or cancel</button>
+                }
+            </div>
+            @if (_changing == d.Id)
+            {
+                <div class="lt-card" style="box-shadow: none">
+                    <label class="lt-field">Why (travellers see this)<input maxlength="300" placeholder="High winds forecast on the river" @bind="_reason" /></label>
+                    <label class="lt-field">New time<input type="datetime-local" @bind="_newStart" /></label>
+                    <div class="lt-actions">
+                        <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick="() => RescheduleAsync(d.Id, false)">Move it</button>
+                        <button class="danger" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick="() => RescheduleAsync(d.Id, true)">Call it off and refund everyone</button>
+                        <button class="secondary" @onclick="() => _changing = null">Back</button>
+                    </div>
+                </div>
+            }
+        }
+        <div class="lt-three">
+            <label class="lt-field">Departs<input type="datetime-local" @bind="_departs" /></label>
+            <label class="lt-field">Seats<input type="number" min="1" max="200" placeholder="@tour.MaxCapacity" @bind="_seats" /></label>
+            <label class="lt-field">Guide (optional)<input maxlength="120" @bind="_guide" /></label>
+        </div>
+        <div class="lt-actions"><button class="secondary" disabled="@(_busy || _departs is null)" @onclick="AddDepartureAsync">Add departure</button></div>
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public Guid? Id { get; set; }
+
+    sealed class Form
+    {
+        public string Title { get; set; } = "";
+        public string Kind { get; set; } = "game_drive";
+        public string? Description { get; set; }
+        public string City { get; set; } = "";
+        public string Country { get; set; } = "Zambia";
+        public double? Lat { get; set; }
+        public double? Lng { get; set; }
+        public double Hours { get; set; } = 3;
+        public int Capacity { get; set; } = 8;
+        public string Difficulty { get; set; } = "easy";
+        public decimal Price { get; set; } = 50;
+        public bool Weather { get; set; }
+        public string? Includes { get; set; }
+        public string? MeetingPoint { get; set; }
+    }
+
+    Form _f = new();
+    TourDto? _tour;
+    string? _error, _addOnName, _guide, _reason;
+    decimal _addOnPrice;
+    bool _addOnPerPerson = true, _addOnMandatory, _busy;
+    DateTime? _departs, _newStart;
+    int? _seats;
+    Guid? _changing;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id is not { } id)
+            return;
+        try
+        {
+            await LoadAsync(id);
+            var t = _tour!;
+            _f = new Form
+            {
+                Title = t.Title, Kind = t.Kind, Description = t.Description, City = t.City, Country = t.Country, Lat = t.Lat, Lng = t.Lng, Hours = t.DurationHours,
+                Capacity = t.MaxCapacity, Difficulty = t.Difficulty, Price = t.PricePerPerson, Weather = t.WeatherDependent, Includes = t.Includes, MeetingPoint = t.MeetingPoint
+            };
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task LoadAsync(Guid id) => _tour = await App.Api.GetAsync<TourDto>($"{TravelApi.Base}/tours/{id}");
+
+    async Task RunAsync(Func<Task> action)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await action();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    Task SaveAsync() => RunAsync(async () =>
+    {
+        var request = new SaveTourRequest(_f.Title, _f.Kind, _f.Description, _f.City, _f.Country, _f.Lat, _f.Lng, _f.Hours, _f.Capacity, _f.Difficulty,
+            _f.Price, _f.Weather, _f.Includes, _f.MeetingPoint);
+        _tour = Id is { } id
+            ? await App.Api.SendAsync<TourDto>(HttpMethod.Put, $"{TravelApi.Base}/vendor/tours/{id}", request)
+            : await App.Api.SendAsync<TourDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/tours", request);
+        if (Id is null)
+            App.Replace(new TravelView.EditTour(_tour!.Id));
+    });
+
+    Task PublishAsync(bool published) => RunAsync(async () =>
+    {
+        await App.Api.SendAsync(HttpMethod.Post, $"{TravelApi.Base}/vendor/tour/{_tour!.Id}/publish", new { published });
+        await LoadAsync(_tour.Id);
+    });
+
+    Task AddAddOnAsync() => RunAsync(async () =>
+    {
+        await App.Api.SendAsync<TourAddOnDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/tours/{_tour!.Id}/addons",
+            new SaveAddOnRequest(_addOnName!.Trim(), _addOnPrice, _addOnPerPerson, _addOnMandatory));
+        (_addOnName, _addOnPrice) = (null, 0);
+        await LoadAsync(_tour.Id);
+    });
+
+    Task RemoveAddOnAsync(Guid addOnId) => RunAsync(async () =>
+    {
+        await App.Api.SendAsync(HttpMethod.Delete, $"{TravelApi.Base}/vendor/tours/{_tour!.Id}/addons/{addOnId}", null);
+        await LoadAsync(_tour.Id);
+    });
+
+    Task AddDepartureAsync() => RunAsync(async () =>
+    {
+        await App.Api.SendAsync<DepartureDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/tours/{_tour!.Id}/departures",
+            new SaveDepartureRequest(new DateTimeOffset(_departs!.Value), _seats, _guide));
+        (_departs, _seats, _guide) = (null, null, null);
+        await LoadAsync(_tour.Id);
+    });
+
+    Task RescheduleAsync(Guid departureId, bool cancel) => RunAsync(async () =>
+    {
+        await App.Api.SendAsync<DepartureDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/tours/{_tour!.Id}/departures/{departureId}/reschedule",
+            new RescheduleRequest(cancel || _newStart is null ? null : new DateTimeOffset(_newStart.Value), cancel, _reason!.Trim()));
+        _changing = null;
+        await LoadAsync(_tour.Id);
+    });
+}
