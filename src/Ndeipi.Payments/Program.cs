@@ -115,6 +115,29 @@ if (args is ["record-otc-trade", var side, var coin, var usd, var absaReference,
     return;
 }
 
+// `dotnet run -- treasury-deposit <rail> <currency> <amount> "<description>"`: Ndeipi's own money
+// arriving in its account on a rail, into the treasury.
+if (args is ["treasury-deposit", var depositRail, var depositCurrency, var depositAmount, var depositDescription])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var provider = scope.ServiceProvider.GetRequiredService<Ndeipi.Payments.Providers.ProviderRegistry>().RailFor(depositRail).Name;
+    await scope.ServiceProvider.GetRequiredService<Ndeipi.Payments.Treasury.TreasuryService>().DepositAsync(
+        provider, depositCurrency, decimal.Parse(depositAmount, System.Globalization.CultureInfo.InvariantCulture), depositDescription, default);
+    Console.WriteLine($"Treasury received {depositAmount} {depositCurrency} on {depositRail}.");
+    return;
+}
+
+// `dotnet run -- treasury-buy-points <currency> <amount>`: the treasury buys points for itself, so
+// it can pay users who sell NdeipiCoin back.
+if (args is ["treasury-buy-points", var pointsCurrency, var pointsFiat])
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var bought = await scope.ServiceProvider.GetRequiredService<Ndeipi.Payments.Treasury.TreasuryService>().BuyPointsAsync(
+        pointsCurrency, decimal.Parse(pointsFiat, System.Globalization.CultureInfo.InvariantCulture), default);
+    Console.WriteLine($"Treasury bought {bought} points for {pointsFiat} {pointsCurrency}.");
+    return;
+}
+
 app.UseRequestIds();
 app.UsePaymentsErrors();
 app.UseMiddleware<AuditMiddleware>();

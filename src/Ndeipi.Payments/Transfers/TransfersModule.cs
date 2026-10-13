@@ -10,7 +10,8 @@ namespace Ndeipi.Payments.Transfers;
 /// </summary>
 public static class TransfersModule
 {
-    public static IServiceCollection AddTransfers(this IServiceCollection services) => services.AddScoped<TransferService>();
+    public static IServiceCollection AddTransfers(this IServiceCollection services) =>
+        services.AddScoped<TransferBook>().AddScoped<TransferService>();
 
     public static void MapTransfers(this RouteGroupBuilder v1)
     {

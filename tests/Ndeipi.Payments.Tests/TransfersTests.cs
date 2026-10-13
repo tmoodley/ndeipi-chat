@@ -102,7 +102,7 @@ public sealed class TransfersTests(PaymentsApp app) : IClassFixture<PaymentsApp>
 
         Assert.Equal("same_source_and_destination", await same.ErrorCodeAsync());
         Assert.Equal("asset_mismatch", await mismatch.ErrorCodeAsync());
-        Assert.Equal((HttpStatusCode)501, conversion.StatusCode); // conversions arrive in M4
+        Assert.Equal("quote_required", await conversion.ErrorCodeAsync()); // a conversion needs a locked price
         Assert.Equal("invalid_amount_precision", await precision.ErrorCodeAsync());
     }
 

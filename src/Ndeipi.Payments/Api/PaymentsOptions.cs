@@ -55,6 +55,36 @@ public sealed class PaymentsOptions
 
     public WebhookOptions Webhooks { get; set; } = new();
 
+    /// <summary>
+    /// What each rail carries, keyed by rail code. When none are configured the defaults in
+    /// <see cref="Ramps.RampCatalog"/> apply: placeholders until Absa onboarding and PayPal approval
+    /// fix the real currencies and limits.
+    /// </summary>
+    public Dictionary<string, RailOptions> Rails { get; set; } = [];
+
+    /// <summary>How often the ramp worker submits payouts, checks their outcome and expires unpaid on-ramps.</summary>
+    public TimeSpan RampPollInterval { get; set; } = TimeSpan.FromSeconds(5);
+
+    public sealed class RailOptions
+    {
+        public string[] Currencies { get; set; } = [];
+
+        /// <summary>ISO 3166-1 alpha-2, where the rail serves one country.</summary>
+        public string? Country { get; set; }
+
+        /// <summary>Per transfer, in the fiat currency.</summary>
+        public decimal MinAmount { get; set; } = 10m;
+        public decimal MaxAmount { get; set; } = 50_000m;
+
+        public int SettlementSeconds { get; set; } = 86_400;
+
+        /// <summary>Whether the rail has standing deposit details (a bank account) or only one-off payments (PayPal).</summary>
+        public bool StandingDeposits { get; set; } = true;
+
+        /// <summary>How long a one-off on-ramp waits for its money before it is canceled.</summary>
+        public TimeSpan OneOffExpiry { get; set; } = TimeSpan.FromDays(7);
+    }
+
     public OnboardingOptions Onboarding { get; set; } = new();
 
     /// <summary>Event delivery (FR-WH-04).</summary>

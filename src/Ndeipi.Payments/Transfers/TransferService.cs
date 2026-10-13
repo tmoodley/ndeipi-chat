@@ -1,88 +1,28 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Ndeipi.Payments.Api;
 using Ndeipi.Payments.Data;
 using Ndeipi.Payments.Ledger;
+using Ndeipi.Payments.Ramps;
+using Ndeipi.Payments.Treasury;
 using Ndeipi.Payments.Users;
-using Ndeipi.Payments.Webhooks;
 
 namespace Ndeipi.Payments.Transfers;
 
-public sealed record TransferSourceRequest(string? Type, string? WalletId, string? Currency, string? Rail);
-
-public sealed record TransferDestinationRequest(string? Type, string? WalletId, string? PayoutAccountId);
-
-public sealed record TransferCreateRequest(
-    TransferSourceRequest? Source,
-    TransferDestinationRequest? Destination,
-    decimal? Amount,
-    string? QuoteId,
-    string? IntegratorReference,
-    Dictionary<string, string>? Metadata,
-    bool? DryRun);
-
-public sealed record TransferPartyDto(string Type, string? WalletId, string? UserId, string? Asset);
-
-public sealed record FeeDto(string Type, string Amount, string Unit);
-
-/// <summary>The <c>Receipt</c> object (openapi.yaml), as stored on the transfer.</summary>
-public sealed record ReceiptDto(
-    string? AmountDebited,
-    string? AmountCredited,
-    string? EarnedAmount,
-    IReadOnlyList<FeeDto> Fees,
-    DateTimeOffset InitiatedAt,
-    DateTimeOffset? CompletedAt);
-
-/// <summary>The <c>Transfer</c> object (openapi.yaml).</summary>
-public sealed record TransferDto(
-    string Id,
-    TransferKind Kind,
-    TransferState State,
-    ReasonDto? StateReason,
-    TransferPartyDto Source,
-    TransferPartyDto Destination,
-    string Amount,
-    ReceiptDto? Receipt,
-    string? IntegratorReference,
-    IReadOnlyDictionary<string, string> Metadata,
-    int Version,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset UpdatedAt)
-{
-    public string Object => "transfer";
-}
-
-/// <summary>The <c>TransferPreview</c> object (openapi.yaml): a dry run that passed every check.</summary>
-public sealed record TransferPreviewDto(TransferKind Kind, TransferPartyDto Source, TransferPartyDto Destination, string Amount, PreviewEstimate Estimated)
-{
-    public string Object => "transfer_preview";
-}
-
-public sealed record PreviewEstimate(IReadOnlyList<FeeDto> Fees, string AmountCredited, [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? EarnedAmount);
-
-/// <summary>Who may move money (FR-USER-05, FR-USER-07).</summary>
-public static class TransferRules
-{
-    public static void RequireCanTransact(PaymentUser user, string who)
-    {
-        if (user.Status == UserStatus.Deactivated)
-            throw PaymentsException.Forbidden("user_deactivated", $"{who} is deactivated and cannot send or receive funds.");
-        if (user.KycStatus != KycStatus.Approved || user.TermsStatus != TermsStatus.Approved)
-            throw PaymentsException.Forbidden("user_not_approved", $"{who} has not completed verification and accepted the terms.");
-    }
-}
-
 /// <summary>
-/// Transfers (SRS §4.3). In M3, user to user: one user's wallet to another's in the same asset,
-/// posted on the ledger in one transaction with the transfer and its event, without any provider
-/// (SRV-LED-04). Points keep their kind: the sender's earned points go first and arrive as earned
-/// points, so a reward never becomes cashable by changing hands. Conversions and ramps are M4.
+/// Transfers (SRS §4.3 to §4.5): one resource for every kind (DC-04), routed by source and
+/// destination. User to user is handled here; conversions, on-ramps and off-ramps by their own
+/// services. Points keep their kind in user-to-user transfers: the sender's earned points go first
+/// and arrive as earned points, so a reward never becomes cashable by changing hands.
 /// </summary>
 public sealed class TransferService(
-    PaymentsDbContext db, LedgerService ledger, EventOutbox events, IOptions<PaymentsOptions> options, TimeProvider clock)
+    PaymentsDbContext db,
+    LedgerService ledger,
+    TransferBook book,
+    OnRampService onRamps,
+    OffRampService offRamps,
+    ConversionService conversions,
+    IOptions<PaymentsOptions> options)
 {
     const int Attempts = 3;
 
@@ -90,35 +30,45 @@ public sealed class TransferService(
     {
         var (source, destination, amount) = ValidateShape(request);
 
-        if (source.Type == "fiat" || destination.Type == "payout_account")
-            throw PaymentsException.NotImplemented("M4");
+        if (source.Type == "fiat")
+        {
+            if (destination.Type != "wallet")
+                throw PaymentsException.Unprocessable("unsupported_route", "Fiat can only be paid into a wallet.", "destination.type");
+            return await onRamps.CreateOneOffAsync(source, await WalletAsync(destination.WalletId!, "destination.wallet_id", ct), amount, request, idempotencyKey, ct);
+        }
 
         var from = await WalletAsync(source.WalletId!, "source.wallet_id", ct);
+        if (destination.Type == "payout_account")
+            return await offRamps.CreateAsync(from, destination.PayoutAccountId!, amount, request, idempotencyKey, ct);
+
         var to = await WalletAsync(destination.WalletId!, "destination.wallet_id", ct);
         if (from.Id == to.Id)
             throw PaymentsException.Unprocessable("same_source_and_destination", "The source and destination are the same wallet.", "destination.wallet_id");
         if (from.Asset != to.Asset)
         {
             if (from.UserId == to.UserId)
-                throw PaymentsException.NotImplemented("M4"); // a conversion
+                return await conversions.CreateAsync(from, to, amount, request, idempotencyKey, ct);
             throw PaymentsException.Unprocessable("asset_mismatch", $"The wallets hold {from.Asset} and {to.Asset}.", "destination.wallet_id");
         }
         if (request.QuoteId is not null)
             throw PaymentsException.Validation([new("quote_id", "not_allowed", "quote_id is only for conversions.")]);
-        Amounts.RequireValid(amount, from.Decimals, from.Asset);
+        return await UserToUserAsync(from, to, amount, request, idempotencyKey, ct);
+    }
 
+    async Task<object> UserToUserAsync(Wallet from, Wallet to, decimal amount, TransferCreateRequest request, string? idempotencyKey, CancellationToken ct)
+    {
+        Amounts.RequireValid(amount, from.Decimals, from.Asset);
         var users = await db.Users.AsNoTracking().Where(u => u.Id == from.UserId || u.Id == to.UserId).ToDictionaryAsync(u => u.Id, ct);
         TransferRules.RequireCanTransact(users[from.UserId], "The sender");
         TransferRules.RequireCanTransact(users[to.UserId], "The recipient");
 
-        var sourceParty = new TransferPartyDto("wallet", from.Id, from.UserId, from.Asset);
-        var destinationParty = new TransferPartyDto("wallet", to.Id, to.UserId, to.Asset);
-
         if (request.DryRun == true)
         {
             var split = await SplitAsync(from, amount, ct);
-            return new TransferPreviewDto(TransferKind.UserToUser, sourceParty, destinationParty, Amounts.Format(amount, from.Decimals),
-                new PreviewEstimate([], Amounts.Format(amount, from.Decimals), IsPoints(from) ? Amounts.Format(split.Earned, from.Decimals) : null));
+            return new TransferPreviewDto(TransferKind.UserToUser,
+                new TransferPartyDto("wallet", from.Id, from.UserId, from.Asset), new TransferPartyDto("wallet", to.Id, to.UserId, to.Asset),
+                book.Format(amount, from.Asset),
+                new PreviewEstimate([], book.Format(amount, from.Asset), IsPoints(from) ? book.Format(split.Earned, from.Asset) : null));
         }
 
         // The earned/cashable split is read before posting; if the sender spends at the same moment
@@ -127,7 +77,7 @@ public sealed class TransferService(
         {
             try
             {
-                return await PostUserToUserAsync(from, to, amount, request, idempotencyKey, sourceParty, destinationParty, ct);
+                return await PostUserToUserAsync(from, to, amount, request, idempotencyKey, ct);
             }
             catch (PaymentsException e) when (e.Error.Code == "insufficient_funds" && attempt < Attempts)
             {
@@ -136,9 +86,7 @@ public sealed class TransferService(
         }
     }
 
-    async Task<TransferDto> PostUserToUserAsync(
-        Wallet from, Wallet to, decimal amount, TransferCreateRequest request, string? idempotencyKey,
-        TransferPartyDto sourceParty, TransferPartyDto destinationParty, CancellationToken ct)
+    async Task<TransferDto> PostUserToUserAsync(Wallet from, Wallet to, decimal amount, TransferCreateRequest request, string? idempotencyKey, CancellationToken ct)
     {
         var split = await SplitAsync(from, amount, ct);
         var accounts = await db.LedgerAccounts.AsNoTracking()
@@ -157,39 +105,22 @@ public sealed class TransferService(
             lines.Add(new(accounts[(to.Id, LedgerBucket.Available)], split.Cashable));
         }
 
-        var now = clock.GetUtcNow();
-        var transfer = new Transfer
-        {
-            Id = Ids.New(Ids.Transfer, clock),
-            Kind = TransferKind.UserToUser,
-            State = TransferStates.Initial(TransferKind.UserToUser),
-            SourceType = "wallet",
-            SourceWalletId = from.Id,
-            SourceUserId = from.UserId,
-            DestinationType = "wallet",
-            DestinationWalletId = to.Id,
-            DestinationUserId = to.UserId,
-            Asset = from.Asset,
-            Amount = amount,
-            IntegratorReference = request.IntegratorReference,
-            MetadataJson = JsonSerializer.Serialize(request.Metadata ?? [], PaymentsJson.Options),
-            IdempotencyKey = idempotencyKey,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        Move(transfer, TransferState.Completed);
-        var formatted = Amounts.Format(amount, from.Decimals);
-        transfer.ReceiptJson = JsonSerializer.Serialize(new ReceiptDto(
-            formatted, formatted, IsPoints(from) ? Amounts.Format(split.Earned, from.Decimals) : null, [], now, now), PaymentsJson.Options);
+        var transfer = book.New(TransferKind.UserToUser, "wallet", "wallet", from.Asset, amount, request, idempotencyKey);
+        transfer.SourceWalletId = from.Id;
+        transfer.SourceUserId = from.UserId;
+        transfer.DestinationWalletId = to.Id;
+        transfer.DestinationUserId = to.UserId;
+        TransferBook.MoveUnsaved(transfer, TransferState.Completed);
+        var formatted = book.Format(amount, from.Asset);
+        book.SetReceipt(transfer, new ReceiptDto(formatted, formatted, IsPoints(from) ? book.Format(split.Earned, from.Asset) : null, [], transfer.CreatedAt, transfer.CreatedAt));
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         db.Transfers.Add(transfer);
-        var dto = To(transfer, from.Decimals);
-        await events.AddAsync(EventTypes.TransferCreated, "transfer", transfer.Id, transfer.Version, dto, null, ct);
+        await book.CreatedAsync(transfer, ct);
         // The posting saves the transfer and its event with it, in this transaction (SRV-LED-04, SC-04).
         await ledger.PostAsync(new PostingRequest($"Transfer {transfer.Id}", lines, transfer.Id, idempotencyKey), ct);
         await transaction.CommitAsync(ct);
-        return dto;
+        return book.To(transfer);
     }
 
     /// <summary>How much of <paramref name="amount"/> comes from earned points (spent first) and how much from cashable ones.</summary>
@@ -203,11 +134,8 @@ public sealed class TransferService(
         return (earned, amount - earned);
     }
 
-    public async Task<TransferDto> GetAsync(string id, CancellationToken ct)
-    {
-        var transfer = await db.Transfers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw PaymentsException.NotFound("transfer");
-        return To(transfer, DecimalsOf(transfer.Asset));
-    }
+    public async Task<TransferDto> GetAsync(string id, CancellationToken ct) =>
+        book.To(await db.Transfers.AsNoTracking().FirstOrDefaultAsync(t => t.Id == id, ct) ?? throw PaymentsException.NotFound("transfer"));
 
     public Task<Page<TransferDto>> ListAsync(
         PageRequest page, string? userId, string? walletId, TransferState? state, TransferKind? kind, string? integratorReference,
@@ -228,15 +156,7 @@ public sealed class TransferService(
             query = query.Where(t => t.CreatedAt > after);
         if (createdBefore is { } before)
             query = query.Where(t => t.CreatedAt < before);
-        return query.PageAsync(t => t.Id, page, t => To(t, DecimalsOf(t.Asset)), ct);
-    }
-
-    /// <summary>Changes state only along the documented paths (FR-XFER-04).</summary>
-    static void Move(Transfer transfer, TransferState to)
-    {
-        if (!TransferStates.CanMove(transfer.Kind, transfer.State, to))
-            throw new InvalidOperationException($"A {transfer.Kind} transfer cannot move from {transfer.State} to {to}.");
-        transfer.State = to;
+        return query.PageAsync(t => t.Id, page, book.To, ct);
     }
 
     async Task<Wallet> WalletAsync(string id, string field, CancellationToken ct) =>
@@ -244,8 +164,6 @@ public sealed class TransferService(
             ?? throw new PaymentsException(404, new ApiError("not_found", "No such wallet.", field));
 
     bool IsPoints(Wallet wallet) => wallet.Asset == options.Value.Points.Asset;
-
-    int DecimalsOf(string asset) => asset == options.Value.Coin.Asset ? options.Value.Coin.Decimals : options.Value.Points.Decimals;
 
     static (TransferSourceRequest Source, TransferDestinationRequest Destination, decimal Amount) ValidateShape(TransferCreateRequest r)
     {
@@ -256,6 +174,11 @@ public sealed class TransferService(
             errors.Add(new("source.type", "invalid_value", "source.type is wallet or fiat."));
         else if (r.Source.Type == "wallet" && string.IsNullOrEmpty(r.Source.WalletId))
             errors.Add(new("source.wallet_id", "required", "source.wallet_id is required."));
+        else if (r.Source.Type == "fiat")
+        {
+            if (string.IsNullOrEmpty(r.Source.Currency)) errors.Add(new("source.currency", "required", "source.currency is required."));
+            if (string.IsNullOrEmpty(r.Source.Rail)) errors.Add(new("source.rail", "required", "source.rail is required."));
+        }
 
         if (r.Destination is null)
             errors.Add(new("destination", "required", "destination is required."));
@@ -263,6 +186,8 @@ public sealed class TransferService(
             errors.Add(new("destination.type", "invalid_value", "destination.type is wallet or payout_account."));
         else if (r.Destination.Type == "wallet" && string.IsNullOrEmpty(r.Destination.WalletId))
             errors.Add(new("destination.wallet_id", "required", "destination.wallet_id is required."));
+        else if (r.Destination.Type == "payout_account" && string.IsNullOrEmpty(r.Destination.PayoutAccountId))
+            errors.Add(new("destination.payout_account_id", "required", "destination.payout_account_id is required."));
 
         if (r.Amount is null)
             errors.Add(new("amount", "required", "amount is required."));
@@ -274,15 +199,4 @@ public sealed class TransferService(
             throw PaymentsException.Validation(errors);
         return (r.Source!, r.Destination!, r.Amount!.Value);
     }
-
-    static TransferDto To(Transfer t, int decimals) => new(
-        t.Id, t.Kind, t.State,
-        t.StateReasonJson is null ? null : JsonSerializer.Deserialize<ReasonDto>(t.StateReasonJson, PaymentsJson.Options),
-        new TransferPartyDto(t.SourceType, t.SourceWalletId, t.SourceUserId, t.Asset),
-        new TransferPartyDto(t.DestinationType, t.DestinationWalletId, t.DestinationUserId, t.Asset),
-        Amounts.Format(t.Amount, decimals),
-        t.ReceiptJson is null ? null : JsonSerializer.Deserialize<ReceiptDto>(t.ReceiptJson, PaymentsJson.Options),
-        t.IntegratorReference,
-        JsonSerializer.Deserialize<Dictionary<string, string>>(t.MetadataJson, PaymentsJson.Options) ?? [],
-        t.Version, t.CreatedAt, t.UpdatedAt);
 }

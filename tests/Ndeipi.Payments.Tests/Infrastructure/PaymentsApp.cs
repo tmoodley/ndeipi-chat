@@ -51,7 +51,8 @@ public class PaymentsApp : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Payments:Webhooks:PollInterval"] = "00:00:00.050",
                 ["Payments:Webhooks:RetryBase"] = "00:00:00.100",
                 ["Payments:Webhooks:MaxRetryDelay"] = "00:00:00.300",
-                ["Payments:Webhooks:RetryWindow"] = "00:00:02"
+                ["Payments:Webhooks:RetryWindow"] = "00:00:02",
+                ["Payments:RampPollInterval"] = "00:00:00.050"
             });
             config.AddInMemoryCollection(Overrides);
         });
@@ -84,6 +85,13 @@ public class PaymentsApp : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await using var scope = Services.CreateAsyncScope();
         scope.ServiceProvider.GetRequiredService<IntegratorScope>().Set(integratorId, apiKeyId: null);
+        return await work(scope.ServiceProvider);
+    }
+
+    /// <summary>Runs <paramref name="work"/> with no integrator scope, as the treasury's own operations do.</summary>
+    public async Task<T> AsHouseAsync<T>(Func<IServiceProvider, Task<T>> work)
+    {
+        await using var scope = Services.CreateAsyncScope();
         return await work(scope.ServiceProvider);
     }
 

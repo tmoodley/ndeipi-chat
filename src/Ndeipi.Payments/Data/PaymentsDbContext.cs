@@ -10,6 +10,12 @@ namespace Ndeipi.Payments.Data;
 /// </summary>
 public sealed class IntegratorScope
 {
+    /// <summary>
+    /// The owner of Ndeipi's own ledger accounts (floats, reserve, treasury, NdeipiCoin stock, fees).
+    /// No API key ever carries it, so no integrator can read those accounts.
+    /// </summary>
+    public static readonly Guid House = new("00000000-0000-0000-0000-00000000000a");
+
     public Guid? IntegratorId { get; private set; }
     public Guid? ApiKeyId { get; private set; }
 
@@ -42,6 +48,10 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
     public DbSet<OnboardingLink> OnboardingLinks => Set<OnboardingLink>();
     public DbSet<Wallet> Wallets => Set<Wallet>();
     public DbSet<Transfer> Transfers => Set<Transfer>();
+    public DbSet<DepositAccount> DepositAccounts => Set<DepositAccount>();
+    public DbSet<Deposit> Deposits => Set<Deposit>();
+    public DbSet<PayoutAccount> PayoutAccounts => Set<PayoutAccount>();
+    public DbSet<Quote> Quotes => Set<Quote>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<EventDelivery> EventDeliveries => Set<EventDelivery>();
 
@@ -116,6 +126,9 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             // One system account (suspense, points issued) per integrator, kind, bucket and asset.
             e.HasIndex(a => new { a.IntegratorId, a.Kind, a.Bucket, a.Asset }).IsUnique()
                 .HasFilter("[WalletId] IS NULL AND [Provider] IS NULL");
+            // And one clearing account per owner, provider and currency.
+            e.HasIndex(a => new { a.IntegratorId, a.Provider, a.Asset }).IsUnique()
+                .HasFilter("[Provider] IS NOT NULL");
             e.Property(a => a.Balance).HasPrecision(38, 18);
             e.Property(a => a.Kind).HasConversion<string>().HasMaxLength(20);
             e.Property(a => a.Bucket).HasConversion<string>().HasMaxLength(20);
@@ -185,6 +198,14 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(t => t.Amount).HasPrecision(38, 18);
             e.Property(t => t.IntegratorReference).HasMaxLength(128);
             e.Property(t => t.IdempotencyKey).HasMaxLength(255);
+            e.Property(t => t.DestinationAsset).HasMaxLength(32);
+            e.Property(t => t.Rail).HasMaxLength(32);
+            e.Property(t => t.PayoutAccountId).HasMaxLength(40);
+            e.Property(t => t.DepositAccountId).HasMaxLength(40);
+            e.Property(t => t.QuoteId).HasMaxLength(40);
+            e.Property(t => t.ProviderReference).HasMaxLength(100);
+            e.HasIndex(t => new { t.Kind, t.State });
+            e.HasIndex(t => t.ProviderReference);
             e.Property(t => t.Version).IsConcurrencyToken();
             e.HasIndex(t => new { t.IntegratorId, t.IdempotencyKey }).IsUnique().HasFilter("[IdempotencyKey] IS NOT NULL");
             e.HasIndex(t => t.SourceWalletId);
@@ -193,6 +214,66 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.HasIndex(t => t.DestinationUserId);
             e.HasIndex(t => new { t.IntegratorId, t.IntegratorReference });
             e.HasQueryFilter(t => t.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<DepositAccount>(e =>
+        {
+            e.Property(d => d.Id).HasMaxLength(40);
+            e.Property(d => d.UserId).HasMaxLength(40);
+            e.Property(d => d.WalletId).HasMaxLength(40);
+            e.Property(d => d.Currency).HasMaxLength(3);
+            e.Property(d => d.Rail).HasMaxLength(32);
+            e.Property(d => d.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(d => d.ProviderReference).HasMaxLength(100);
+            e.Property(d => d.Reference).HasMaxLength(40);
+            e.HasIndex(d => d.Reference).IsUnique();
+            e.HasIndex(d => d.UserId);
+            e.Property(d => d.Version).IsConcurrencyToken();
+            e.HasQueryFilter(d => d.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<Deposit>(e =>
+        {
+            e.Property(d => d.Id).HasMaxLength(40);
+            e.Property(d => d.DepositAccountId).HasMaxLength(40);
+            e.Property(d => d.TransferId).HasMaxLength(40);
+            e.Property(d => d.AmountReceived).HasPrecision(38, 18);
+            e.Property(d => d.Currency).HasMaxLength(3);
+            e.Property(d => d.RailReference).HasMaxLength(100);
+            e.HasIndex(d => d.DepositAccountId);
+            e.HasQueryFilter(d => d.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<PayoutAccount>(e =>
+        {
+            e.Property(p => p.Id).HasMaxLength(40);
+            e.Property(p => p.UserId).HasMaxLength(40);
+            e.Property(p => p.Type).HasConversion<string>().HasMaxLength(20);
+            e.Property(p => p.Currency).HasMaxLength(3);
+            e.Property(p => p.Country).HasMaxLength(2);
+            e.Property(p => p.Rail).HasMaxLength(32);
+            e.Property(p => p.AccountOwnerName).HasMaxLength(200);
+            e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(p => p.UserId);
+            e.Property(p => p.Version).IsConcurrencyToken();
+            e.HasQueryFilter(p => p.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<Quote>(e =>
+        {
+            e.Property(q => q.Id).HasMaxLength(40);
+            e.Property(q => q.UserId).HasMaxLength(40);
+            e.Property(q => q.SourceWalletId).HasMaxLength(40);
+            e.Property(q => q.DestinationWalletId).HasMaxLength(40);
+            e.Property(q => q.From).HasMaxLength(32);
+            e.Property(q => q.To).HasMaxLength(32);
+            e.Property(q => q.Amount).HasPrecision(38, 18);
+            e.Property(q => q.Fee).HasPrecision(38, 18);
+            e.Property(q => q.AmountOut).HasPrecision(38, 18);
+            e.Property(q => q.Rate).HasPrecision(38, 18);
+            e.Property(q => q.Status).HasConversion<string>().HasMaxLength(10);
+            e.Property(q => q.TransferId).HasMaxLength(40);
+            e.HasQueryFilter(q => q.IntegratorId == CurrentIntegratorId);
         });
 
         model.Entity<WebhookEndpoint>(e =>
@@ -273,7 +354,9 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             {
                 if (owned.IntegratorId == Guid.Empty)
                     owned.IntegratorId = current;
-                else if (owned.IntegratorId != current)
+                // A request may open one of Ndeipi's own accounts the first time it needs it; the ledger
+                // alone moves their balances.
+                else if (owned.IntegratorId != current && !(owned is LedgerAccount && owned.IntegratorId == IntegratorScope.House))
                     throw new InvalidOperationException("A request cannot write another integrator's data.");
             }
         }

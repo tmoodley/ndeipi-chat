@@ -25,10 +25,50 @@ public sealed record PostingRequest(
 ///
 /// Callers that write other rows with the posting (a transfer, its event) open the transaction
 /// themselves; the posting joins it and commits with them (SRV-LED-04, SC-04).
+///
+/// Ndeipi's own accounts (the float at each provider, the points reserve, the treasury, the
+/// NdeipiCoin stock, fees) belong to the house, <see cref="IntegratorScope.House"/>, not to any
+/// integrator. A posting may touch the caller's own accounts and house accounts together; work
+/// with no integrator scope (treasury operations) touches house accounts only. House accounts
+/// never appear through an integrator's key, and a house account that would go below zero fails
+/// the posting with <c>insufficient_liquidity</c> rather than <c>insufficient_funds</c>.
 /// </summary>
 public sealed class LedgerService(PaymentsDbContext db, IntegratorScope scope, IHttpContextAccessor http, TimeProvider clock)
 {
-    Guid Integrator => scope.IntegratorId ?? throw new InvalidOperationException("Ledger work needs an integrator scope.");
+    /// <summary>Who the posting belongs to: the calling integrator, or the house for treasury work.</summary>
+    Guid Integrator => scope.IntegratorId ?? IntegratorScope.House;
+
+    /// <summary>The accounts a posting may touch: the caller's and the house's.</summary>
+    IQueryable<LedgerAccount> Reachable()
+    {
+        var integrator = Integrator;
+        return db.LedgerAccounts.IgnoreQueryFilters().Where(a => a.IntegratorId == integrator || a.IntegratorId == IntegratorScope.House);
+    }
+
+    /// <summary>
+    /// Opens one of Ndeipi's own accounts. Which may go negative follows what they are: the reserve,
+    /// the treasury's points and the coin stock may not, since running out of them is the liquidity
+    /// limit; clearing, issuance and fee accounts mirror outside balances and may.
+    /// </summary>
+    public async Task<LedgerAccount> OpenHouseAccountAsync(LedgerAccountKind kind, LedgerBucket bucket, string asset, CancellationToken ct, string? provider = null)
+    {
+        if ((kind == LedgerAccountKind.ProviderClearing) != (provider is not null))
+            throw new InvalidOperationException("Provider clearing accounts, and only they, name their provider.");
+        var account = new LedgerAccount
+        {
+            Id = Ids.New(Ids.Account, clock),
+            IntegratorId = IntegratorScope.House,
+            Kind = kind,
+            Bucket = bucket,
+            Provider = provider,
+            Asset = asset,
+            AllowNegative = kind is not (LedgerAccountKind.PointsReserve or LedgerAccountKind.Treasury or LedgerAccountKind.Inventory),
+            CreatedAt = clock.GetUtcNow()
+        };
+        db.LedgerAccounts.Add(account);
+        await db.SaveChangesAsync(ct);
+        return account;
+    }
 
     public async Task<LedgerAccount> OpenAccountAsync(
         LedgerAccountKind kind, LedgerBucket bucket, string asset, string? walletId, CancellationToken ct, string? provider = null)
@@ -56,7 +96,7 @@ public sealed class LedgerService(PaymentsDbContext db, IntegratorScope scope, I
     {
         Validate(request);
         var ids = request.Lines.Select(l => l.AccountId).ToHashSet();
-        var accounts = await db.LedgerAccounts.AsNoTracking().Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
+        var accounts = await Reachable().AsNoTracking().Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
         if (request.Lines.FirstOrDefault(l => !accounts.ContainsKey(l.AccountId)) is { } missing)
             throw new InvalidOperationException($"Ledger account {missing.AccountId} does not exist for this integrator.");
         RequireBalanced(request.Lines.Select(l => (accounts[l.AccountId].Asset, l.Amount)));
@@ -79,8 +119,9 @@ public sealed class LedgerService(PaymentsDbContext db, IntegratorScope scope, I
 
         foreach (var line in request.Lines.OrderBy(l => l.AccountId, StringComparer.Ordinal))
         {
-            var balance = await MoveAsync(line, ct)
-                ?? throw PaymentsException.Unprocessable("insufficient_funds", "The available balance is too low for this transfer.", "amount");
+            var balance = await MoveAsync(line, ct) ?? throw (accounts[line.AccountId].IntegratorId == IntegratorScope.House
+                ? PaymentsException.Unprocessable("insufficient_liquidity", "Ndeipi cannot cover this amount right now. Try a smaller amount later.", "amount")
+                : PaymentsException.Unprocessable("insufficient_funds", "The available balance is too low for this transfer.", "amount"));
             posting.Lines.Add(new PostingLine
             {
                 PostingId = posting.Id,
@@ -144,7 +185,7 @@ public sealed class LedgerService(PaymentsDbContext db, IntegratorScope scope, I
             UPDATE [payments].[LedgerAccounts]
             SET [Balance] = [Balance] + {line.Amount}
             OUTPUT inserted.[Balance] AS [Value]
-            WHERE [Id] = {line.AccountId} AND [IntegratorId] = {integrator}
+            WHERE [Id] = {line.AccountId} AND [IntegratorId] IN ({integrator}, {IntegratorScope.House})
               AND ([AllowNegative] = 1 OR [Balance] + {line.Amount} >= 0)
             """).ToListAsync(ct);
         return rows.Count == 1 ? rows[0] : null;

@@ -47,6 +47,18 @@ public static class Accounts
     public static async Task<JsonElement> BalanceAsync(this TestIntegrator integrator, string user, string wallet) =>
         await (await integrator.GetAsync($"/v1/users/{user}/wallets/{wallet}/balance")).JsonAsync();
 
+    public static async Task<string> DepositAccountAsync(this TestIntegrator integrator, string user, string wallet) =>
+        (await (await integrator.PostAsync($"/v1/users/{user}/deposit_accounts",
+            new { source = new { currency = "zar", rail = "absa_eft" }, destination = new { wallet_id = wallet } })).JsonAsync()).GetProperty("id").GetString()!;
+
+    public static Task<HttpResponseMessage> CashOutAsync(this TestIntegrator integrator, string wallet, string payoutAccount, string amount, string? key = null) =>
+        integrator.PostAsync("/v1/transfers", new
+        {
+            source = new { type = "wallet", wallet_id = wallet },
+            destination = new { type = "payout_account", payout_account_id = payoutAccount },
+            amount
+        }, key);
+
     public static Task<HttpResponseMessage> SendAsync(this TestIntegrator integrator, string fromWallet, string toWallet, string amount, string? key = null, bool dryRun = false) =>
         integrator.PostAsync("/v1/transfers", new
         {

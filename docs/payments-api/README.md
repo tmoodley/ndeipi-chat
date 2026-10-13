@@ -136,32 +136,30 @@ price (`Payments:Points:Prices:usd`), gives points per coin.
   `Payments:Coin:MaxPriceAge` (3 days by default), quotes answer `503 provider_unavailable` rather
   than quote a stale price.
 
-**Ledger.** Customer money never buys NdeipiCoin.
+**Ledger.** Customer money never buys NdeipiCoin, and the points reserve is never touched by a
+conversion.
 
-- **Buying.** When a user converts points to coin, the points are retired. The fiat that backed
-  them moves from **PointsReserve** to Ndeipi's **Treasury**, and the coin comes out of Ndeipi's
-  **Inventory**.
-- **Selling.** Selling coin back runs the other way: Treasury fiat moves into PointsReserve to
-  back the new cashable points.
-- **OTC trades.** A trade moves Treasury USD out through Absa and NdeipiCoin into Inventory.
-- **Liquidity.** A quote larger than the Inventory, or than Treasury can back, returns
-  `422 insufficient_liquidity`.
+- **Buying.** When a user converts points to coin, the points move into Ndeipi's own **treasury
+  points** account, less the spread, which goes to **fees**. The coin comes out of Ndeipi's
+  **inventory**. The points still exist, and Ndeipi now holds them, so the reserve still backs them.
+- **Selling.** Selling coin back runs the other way: the coin goes into inventory, and cashable
+  points come out of the treasury's points.
+- **Topping up.** The treasury tops up its points by buying them at the fixed price, like anyone
+  else (`treasury-buy-points`), so that fiat also lands in the reserve.
+- **OTC trades.** Recording an OTC trade posts both legs. Treasury USD leaves through Ndeipi's Absa
+  float, and NdeipiCoin arrives in inventory through a `blockfinex_otc` clearing account. So the
+  treasury needs the USD first (`treasury-deposit`).
+- **Liquidity.** Inventory, treasury points and the reserve may not go negative. A conversion
+  either can't cover returns `422 insufficient_liquidity`, checked when quoting and again,
+  atomically, when settling.
 
-So PointsReserve always covers cashable points 1:1, and NdeipiCoin's price risk sits only with
-users who opted in and with Ndeipi's own Treasury.
+So the reserve always covers every purchased point 1:1, and NdeipiCoin's price risk sits only with
+users who opted in and with Ndeipi's treasury.
 
-**Built so far:**
-
-- **Contract:** the `ndeipi-coin` asset, `POST /quotes` and `GET /quotes/{quote_id}`, the
-  `conversion` kind, `quote_id` on transfers, `acknowledge_price_risk` on wallets, and the new error
-  codes.
-- **Server:** the conversion state machine, the OTC trade record and the pricing (`Treasury/`).
-- **M4:** the quote and conversion endpoints and their postings.
-
-**Before M4:** Treasury, Inventory and PointsReserve are Ndeipi's house accounts, owned by no
-integrator. The ledger scopes every account to one integrator today, so it needs a house scope that
-lets one posting touch an integrator's wallets and Ndeipi's house accounts together, without
-widening what an integrator's key can see.
+**House accounts.** The float at each provider, the reserve, the treasury, the inventory and fees
+belong to a reserved house owner, not to any integrator. One posting may touch an integrator's
+wallets and house accounts together. Treasury operations with no integrator scope touch only house
+accounts, and no API key can read them.
 
 **Risks:**
 
