@@ -122,6 +122,66 @@ public sealed class OnboardingLink : IIntegratorOwned
     public DateTimeOffset CreatedAt { get; set; }
 }
 
+// ------------------------------------------------------------------ Wallets and transfers (M3)
+
+public enum WalletStatus { Active, Frozen }
+
+/// <summary>
+/// A user's balance in one asset (FR-WAL-01): one per user per asset. Its money lives in ledger
+/// accounts, one per bucket (available, pending, and earned for points); this row only names them.
+/// </summary>
+public sealed class Wallet : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string UserId { get; set; }
+    public required string Asset { get; set; }
+    public int Decimals { get; set; }
+    public WalletStatus Status { get; set; }
+    public DateTimeOffset? PriceRiskAcknowledgedAt { get; set; }
+    public string MetadataJson { get; set; } = "{}";
+    public int Version { get; set; } = 1;
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// A transfer (SRS §4.3 to §4.5): one row for every kind of money movement (DC-04). Its state only
+/// moves along <see cref="Transfers.TransferStates"/>.
+/// </summary>
+public sealed class Transfer : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public Transfers.TransferKind Kind { get; set; }
+    public Transfers.TransferState State { get; set; }
+
+    /// <summary>JSON { code, message } while in an exception state.</summary>
+    public string? StateReasonJson { get; set; }
+
+    public required string SourceType { get; set; }
+    public string? SourceWalletId { get; set; }
+    public string? SourceUserId { get; set; }
+    public required string DestinationType { get; set; }
+    public string? DestinationWalletId { get; set; }
+    public string? DestinationUserId { get; set; }
+
+    public required string Asset { get; set; }
+    public decimal Amount { get; set; }
+
+    /// <summary>JSON receipt once funds have moved (FR-XFER-05).</summary>
+    public string? ReceiptJson { get; set; }
+
+    public string? IntegratorReference { get; set; }
+    public string MetadataJson { get; set; } = "{}";
+
+    /// <summary>The creating request's key: unique per integrator, so a retry finds this transfer (NFR-REL-01).</summary>
+    public string? IdempotencyKey { get; set; }
+
+    public int Version { get; set; } = 1;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
 // ------------------------------------------------------------------ Ledger (M1)
 
 public enum LedgerAccountKind

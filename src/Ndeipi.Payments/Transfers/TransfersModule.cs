@@ -10,11 +10,28 @@ namespace Ndeipi.Payments.Transfers;
 /// </summary>
 public static class TransfersModule
 {
+    public static IServiceCollection AddTransfers(this IServiceCollection services) => services.AddScoped<TransferService>();
+
     public static void MapTransfers(this RouteGroupBuilder v1)
     {
-        v1.MapPost("/transfers", Stubs.Milestone("M3"));
-        v1.MapGet("/transfers", Stubs.Milestone("M3"));
-        v1.MapGet("/transfers/{transfer_id}", Stubs.Milestone("M3"));
+        v1.MapPost("/transfers", async (HttpContext http, TransferCreateRequest request, TransferService transfers, CancellationToken ct) =>
+            await transfers.CreateAsync(request, IdempotencyMiddleware.KeyFor(http), ct) switch
+            {
+                TransferPreviewDto preview => Results.Json(preview, PaymentsJson.Options),
+                var created => Results.Json(created, PaymentsJson.Options, statusCode: 201)
+            });
+
+        v1.MapGet("/transfers", async (
+            HttpRequest http, TransferService transfers, string? user_id, string? wallet_id, string? state, string? kind,
+            string? integrator_reference, DateTimeOffset? created_after, DateTimeOffset? created_before, CancellationToken ct) =>
+            Results.Json(await transfers.ListAsync(
+                PageRequest.From(http), user_id, wallet_id,
+                WireEnum.Parse<TransferState>(state, "state"), WireEnum.Parse<TransferKind>(kind, "kind"),
+                integrator_reference, created_after, created_before, ct), PaymentsJson.Options));
+
+        v1.MapGet("/transfers/{transfer_id}", async (string transfer_id, TransferService transfers, CancellationToken ct) =>
+            Results.Json(await transfers.GetAsync(transfer_id, ct), PaymentsJson.Options));
+
         v1.MapPost("/transfers/{transfer_id}/cancel", Stubs.Milestone("M6"));
     }
 }

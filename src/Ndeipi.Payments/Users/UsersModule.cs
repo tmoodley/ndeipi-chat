@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Ndeipi.Payments.Api;
 using Ndeipi.Payments.Data;
+using Ndeipi.Payments.Transfers;
 using Ndeipi.Payments.Webhooks;
 
 namespace Ndeipi.Payments.Users;
@@ -56,7 +57,7 @@ public sealed record UserDto(
 /// <summary>
 /// User accounts (SRS §4.1): create, get, list and update (M1), hosted onboarding links and KYC
 /// status changes (M2, <see cref="OnboardingService"/>, <see cref="UserStatusService"/>).
-/// Deactivation follows in M3, with the wallets whose balances it checks.
+/// Deactivation (M3) is refused while the user's wallets hold funds or a transfer is open.
 /// </summary>
 public static class UsersModule
 {
@@ -94,8 +95,8 @@ public static class UsersModule
         v1.MapPatch("/users/{user_id}", async (string user_id, UserUpdateRequest request, UserService users, CancellationToken ct) =>
             Results.Json(await users.UpdateAsync(user_id, request, ct), PaymentsJson.Options));
 
-        // Deactivation is refused while a wallet holds funds, so it is built with wallets in M3.
-        v1.MapPost("/users/{user_id}/deactivate", Stubs.Milestone("M3"));
+        v1.MapPost("/users/{user_id}/deactivate", async (string user_id, UserService users, CancellationToken ct) =>
+            Results.Json(await users.DeactivateAsync(user_id, ct), PaymentsJson.Options));
 
         v1.MapPost("/users/{user_id}/onboarding_links", async (string user_id, OnboardingLinksRequest? request, OnboardingService onboarding, CancellationToken ct) =>
             Results.Json(await onboarding.CreateAsync(user_id, request ?? new(null), ct), PaymentsJson.Options, statusCode: 201));
@@ -164,6 +165,55 @@ public sealed partial class UserService(PaymentsDbContext db, EventOutbox events
         if (status is not null)
             query = query.Where(u => u.Status == status);
         return query.PageAsync(u => u.Id, page, UserDto.From, ct);
+    }
+
+    /// <summary>
+    /// Deactivates a user (FR-USER-07): refused while any wallet holds funds in any bucket or a
+    /// transfer involving the user is still open, since a deactivated user can neither send nor
+    /// receive. Freezes the user's wallets and emits <c>user.deactivated</c>. Deactivating twice
+    /// returns the user unchanged.
+    /// </summary>
+    public async Task<UserDto> DeactivateAsync(string id, CancellationToken ct)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw PaymentsException.NotFound("user");
+        if (user.Status == UserStatus.Deactivated)
+            return UserDto.From(user);
+
+        var wallets = await db.Wallets.Where(w => w.UserId == id).ToListAsync(ct);
+        var walletIds = wallets.Select(w => w.Id).ToList();
+        if (await db.LedgerAccounts.AnyAsync(a => a.WalletId != null && walletIds.Contains(a.WalletId) && a.Balance != 0, ct))
+            throw PaymentsException.Conflict("user_has_balance", "This user's wallets still hold funds. Pay them out or move them first.");
+
+        var unsettled = await db.Transfers.AsNoTracking()
+            .Where(t => (t.SourceUserId == id || t.DestinationUserId == id) &&
+                        t.State != TransferState.Completed && t.State != TransferState.Failed &&
+                        t.State != TransferState.Canceled && t.State != TransferState.Refunded)
+            .Select(t => new { t.Kind, t.State })
+            .ToListAsync(ct);
+        if (unsettled.Any(t => !TransferStates.IsFinal(t.Kind, t.State)))
+            throw PaymentsException.Conflict("user_has_open_transfers", "A transfer involving this user is still open.");
+
+        var previous = user.Status;
+        user.Status = UserStatus.Deactivated;
+        user.Version++;
+        user.UpdatedAt = clock.GetUtcNow();
+        foreach (var wallet in wallets)
+        {
+            wallet.Status = WalletStatus.Frozen;
+            wallet.Version++;
+        }
+        var snapshot = UserDto.From(user);
+        await events.AddAsync(EventTypes.UserDeactivated, "user", user.Id, user.Version, snapshot, new { status = previous }, ct);
+
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw PaymentsException.Conflict("invalid_state", "The user changed while this ran. Try again.");
+        }
+        return snapshot;
     }
 
     public async Task<UserDto> UpdateAsync(string id, UserUpdateRequest request, CancellationToken ct)

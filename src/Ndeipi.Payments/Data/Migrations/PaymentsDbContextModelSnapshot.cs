@@ -350,6 +350,10 @@ namespace Ndeipi.Payments.Data.Migrations
 
                     b.HasIndex("Kind", "Provider", "Asset");
 
+                    b.HasIndex("IntegratorId", "Kind", "Bucket", "Asset")
+                        .IsUnique()
+                        .HasFilter("[WalletId] IS NULL AND [Provider] IS NULL");
+
                     b.ToTable("LedgerAccounts", "payments", t =>
                         {
                             t.HasCheckConstraint("CK_LedgerAccounts_NonNegative", "[AllowNegative] = 1 OR [Balance] >= 0");
@@ -630,6 +634,156 @@ namespace Ndeipi.Payments.Data.Migrations
                     b.HasIndex("AccountId", "Id");
 
                     b.ToTable("PostingLines", "payments");
+                });
+
+            modelBuilder.Entity("Ndeipi.Payments.Data.Transfer", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(38, 18)
+                        .HasColumnType("decimal(38,18)");
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DestinationType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("DestinationUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("DestinationWalletId")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(255)
+                        .HasColumnType("nvarchar(255)");
+
+                    b.Property<Guid>("IntegratorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("IntegratorReference")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ReceiptJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("SourceUserId")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("SourceWalletId")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("StateReasonJson")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationUserId");
+
+                    b.HasIndex("DestinationWalletId");
+
+                    b.HasIndex("SourceUserId");
+
+                    b.HasIndex("SourceWalletId");
+
+                    b.HasIndex("IntegratorId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("[IdempotencyKey] IS NOT NULL");
+
+                    b.HasIndex("IntegratorId", "IntegratorReference");
+
+                    b.ToTable("Transfers", "payments");
+                });
+
+            modelBuilder.Entity("Ndeipi.Payments.Data.Wallet", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Asset")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Decimals")
+                        .HasColumnType("int");
+
+                    b.Property<Guid>("IntegratorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTimeOffset?>("PriceRiskAcknowledgedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Asset")
+                        .IsUnique();
+
+                    b.ToTable("Wallets", "payments");
                 });
 
             modelBuilder.Entity("Ndeipi.Payments.Data.WebhookEndpoint", b =>
