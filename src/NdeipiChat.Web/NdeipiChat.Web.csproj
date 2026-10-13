@@ -28,6 +28,7 @@
     <ProjectReference Include="..\NdeipiChat.SubApps.Finance\NdeipiChat.SubApps.Finance.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.Market\NdeipiChat.SubApps.Market.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.Creators\NdeipiChat.SubApps.Creators.csproj" />
+    <ProjectReference Include="..\NdeipiChat.SubApps.Treasury\NdeipiChat.SubApps.Treasury.csproj" />
   </ItemGroup>
 
   <!-- Sub-apps (SRS SR-02): published with the site but not downloaded until first opened. The
@@ -50,6 +51,8 @@
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.Market" />
     <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.Creators.wasm" />
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.Creators" />
+    <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.Treasury.wasm" />
+    <TrimmerRootAssembly Include="NdeipiChat.SubApps.Treasury" />
   </ItemGroup>
 
 </Project>

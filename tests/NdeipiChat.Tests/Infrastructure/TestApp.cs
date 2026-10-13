@@ -41,6 +41,7 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
     public StubBridge Bridge { get; } = new();
     public StubClaude Claude { get; } = new();
     public StubPlatforms Platforms { get; } = new();
+    public StubTreasury Treasury { get; } = new();
 
     /// <summary>The test Telegram bot's token, for signing login widget data.</summary>
     public const string TelegramBotToken = "123456:telegram-test-token";
@@ -105,7 +106,10 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
             ["Trust:X:ClientId"] = "x-client",
             ["Trust:X:ClientSecret"] = "x-secret",
             ["Trust:Telegram:BotUsername"] = "ndeipi_test_bot",
-            ["Trust:Telegram:BotToken"] = TelegramBotToken
+            ["Trust:Telegram:BotToken"] = TelegramBotToken,
+            ["Treasury:PaymentsBaseUrl"] = "https://payments.test",
+            ["Treasury:GatewayKey"] = StubTreasury.GatewayKey,
+            ["Treasury:PollInterval"] = "01:00:00"
         }));
 
         builder.ConfigureTestServices(services =>
@@ -116,6 +120,9 @@ public sealed class TestApp : WebApplicationFactory<Program>, IAsyncLifetime
                 .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
             services.AddHttpClient<NdeipiChat.Api.Trust.TrustOAuthClient>()
                 .ConfigurePrimaryHttpMessageHandler(() => Platforms)
+                .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+            services.AddHttpClient(NdeipiChat.Api.Treasury.TreasuryModule.ClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Treasury)
                 .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
             services.AddHttpClient<ICattleVisionAssessor, ClaudeCattleAssessor>()
                 .ConfigurePrimaryHttpMessageHandler(() => Claude)

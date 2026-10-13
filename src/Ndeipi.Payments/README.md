@@ -23,6 +23,7 @@ The folders follow the six server components in SRS §8.2.
 | `Webhooks/` | Endpoints, events, signed delivery | Built (M2): endpoints with their own keys, the events API, redelivery, and a dispatcher that retries with backoff and connects only to public addresses. The test call is M6. |
 | `Sandbox/` | Simulated KYC, deposits, payout outcomes | Built. |
 | `Ops/` | Operator API at `/ops/v1`: review queue, release and reject, four-eyes manual refunds | Built (M5). Not part of the integrator contract; operators authenticate with operator keys. |
+| `Banking/` | Ndeipi's own treasury at Meow (SRS-NDE-MEOW-001), at `/ops/v1/banking` and `/webhooks/meow` | Built: accounts and statements, payees, ACH/wire/international/USDC payments with sanctions screening and dual approval, virtual cards, signed webhooks, the write-once journal, and the Claude assistant over Meow's read-only MCP tools. Off unless `Payments:Banking:Provider` is set. |
 
 Every operation in the contract is mapped. Ones that are not built yet answer
 `501 not_implemented` and name their milestone. `ContractTests` fails if the routes and
@@ -64,6 +65,36 @@ Treasury operations stand in for the operator console. These three steps set up 
 
 Development migrates the LocalDB database `NdeipiPayments` on startup. Production refuses to
 start on the simulated providers.
+
+## Business banking (Meow)
+
+Treasury officers use it from the Ndeipi app's Business Banking sub-app; the chat API passes their
+requests here with a gateway key that names the officer, and only this server talks to Meow.
+Development runs on a simulated bank (`appsettings.Development.json`). To use Meow's sandbox, keep
+the keys in user-secrets, never in a file:
+
+```bash
+dotnet user-secrets set "Payments:Banking:Provider" "meow" --project src/Ndeipi.Payments
+dotnet user-secrets set "Payments:Banking:Meow:ApiKey" "<sandbox key>" --project src/Ndeipi.Payments
+dotnet run --project src/Ndeipi.Payments -- meow-check
+dotnet run --project src/Ndeipi.Payments -- meow-subscribe https://<public host>/webhooks/meow
+dotnet user-secrets set "Payments:Banking:Meow:WebhookSecret" "<whsec_ printed above>" --project src/Ndeipi.Payments
+```
+
+The Meow key needs the scopes `accounts:read`, `accounts:balances`, `accounts:transactions`,
+`contacts:read`, `contacts:write`, `transfers:ach:write`, `transfers:wire:write`,
+`transfers:international:write`, `transfers:crypto:write`, `cards:read`, `cards:write`,
+`webhooks:read` and `webhooks:write`. International payments and card number retrieval need Meow to
+turn them on for the account. The assistant needs `Payments:Banking:Assistant:ApiKey` (an
+Anthropic key); production also needs OFAC's `sdn.csv` at `Payments:Banking:Sanctions:SdnCsvPath`.
+
+Then give the chat API its way in, and give officers the `treasury` role:
+
+```bash
+dotnet run --project src/Ndeipi.Payments -- issue-gateway-key "Ndeipi app"
+dotnet user-secrets set "Treasury:PaymentsBaseUrl" "http://localhost:5180" --project src/NdeipiChat.Api
+dotnet user-secrets set "Treasury:GatewayKey" "<nd_op_ key printed above>" --project src/NdeipiChat.Api
+```
 
 ## Tests
 

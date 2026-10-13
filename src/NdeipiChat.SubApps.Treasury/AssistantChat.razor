@@ -1,0 +1,143 @@
+@* The banking assistant (FR-5): ask about balances, transactions, payees and cards in plain language.
+   It reads through read-only tools and can draft a payment, shown here as a card to confirm or
+   discard; nothing is sent until you confirm (TC-FR-5.2). *@
+
+@if (App.Settings is { AssistantEnabled: false })
+{
+    <section class="tr-card"><p class="muted" style="margin: 0">The assistant isn't set up on this server.</p></section>
+}
+else
+{
+    <section class="tr-card">
+        <div class="tr-chat" aria-live="polite">
+            @if (_turns.Count == 0)
+            {
+                <p class="muted" style="margin: 0">
+                    Try: "What's our available balance?", "What came in this week?", or "Pay Acme Feed $1,250 for the March invoice".
+                    The assistant can draft payments, but only you can send them.
+                </p>
+            }
+            @foreach (var t in _turns)
+            {
+                @if (t.Text.Length > 0)
+                {
+                    <div class="tr-bubble @t.Role">@t.Text</div>
+                }
+                @foreach (var draft in t.Drafts)
+                {
+                    <div class="tr-intent" @key="draft.Id">
+                        <div class="tr-row"><span class="tr-badge agent">✨ Payment draft</span><span class="grow"></span><span class="tr-badge @Format.Tone(draft.Status)">@Format.Status(draft.Status)</span></div>
+                        <div class="tr-row">
+                            <span class="grow"><b>@draft.PayeeName</b><small>@Format.Rail(draft.Rail) · @draft.Purpose</small></span>
+                            <span class="amount">@Format.Money(draft.Amount)</span>
+                        </div>
+                        @if (draft.Status == "awaiting_confirmation")
+                        {
+                            <div class="tr-actions">
+                                <button class="primary" disabled="@_busy" @onclick='() => DecideAsync(t, draft, "confirm")'>Confirm and send</button>
+                                <button class="secondary" disabled="@_busy" @onclick='() => DecideAsync(t, draft, "cancel")'>Discard</button>
+                            </div>
+                        }
+                        else if (draft.Status == "pending_approval")
+                        {
+                            <span class="small muted">Confirmed. It's at or over the approval threshold, so another officer must approve it.</span>
+                        }
+                    </div>
+                }
+            }
+            @if (_busy && _asking)
+            {
+                <div class="tr-bubble assistant muted">Thinking…</div>
+            }
+        </div>
+        @if (_error is not null)
+        {
+            <div class="tr-note warn small">@_error</div>
+        }
+        <form class="tr-row" @onsubmit="AskAsync" @onsubmit:preventDefault>
+            <input class="grow" maxlength="4000" placeholder="Ask about the treasury…" aria-label="Message the assistant" @bind="_text" @bind:event="oninput" disabled="@_busy" />
+            <button class="primary" type="submit" disabled="@(_busy || string.IsNullOrWhiteSpace(_text))">Send</button>
+        </form>
+        <span class="small muted">Answers come from Claude using Ndeipi's and Meow's records. Check figures before acting on them.</span>
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    sealed record Turn(string Role, string Text, List<TreasuryPaymentDto> Drafts);
+
+    readonly List<Turn> _turns = [];
+    string _text = "";
+    string? _error;
+    bool _busy, _asking;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (App.AssistantSessionId is not { } id)
+            return;
+        try
+        {
+            var session = await App.Api.GetAsync<TreasuryAssistantSessionDto>($"assistant/sessions/{id}");
+            foreach (var m in session.Messages)
+            {
+                var drafts = new List<TreasuryPaymentDto>();
+                foreach (var draftId in m.DraftedPaymentIds)
+                    drafts.Add(await App.Api.GetAsync<TreasuryPaymentDto>($"payments/{draftId}"));
+                // Drafts are produced by tool calls; show them under the reply that followed.
+                if (m.Role == "user" && drafts.Count > 0 && _turns.LastOrDefault() is { Role: "assistant" } last)
+                    last.Drafts.AddRange(drafts);
+                else if (m.Text.Length > 0)
+                    _turns.Add(new Turn(m.Role, m.Text, drafts));
+            }
+        }
+        catch (TreasuryException)
+        {
+            App.AssistantSessionId = null;
+        }
+    }
+
+    async Task AskAsync()
+    {
+        var text = _text.Trim();
+        if (text.Length == 0)
+            return;
+        (_busy, _asking, _error, _text) = (true, true, null, "");
+        _turns.Add(new Turn("user", text, []));
+        try
+        {
+            App.AssistantSessionId ??= (await App.Api.SendAsync<TreasuryAssistantSessionDto>(HttpMethod.Post, "assistant/sessions", new { }))!.Id;
+            var reply = await App.Api.SendAsync<TreasuryAssistantReplyDto>(HttpMethod.Post, $"assistant/sessions/{App.AssistantSessionId}/messages", new { text });
+            _turns.Add(new Turn("assistant", reply!.Text, [.. reply.Drafts]));
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+            _text = text;
+            _turns.RemoveAt(_turns.Count - 1);
+        }
+        finally
+        {
+            (_busy, _asking) = (false, false);
+        }
+    }
+
+    async Task DecideAsync(Turn turn, TreasuryPaymentDto draft, string action)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var updated = await App.Api.SendAsync<TreasuryPaymentDto>(HttpMethod.Post, $"payments/{draft.Id}/{action}", new { });
+            turn.Drafts[turn.Drafts.IndexOf(draft)] = updated!;
+            await App.CountWaitingAsync();
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

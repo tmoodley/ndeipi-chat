@@ -10,10 +10,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Ndeipi.Payments</RootNamespace>
+    <!-- Meow and Anthropic keys for local runs: dotnet user-secrets set "Payments:Banking:Meow:ApiKey" "..." -->
+    <UserSecretsId>7d3c1a52-9e4b-4f0a-8b61-2c5e9f1d4a37</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- Ed25519 webhook signatures (docs/payments-api/README.md, decision 1); .NET has no Ed25519 of its own. -->
+    <PackageReference Include="Anthropic" Version="12.55.0" />
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.1" />
     <!-- Webhook signing keys are encrypted at rest with a key ring kept in this database, shared by every instance. -->
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" Version="10.0.12" />
@@ -22,6 +25,8 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="10.10.0" />
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.2.0" />
   </ItemGroup>
 
   <ItemGroup>

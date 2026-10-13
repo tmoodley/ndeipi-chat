@@ -15,12 +15,16 @@ public sealed class OperatorKeyService(PaymentsDbContext db, TimeProvider clock)
 {
     public const string Prefix = "nd_op_";
 
-    public async Task<(OperatorKey Record, string Key)> IssueAsync(string @operator, CancellationToken ct)
+    /// <param name="actsForOfficers">A gateway key for the Ndeipi app's server, which names the officer it acts for.</param>
+    public async Task<(OperatorKey Record, string Key)> IssueAsync(string @operator, CancellationToken ct, bool actsForOfficers = false)
     {
         if (string.IsNullOrWhiteSpace(@operator))
             throw new ArgumentException("An operator key names its operator.");
         var key = Prefix + Base64Url.EncodeToString(RandomNumberGenerator.GetBytes(32));
-        var record = new OperatorKey { Id = Guid.NewGuid(), Operator = @operator.Trim(), KeyHash = ApiKeyService.Hash(key), CreatedAt = clock.GetUtcNow() };
+        var record = new OperatorKey
+        {
+            Id = Guid.NewGuid(), Operator = @operator.Trim(), KeyHash = ApiKeyService.Hash(key), ActsForOfficers = actsForOfficers, CreatedAt = clock.GetUtcNow()
+        };
         db.OperatorKeys.Add(record);
         await db.SaveChangesAsync(ct);
         return (record, key);
@@ -43,6 +47,13 @@ public sealed class OperatorAuthenticationHandler(
     public const string Header = "Operator-Key";
     public const string Policy = "Operator";
     public const string NameClaim = "operator";
+    public const string OfficerIdClaim = "officer_id";
+
+    /// <summary>
+    /// Sent by a gateway key: <c>&lt;officer id&gt;;&lt;URL-encoded name&gt;</c>, the officer the gateway
+    /// signed in. Ignored from any other key.
+    /// </summary>
+    public const string ActingOfficerHeader = "Acting-Officer";
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
@@ -53,7 +64,21 @@ public sealed class OperatorAuthenticationHandler(
         var record = await db.OperatorKeys.AsNoTracking().FirstOrDefaultAsync(k => k.KeyHash == hash, Context.RequestAborted);
         if (record is null || record.RevokedAt is not null)
             return AuthenticateResult.Fail("unauthorized");
-        var identity = new ClaimsIdentity([new Claim(NameClaim, record.Operator)], SchemeName);
+        var claims = new List<Claim>();
+        if (!record.ActsForOfficers)
+        {
+            claims.Add(new Claim(NameClaim, record.Operator));
+            claims.Add(new Claim(OfficerIdClaim, $"operator:{record.Id}"));
+        }
+        // The gateway vouches for the officer; naming none, it can read but not decide.
+        else if (Request.Headers[ActingOfficerHeader].ToString().Split(';', 2) is [{ Length: > 0 } id, { Length: > 0 } name])
+        {
+            claims.Add(new Claim(NameClaim, $"{Uri.UnescapeDataString(name).Trim()} via {record.Operator}"));
+            claims.Add(new Claim(OfficerIdClaim, $"officer:{id.Trim()}"));
+        }
+        else
+            claims.Add(new Claim(NameClaim, record.Operator));
+        var identity = new ClaimsIdentity(claims, SchemeName);
         return AuthenticateResult.Success(new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName));
     }
 
@@ -65,4 +90,14 @@ public sealed class OperatorAuthenticationHandler(
 
     public static string Name(HttpContext http) =>
         http.User.FindFirst(NameClaim)?.Value ?? throw new InvalidOperationException("No operator on this request.");
+
+    /// <summary>
+    /// The person acting: a named operator, or the officer a gateway acts for. Null when a gateway
+    /// key names no officer.
+    /// </summary>
+    public static Officer? OfficerOf(HttpContext http) =>
+        http.User.FindFirst(OfficerIdClaim)?.Value is { } id ? new Officer(id, Name(http)) : null;
 }
+
+/// <summary>Who is acting on the operator API: <see cref="Id"/> is stable and is what four-eyes rules compare.</summary>
+public sealed record Officer(string Id, string Name);

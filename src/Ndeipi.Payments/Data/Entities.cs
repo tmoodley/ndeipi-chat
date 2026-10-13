@@ -420,6 +420,13 @@ public sealed class OperatorKey
     public Guid Id { get; set; }
     public required string Operator { get; set; }
     public required byte[] KeyHash { get; set; }
+
+    /// <summary>
+    /// A gateway key: the Ndeipi app's server, which signs officers in itself and names the officer it
+    /// acts for on each request. Approvals then tell officers apart, not the gateway.
+    /// </summary>
+    public bool ActsForOfficers { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? RevokedAt { get; set; }
 }

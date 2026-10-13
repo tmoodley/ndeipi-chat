@@ -30,8 +30,15 @@ public sealed class LocalPreview
         app.StartServer();
         var site = new Uri($"http://localhost:{Port}/");
 
-        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole]);
-        var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test");
+        // Business Banking against a payments server run locally with the simulated bank, when given:
+        // NDEIPI_PREVIEW_TREASURY_URL=http://localhost:5180 and NDEIPI_PREVIEW_TREASURY_KEY=(its gateway key).
+        if (Environment.GetEnvironmentVariable("NDEIPI_PREVIEW_TREASURY_URL") is { Length: > 0 } treasuryUrl
+            && Environment.GetEnvironmentVariable("NDEIPI_PREVIEW_TREASURY_KEY") is { Length: > 0 } treasuryKey)
+            app.Treasury.ForwardTo(new Uri(treasuryUrl.TrimEnd('/') + "/"), treasuryKey);
+
+        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test",
+            roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole, TreasuryContract.Role]);
+        var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test", roles: [TreasuryContract.Role]);
         var rudo = await app.CreateUserAsync("Rudo Moyo", "rudo@example.test");
 
         foreach (var (friend, email) in new[] { (tendai, "tendai@example.test"), (rudo, "rudo@example.test") })

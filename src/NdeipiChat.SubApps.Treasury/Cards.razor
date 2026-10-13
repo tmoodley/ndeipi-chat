@@ -1,0 +1,291 @@
+@implements IDisposable
+
+@* Corporate virtual cards (FR-4): issue one with a per-purchase limit, daily and monthly caps and the
+   merchant categories it works at; freeze, change or revoke it. The card number never touches Ndeipi's
+   database: where enabled, it is fetched from Meow's card vault once, shown here, and gone when you
+   leave (NFR-SEC-02). *@
+
+@if (_error is not null)
+{
+    <div class="tr-note warn">@_error</div>
+}
+
+@if (_issuing)
+{
+    <section class="tr-card">
+        <h2>Issue a virtual card</h2>
+        <div class="tr-two">
+            <label class="tr-field">Name on the card<input maxlength="30" placeholder="Delivery truck fuel" @bind="_nickname" @bind:event="oninput" /></label>
+            <label class="tr-field">Spends from
+                <select @bind="_debitAccountId">
+                    @foreach (var a in _accounts ?? [])
+                    {
+                        <option value="@a.Id">@a.Name @(a.Last4 is null ? "" : $"••{a.Last4}")</option>
+                    }
+                </select>
+            </label>
+        </div>
+        <LimitFields PerTransaction="_perTransaction" Daily="_daily" Monthly="_monthly"
+                     PerTransactionChanged="v => _perTransaction = v" DailyChanged="v => _daily = v" MonthlyChanged="v => _monthly = v" />
+        <CategoryPicker Selected="_categories" />
+        <label class="tr-field">What it's for (only Ndeipi and Meow see this)<input maxlength="500" @bind="_purpose" /></label>
+        <div class="tr-actions">
+            <button class="primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_nickname) || _perTransaction is not > 0)" @onclick="IssueAsync">@(_busy ? "Issuing…" : "Issue card")</button>
+            <button class="secondary" @onclick="() => _issuing = false">Cancel</button>
+        </div>
+    </section>
+}
+else
+{
+    <div class="tr-actions"><button class="primary" @onclick="StartIssue">+ Issue a card</button></div>
+}
+
+@if (_cards is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_cards.Count == 0 && !_issuing)
+{
+    <section class="tr-card"><p class="muted" style="margin: 0">No cards yet.</p></section>
+}
+
+@foreach (var c in _cards ?? [])
+{
+    <section class="tr-card" @key="c.Id">
+        <div class="tr-cardface @c.State">
+            <div class="tr-row"><b class="grow">@c.Nickname</b><span>VIRTUAL</span></div>
+            @if (_revealed is { } shown && shown.CardId == c.Id)
+            {
+                <span class="pan">@Group(shown.Number.Number)</span>
+                <span>Exp @shown.Number.ExpMonth.ToString("00")/@(shown.Number.ExpYear % 100) · CVC @shown.Number.Cvc</span>
+            }
+            else
+            {
+                <span class="pan">•••• •••• •••• @(c.Last4 ?? "····")</span>
+            }
+            <span class="small">@(c.Cardholder ?? "Ndeipi") · @c.State</span>
+        </div>
+        <dl class="tr-facts">
+            <dt>Limits</dt>
+            <dd>@Format.Money(c.PerTransactionLimit) a purchase@(c.DailyLimit is { } d ? $" · {Format.Money(d)} a day" : "")@(c.MonthlyLimit is { } m ? $" · {Format.Money(m)} a month" : "")</dd>
+            <dt>Works at</dt><dd>@(c.AllowedCategories.Count == 0 ? "Any merchant" : string.Join(", ", c.AllowedCategories))</dd>
+            @if (c.Purpose is { } purpose)
+            {
+                <dt>For</dt><dd>@purpose</dd>
+            }
+            <dt>Issued</dt><dd>@c.CreatedBy · @Format.Day(c.CreatedAt)</dd>
+        </dl>
+
+        @if (_editing == c.Id)
+        {
+            <LimitFields PerTransaction="_perTransaction" Daily="_daily" Monthly="_monthly"
+                         PerTransactionChanged="v => _perTransaction = v" DailyChanged="v => _daily = v" MonthlyChanged="v => _monthly = v" />
+            <CategoryPicker Selected="_categories" />
+            <div class="tr-actions">
+                <button class="primary" disabled="@_busy" @onclick="() => SaveLimitsAsync(c)">Save</button>
+                <button class="secondary" @onclick="() => _editing = null">Cancel</button>
+            </div>
+        }
+        else if (c.State is "active" or "frozen" or "pending")
+        {
+            <div class="tr-actions">
+                @if (c.State == "frozen")
+                {
+                    <button class="primary" disabled="@_busy" @onclick="() => UpdateAsync(c, new { frozen = false })">Unfreeze</button>
+                }
+                else
+                {
+                    <button class="secondary" disabled="@_busy" @onclick="() => UpdateAsync(c, new { frozen = true })">❄ Freeze</button>
+                }
+                <button class="secondary" disabled="@_busy" @onclick="() => StartEdit(c)">Limits & categories</button>
+                @if (App.Settings?.CardRevealEnabled == true && !c.NumberRevealed && c.State == "active")
+                {
+                    <button class="secondary" disabled="@_busy" @onclick="() => _confirmReveal = c.Id">Show number</button>
+                }
+                <button class="link" disabled="@_busy" @onclick="() => _confirmRevoke = c.Id">Revoke</button>
+            </div>
+            @if (_confirmReveal == c.Id)
+            {
+                <div class="tr-note warn small">
+                    Meow shows a card's number <b>once</b>. Have the checkout open; after you leave this screen the number can't be shown again,
+                    and a lost number means revoking the card and issuing a new one.
+                    <div class="tr-actions" style="margin-top: 8px">
+                        <button class="primary" disabled="@_busy" @onclick="() => RevealAsync(c)">Show it now</button>
+                        <button class="secondary" @onclick="() => _confirmReveal = null">Not now</button>
+                    </div>
+                </div>
+            }
+            @if (_confirmRevoke == c.Id)
+            {
+                <div class="tr-note warn small">
+                    Revoking closes @c.Nickname for good; pending purchases may still settle.
+                    <div class="tr-actions" style="margin-top: 8px">
+                        <button class="danger" disabled="@_busy" @onclick="() => RevokeAsync(c)">Revoke card</button>
+                        <button class="secondary" @onclick="() => _confirmRevoke = null">Keep it</button>
+                    </div>
+                </div>
+            }
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    List<TreasuryCardDto>? _cards;
+    IReadOnlyList<TreasuryAccountDto>? _accounts;
+    bool _issuing, _busy;
+    string? _error, _editing, _confirmReveal, _confirmRevoke, _purpose;
+    string _nickname = "", _debitAccountId = "";
+    int? _perTransaction = 500, _daily, _monthly;
+    HashSet<string> _categories = [];
+    (string CardId, TreasuryCardNumberDto Number)? _revealed;
+    string _key = Guid.NewGuid().ToString("N");
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _cards = (await App.Api.GetAsync<TreasuryList<TreasuryCardDto>>("cards")).Data.ToList();
+        }
+        catch (TreasuryException e)
+        {
+            (_cards, _error) = (_cards ?? [], e.Message);
+        }
+    }
+
+    async Task StartIssue()
+    {
+        (_issuing, _nickname, _perTransaction, _daily, _monthly, _purpose, _categories, _error) = (true, "", 500, null, null, null, [], null);
+        _key = Guid.NewGuid().ToString("N");
+        try
+        {
+            _accounts ??= (await App.Api.GetAsync<TreasuryList<TreasuryAccountDto>>("accounts")).Data.Where(a => a.Type != "DIGITALWALLET").ToList();
+            _debitAccountId = _accounts.FirstOrDefault()?.Id ?? "";
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task IssueAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await App.Api.SendAsync<TreasuryCardDto>(HttpMethod.Post, "cards", new
+            {
+                nickname = _nickname.Trim(),
+                debit_account_id = _debitAccountId,
+                per_transaction_limit = _perTransaction,
+                daily_limit = _daily,
+                monthly_limit = _monthly,
+                allowed_categories = _categories.Order().ToList(),
+                purpose = string.IsNullOrWhiteSpace(_purpose) ? null : _purpose.Trim()
+            }, _key);
+            _issuing = false;
+            await LoadAsync();
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    void StartEdit(TreasuryCardDto c)
+    {
+        (_editing, _perTransaction, _daily, _monthly) = (c.Id, c.PerTransactionLimit, c.DailyLimit, c.MonthlyLimit);
+        _categories = [.. c.AllowedCategories];
+    }
+
+    Task SaveLimitsAsync(TreasuryCardDto c) => UpdateAsync(c, new
+    {
+        per_transaction_limit = _perTransaction,
+        // 0 clears a cap.
+        daily_limit = _daily ?? 0,
+        monthly_limit = _monthly ?? 0,
+        allowed_categories = _categories.Order().ToList()
+    });
+
+    async Task UpdateAsync(TreasuryCardDto c, object change)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var updated = await App.Api.SendAsync<TreasuryCardDto>(HttpMethod.Patch, $"cards/{c.Id}", change);
+            _cards![_cards.IndexOf(c)] = updated!;
+            _editing = null;
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task RevokeAsync(TreasuryCardDto c)
+    {
+        (_busy, _error, _confirmRevoke) = (true, null, null);
+        try
+        {
+            var updated = await App.Api.SendAsync<TreasuryCardDto>(HttpMethod.Post, $"cards/{c.Id}/revoke", new { });
+            _cards![_cards.IndexOf(c)] = updated!;
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task RevealAsync(TreasuryCardDto c)
+    {
+        (_busy, _error, _confirmReveal) = (true, null, null);
+        try
+        {
+            var number = await App.Api.SendAsync<TreasuryCardNumberDto>(HttpMethod.Post, $"cards/{c.Id}/number", new { });
+            _revealed = (c.Id, number!);
+            await LoadAsync();
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    static string Group(string number) => string.Join(' ', Enumerable.Range(0, (number.Length + 3) / 4).Select(i => number.Substring(i * 4, Math.Min(4, number.Length - i * 4))));
+
+    // The number lives only in this component; leaving the tab forgets it.
+    public void Dispose()
+    {
+        App.Changed -= OnChanged;
+        _revealed = null;
+    }
+}
