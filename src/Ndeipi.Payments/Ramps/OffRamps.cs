@@ -33,6 +33,7 @@ public sealed class OffRampService(
     RampCatalog catalog,
     PointsPricing pricing,
     PayoutAccountService payoutAccounts,
+    TransactionMonitor monitor,
     IOptions<PaymentsOptions> options,
     TimeProvider clock)
 {
@@ -81,6 +82,12 @@ public sealed class OffRampService(
         transfer.Rail = payout.Rail;
         book.SetReceipt(transfer, new ReceiptDto(book.Format(amount, Points), null, null, [], transfer.CreatedAt, null,
             AmountPaidOut: book.Format(fiat, payout.Currency), Rate: Rate(payout.Currency)));
+        // Held for review, the funds are set aside just the same; only the submission waits.
+        if (await monitor.AssessAsync(from.UserId, Points, amount, ct) is { } hold)
+        {
+            TransferBook.MoveUnsaved(transfer, TransferState.InReview);
+            transfer.StateReasonJson = System.Text.Json.JsonSerializer.Serialize(hold, PaymentsJson.Options);
+        }
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         db.Transfers.Add(transfer);
@@ -98,11 +105,16 @@ public sealed class OffRampService(
     /// Sends a pending off-ramp to its rail. The transfer's ID is the provider reference, so a
     /// repeated submission is recognised rather than paid twice (SRV-PROV-04). False if the provider
     /// is down: the transfer stays pending and is tried again.
+    ///
+    /// An off-ramp held in review is submitted only when an operator releases it
+    /// (<paramref name="released"/>); if the provider is down then, it stays in review and the release
+    /// answers <c>provider_unavailable</c> so the operator can try again.
     /// </summary>
-    public async Task<bool> SubmitAsync(string transferId, CancellationToken ct)
+    public async Task<bool> SubmitAsync(string transferId, CancellationToken ct, bool released = false)
     {
         var transfer = await db.Transfers.SingleAsync(t => t.Id == transferId, ct);
-        if (transfer.Kind != TransferKind.Offramp || transfer.State != TransferState.Pending)
+        var from = released ? TransferState.InReview : TransferState.Pending;
+        if (transfer.Kind != TransferKind.Offramp || transfer.State != from)
             return false;
         var payout = await db.PayoutAccounts.AsNoTracking().SingleAsync(p => p.Id == transfer.PayoutAccountId, ct);
         var fiat = pricing.FiatFor(payout.Currency, transfer.Amount);
@@ -112,6 +124,10 @@ public sealed class OffRampService(
         {
             operation = await providers.RailFor(payout.Rail).SubmitPayoutAsync(new FiatPayoutRequest(
                 transfer.Id, payout.Rail, payout.Currency, fiat, payout.Country, payout.AccountOwnerName, payoutAccounts.Destination(payout)), ct);
+        }
+        catch (ProviderUnavailableException e) when (released)
+        {
+            throw new PaymentsException(503, new ApiError("provider_unavailable", $"The rail is unavailable, so the payout stays in review. {e.Message}"));
         }
         catch (ProviderUnavailableException)
         {
@@ -148,6 +164,28 @@ public sealed class OffRampService(
             // The worker and a webhook (or the sandbox) reported it at the same moment; the other one applied it.
             throw PaymentsException.Conflict("invalid_state", "That payout's outcome has already been applied.");
         }
+    }
+
+    /// <summary>An operator rejects a cash-out held in review: the points and the reserved fiat go back.</summary>
+    public async Task<TransferDto> RejectHeldAsync(string transferId, ReasonDto reason, CancellationToken ct)
+    {
+        var current = await db.Transfers.AsNoTracking().SingleAsync(t => t.Id == transferId, ct);
+        var payout = await db.PayoutAccounts.AsNoTracking().SingleAsync(p => p.Id == current.PayoutAccountId, ct);
+        var fiat = pricing.FiatFor(payout.Currency, current.Amount);
+        var reserve = await house.ReserveAsync(payout.Currency, ct);
+        var suspense = await house.SuspenseAsync(payout.Currency, ct);
+        var wallet = await db.LedgerAccounts.AsNoTracking().Where(a => a.WalletId == current.SourceWalletId).ToDictionaryAsync(a => a.Bucket, a => a.Id, ct);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var transfer = await TransferBook.LockAsync(db, transferId, TransferState.InReview, ct);
+        await book.MoveAsync(transfer, TransferState.Refunded, reason, ct);
+        await ledger.PostAsync(new PostingRequest($"Off-ramp rejected in review, {transfer.Id}",
+        [
+            new(wallet[LedgerBucket.Pending], -transfer.Amount), new(wallet[LedgerBucket.Available], transfer.Amount),
+            new(suspense, -fiat), new(reserve, fiat)
+        ], transfer.Id), ct);
+        await transaction.CommitAsync(ct);
+        return book.To(transfer);
     }
 
     async Task<TransferDto> ApplyOutcomeOnceAsync(string transferId, ProviderOperationStatus status, string? railReference, string? reason, CancellationToken ct)

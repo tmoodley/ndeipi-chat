@@ -517,6 +517,36 @@ namespace Ndeipi.Payments.Data.Migrations
                     b.ToTable("OnboardingLinks", "payments");
                 });
 
+            modelBuilder.Entity("Ndeipi.Payments.Data.OperatorKey", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<byte[]>("KeyHash")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varbinary(32)");
+
+                    b.Property<string>("Operator")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("KeyHash")
+                        .IsUnique();
+
+                    b.ToTable("OperatorKeys", "payments");
+                });
+
             modelBuilder.Entity("Ndeipi.Payments.Data.OtcTrade", b =>
                 {
                     b.Property<long>("Id")
@@ -583,8 +613,8 @@ namespace Ndeipi.Payments.Data.Migrations
                         .HasColumnType("nvarchar(40)");
 
                     b.Property<string>("BusinessName")
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("Country")
                         .HasMaxLength(2)
@@ -594,8 +624,8 @@ namespace Ndeipi.Payments.Data.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("Email")
-                        .HasMaxLength(320)
-                        .HasColumnType("nvarchar(320)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("ExternalReference")
                         .IsRequired()
@@ -603,8 +633,8 @@ namespace Ndeipi.Payments.Data.Migrations
                         .HasColumnType("nvarchar(128)");
 
                     b.Property<string>("FirstName")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<Guid>("IntegratorId")
                         .HasColumnType("uniqueidentifier");
@@ -615,16 +645,16 @@ namespace Ndeipi.Payments.Data.Migrations
                         .HasColumnType("nvarchar(20)");
 
                     b.Property<string>("LastName")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("MetadataJson")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("Phone")
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("RejectionReasonsJson")
                         .IsRequired()
@@ -668,8 +698,8 @@ namespace Ndeipi.Payments.Data.Migrations
 
                     b.Property<string>("AccountOwnerName")
                         .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("nvarchar(200)");
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<string>("Country")
                         .IsRequired()
@@ -889,6 +919,63 @@ namespace Ndeipi.Payments.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Quotes", "payments");
+                });
+
+            modelBuilder.Entity("Ndeipi.Payments.Data.RefundRequest", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(38, 18)
+                        .HasColumnType("decimal(38,18)");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("DecidedBy")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("IntegratorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTimeOffset>("RequestedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("RequestedBy")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<string>("TransferId")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransferId");
+
+                    b.ToTable("RefundRequests", "payments", t =>
+                        {
+                            t.HasCheckConstraint("CK_RefundRequests_FourEyes", "[DecidedBy] IS NULL OR [DecidedBy] <> [RequestedBy]");
+                        });
                 });
 
             modelBuilder.Entity("Ndeipi.Payments.Data.Transfer", b =>

@@ -55,6 +55,21 @@ public sealed class PaymentsOptions
 
     public WebhookOptions Webhooks { get; set; } = new();
 
+    public MonitoringOptions Monitoring { get; set; } = new();
+
+    /// <summary>
+    /// Transaction monitoring (SRV-KYC-04): when a transfer is held for an operator. Amounts are in
+    /// Ndeipi Points. The defaults are placeholders for compliance to set; 0 turns a rule off.
+    /// </summary>
+    public sealed class MonitoringOptions
+    {
+        /// <summary>Hold any single user-to-user transfer or cash-out of at least this many points.</summary>
+        public decimal ReviewSingleFrom { get; set; } = 50_000m;
+
+        /// <summary>Hold a transfer or cash-out that takes the sender's last 24 hours of outgoing points to at least this.</summary>
+        public decimal ReviewDailyFrom { get; set; } = 100_000m;
+    }
+
     /// <summary>
     /// What each rail carries, keyed by rail code. When none are configured the defaults in
     /// <see cref="Ramps.RampCatalog"/> apply: placeholders until Absa onboarding and PayPal approval

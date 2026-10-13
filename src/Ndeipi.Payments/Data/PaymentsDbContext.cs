@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Ndeipi.Payments.Data;
 
@@ -28,7 +30,8 @@ public sealed class IntegratorScope
     }
 }
 
-public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> options, IntegratorScope scope) : DbContext(options), IDataProtectionKeyContext
+public sealed class PaymentsDbContext(
+    DbContextOptions<PaymentsDbContext> options, IntegratorScope scope, IDataProtectionProvider protection) : DbContext(options), IDataProtectionKeyContext
 {
     public const string Schema = "payments";
 
@@ -52,15 +55,26 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
     public DbSet<Deposit> Deposits => Set<Deposit>();
     public DbSet<PayoutAccount> PayoutAccounts => Set<PayoutAccount>();
     public DbSet<Quote> Quotes => Set<Quote>();
+    public DbSet<OperatorKey> OperatorKeys => Set<OperatorKey>();
+    public DbSet<RefundRequest> RefundRequests => Set<RefundRequest>();
     public DbSet<WebhookEndpoint> WebhookEndpoints => Set<WebhookEndpoint>();
     public DbSet<EventDelivery> EventDeliveries => Set<EventDelivery>();
 
     /// <summary>The Data Protection key ring that encrypts webhook signing keys, shared by every instance.</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
+    public const string IdentityPurpose = "Ndeipi.Payments.IdentityData.v1";
+
     protected override void OnModelCreating(ModelBuilder model)
     {
         model.HasDefaultSchema(Schema);
+
+        // Names, emails and phone numbers are stored encrypted with Data Protection (SRV-KYC-05), so
+        // a database backup or a read-only SQL login sees ciphertext. The model is built once, so
+        // this protector, from the shared key ring, serves every context.
+        var protector = protection.CreateProtector(IdentityPurpose);
+        // EF never hands a null to a converter, so one for non-null strings also serves the nullable columns.
+        ValueConverter identity = new ValueConverter<string, string>(v => protector.Protect(v), v => protector.Unprotect(v));
 
         model.Entity<Integrator>(e =>
         {
@@ -102,11 +116,12 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(u => u.Id).HasMaxLength(40);
             e.Property(u => u.ExternalReference).HasMaxLength(128);
             e.HasIndex(u => new { u.IntegratorId, u.ExternalReference }).IsUnique();
-            e.Property(u => u.Email).HasMaxLength(320);
-            e.Property(u => u.Phone).HasMaxLength(20);
-            e.Property(u => u.FirstName).HasMaxLength(100);
-            e.Property(u => u.LastName).HasMaxLength(100);
-            e.Property(u => u.BusinessName).HasMaxLength(200);
+            // Identity data is encrypted at rest (SRV-KYC-05); it is never searched by, only read back.
+            e.Property(u => u.Email).HasMaxLength(1000).HasConversion(identity);
+            e.Property(u => u.Phone).HasMaxLength(1000).HasConversion(identity);
+            e.Property(u => u.FirstName).HasMaxLength(1000).HasConversion(identity);
+            e.Property(u => u.LastName).HasMaxLength(1000).HasConversion(identity);
+            e.Property(u => u.BusinessName).HasMaxLength(1000).HasConversion(identity);
             e.Property(u => u.Country).HasMaxLength(2);
             e.Property(u => u.Type).HasConversion<string>().HasMaxLength(20);
             e.Property(u => u.Status).HasConversion<string>().HasMaxLength(20);
@@ -252,7 +267,7 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(p => p.Currency).HasMaxLength(3);
             e.Property(p => p.Country).HasMaxLength(2);
             e.Property(p => p.Rail).HasMaxLength(32);
-            e.Property(p => p.AccountOwnerName).HasMaxLength(200);
+            e.Property(p => p.AccountOwnerName).HasMaxLength(1000).HasConversion(identity);
             e.Property(p => p.Status).HasConversion<string>().HasMaxLength(20);
             e.HasIndex(p => p.UserId);
             e.Property(p => p.Version).IsConcurrencyToken();
@@ -274,6 +289,28 @@ public sealed class PaymentsDbContext(DbContextOptions<PaymentsDbContext> option
             e.Property(q => q.Status).HasConversion<string>().HasMaxLength(10);
             e.Property(q => q.TransferId).HasMaxLength(40);
             e.HasQueryFilter(q => q.IntegratorId == CurrentIntegratorId);
+        });
+
+        model.Entity<OperatorKey>(e =>
+        {
+            e.Property(k => k.Operator).HasMaxLength(200);
+            e.Property(k => k.KeyHash).HasMaxLength(32);
+            e.HasIndex(k => k.KeyHash).IsUnique();
+        });
+
+        // Operator work spans integrators, so refund requests carry their integrator but no query filter.
+        model.Entity<RefundRequest>(e =>
+        {
+            e.Property(r => r.Id).HasMaxLength(40);
+            e.Property(r => r.TransferId).HasMaxLength(40);
+            e.Property(r => r.Amount).HasPrecision(38, 18);
+            e.Property(r => r.Reason).HasMaxLength(500);
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(r => r.RequestedBy).HasMaxLength(200);
+            e.Property(r => r.DecidedBy).HasMaxLength(200);
+            e.Property(r => r.Version).IsConcurrencyToken();
+            e.HasIndex(r => r.TransferId);
+            e.ToTable(t => t.HasCheckConstraint("CK_RefundRequests_FourEyes", "[DecidedBy] IS NULL OR [DecidedBy] <> [RequestedBy]"));
         });
 
         model.Entity<WebhookEndpoint>(e =>

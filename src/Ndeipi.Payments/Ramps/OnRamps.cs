@@ -317,6 +317,51 @@ public sealed class OnRampService(
         return book.To(transfer);
     }
 
+    /// <summary>
+    /// An operator releases a deposit held in review (SRV-OPS-04): the fiat moves from suspense into
+    /// the reserve and the points are credited, as for any deposit.
+    /// </summary>
+    public async Task<TransferDto> ReleaseHeldAsync(string transferId, CancellationToken ct)
+    {
+        var current = await db.Transfers.AsNoTracking().SingleAsync(t => t.Id == transferId, ct);
+        var currency = current.Asset;
+        var received = decimal.Parse(book.Receipt(current)!.AmountReceived!, System.Globalization.CultureInfo.InvariantCulture);
+        var points = pricing.PointsFor(currency, received);
+        var reserve = await house.ReserveAsync(currency, ct);
+        var suspense = await house.SuspenseAsync(currency, ct);
+        var issued = await issuance.IssuedAccountAsync(LedgerBucket.Available, ct);
+        var wallet = await db.LedgerAccounts.AsNoTracking()
+            .Where(a => a.WalletId == current.DestinationWalletId && a.Bucket == LedgerBucket.Available).Select(a => a.Id).SingleAsync(ct);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var transfer = await TransferBook.LockAsync(db, transferId, TransferState.InReview, ct);
+        book.SetReceipt(transfer, book.Receipt(transfer)! with { AmountCredited = book.Format(points, Points), CompletedAt = clock.GetUtcNow() });
+        transfer.StateReasonJson = null;
+        await book.MoveAsync(transfer, TransferState.Completed, null, ct);
+        await ledger.PostAsync(new PostingRequest($"Deposit released from review, {transfer.Id}",
+            [new(suspense, -received), new(reserve, received), new(issued, -points), new(wallet, points)], transfer.Id), ct);
+        await transaction.CommitAsync(ct);
+        return book.To(transfer);
+    }
+
+    /// <summary>An operator rejects a deposit held in review: the money is sent back (FR-ON-05).</summary>
+    public async Task<TransferDto> ReturnHeldAsync(string transferId, ReasonDto reason, CancellationToken ct)
+    {
+        var current = await db.Transfers.AsNoTracking().SingleAsync(t => t.Id == transferId, ct);
+        var currency = current.Asset;
+        var received = decimal.Parse(book.Receipt(current)!.AmountReceived!, System.Globalization.CultureInfo.InvariantCulture);
+        var clearing = await house.ClearingAsync(providers.RailFor(current.Rail!).Name, currency, ct);
+        var suspense = await house.SuspenseAsync(currency, ct);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        var transfer = await TransferBook.LockAsync(db, transferId, TransferState.InReview, ct);
+        await book.MoveAsync(transfer, TransferState.Returned, reason, ct, EventTypes.DepositReturned);
+        await ledger.PostAsync(new PostingRequest($"Deposit returned from review, {transfer.Id}",
+            [new(suspense, -received), new(clearing, received)], transfer.Id), ct);
+        await transaction.CommitAsync(ct);
+        return book.To(transfer);
+    }
+
     /// <summary>Cancels a one-off on-ramp whose money never came (run by the ramp worker).</summary>
     public async Task<bool> ExpireAsync(string transferId, CancellationToken ct)
     {

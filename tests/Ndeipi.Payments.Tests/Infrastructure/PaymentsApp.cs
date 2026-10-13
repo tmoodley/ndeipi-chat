@@ -88,6 +88,15 @@ public class PaymentsApp : WebApplicationFactory<Program>, IAsyncLifetime
         return await work(scope.ServiceProvider);
     }
 
+    /// <summary>A client acting as the named Ndeipi operator, with a key issued for them.</summary>
+    public async Task<HttpClient> OperatorAsync(string name)
+    {
+        var key = await AsHouseAsync(async sp => (await sp.GetRequiredService<Ops.OperatorKeyService>().IssueAsync(name, default)).Key);
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add(Ops.OperatorAuthenticationHandler.Header, key);
+        return client;
+    }
+
     /// <summary>Runs <paramref name="work"/> with no integrator scope, as the treasury's own operations do.</summary>
     public async Task<T> AsHouseAsync<T>(Func<IServiceProvider, Task<T>> work)
     {
