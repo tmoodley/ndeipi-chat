@@ -104,6 +104,24 @@ public sealed class PaymentUser : IIntegratorOwned
     public DateTimeOffset UpdatedAt { get; set; }
 }
 
+public enum OnboardingLinkKind { Kyc, Terms }
+
+/// <summary>
+/// A hosted onboarding link issued to a user (FR-USER-03). Issuing new links supersedes the user's
+/// earlier ones, so only the latest pair is live.
+/// </summary>
+public sealed class OnboardingLink : IIntegratorOwned
+{
+    public long Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string UserId { get; set; }
+    public OnboardingLinkKind Kind { get; set; }
+    public required string Url { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
+    public DateTimeOffset? SupersededAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 // ------------------------------------------------------------------ Ledger (M1)
 
 public enum LedgerAccountKind
@@ -272,5 +290,62 @@ public sealed class EventRecord : IIntegratorOwned, IAppendOnly
     public required string DataJson { get; set; }
 
     public string? PreviousAttributesJson { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+public enum WebhookEndpointStatus { Enabled, Disabled }
+
+/// <summary>
+/// An integrator's HTTPS endpoint for events (FR-WH-01), with its own Ed25519 key pair. The private
+/// key is encrypted with Data Protection and never leaves the server; deleting an endpoint stops
+/// deliveries but keeps the row, so past deliveries still name it.
+/// </summary>
+public sealed class WebhookEndpoint : IIntegratorOwned
+{
+    public required string Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string Url { get; set; }
+    public WebhookEndpointStatus Status { get; set; }
+
+    /// <summary>JSON array of event types; empty means every type.</summary>
+    public string EventTypesJson { get; set; } = "[]";
+
+    public string? Description { get; set; }
+    public required string PublicKeyPem { get; set; }
+    public required string ProtectedPrivateKey { get; set; }
+    public int Version { get; set; } = 1;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? DeletedAt { get; set; }
+}
+
+public enum DeliveryStatus { Pending, Succeeded, Failed, Canceled }
+
+/// <summary>
+/// One event on its way to one endpoint (FR-WH-04). Written in the same transaction as the event
+/// (SC-04); the dispatcher sends it, retries with backoff for up to two days, then gives up.
+/// </summary>
+public sealed class EventDelivery : IIntegratorOwned
+{
+    public long Id { get; set; }
+    public Guid IntegratorId { get; set; }
+    public required string EventId { get; set; }
+    public required string WebhookEndpointId { get; set; }
+    public DeliveryStatus Status { get; set; }
+
+    /// <summary>Attempts made so far.</summary>
+    public int Attempts { get; set; }
+
+    public DateTimeOffset NextAttemptAt { get; set; }
+
+    /// <summary>Claimed by a dispatcher until then, so two instances never send the same delivery at once.</summary>
+    public DateTimeOffset? LockedUntil { get; set; }
+
+    public DateTimeOffset? LastAttemptAt { get; set; }
+    public int? LastResponseStatus { get; set; }
+    public string? LastError { get; set; }
+
+    /// <summary>When retrying stops: two days after the delivery was created.</summary>
+    public DateTimeOffset GiveUpAt { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 }

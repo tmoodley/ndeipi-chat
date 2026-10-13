@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Ndeipi.Payments.Webhooks;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,11 +46,23 @@ public class PaymentsApp : WebApplicationFactory<Program>, IAsyncLifetime
                 ["Payments:FiatRails:0"] = "simulated",
                 ["Payments:Exchange"] = "none",
                 ["Payments:KycProvider"] = "simulated",
-                ["Payments:RateLimit:PermitLimit"] = "100000"
+                ["Payments:RateLimit:PermitLimit"] = "100000",
+                // Fast enough that retries and giving up happen within a test.
+                ["Payments:Webhooks:PollInterval"] = "00:00:00.050",
+                ["Payments:Webhooks:RetryBase"] = "00:00:00.100",
+                ["Payments:Webhooks:MaxRetryDelay"] = "00:00:00.300",
+                ["Payments:Webhooks:RetryWindow"] = "00:00:02"
             });
             config.AddInMemoryCollection(Overrides);
         });
+        builder.ConfigureTestServices(services =>
+            services.AddHttpClient(WebhookHttp.ClientName)
+                .ConfigurePrimaryHttpMessageHandler(() => Webhooks)
+                .SetHandlerLifetime(Timeout.InfiniteTimeSpan));
     }
+
+    /// <summary>Every integrator's webhook endpoint: deliveries land here.</summary>
+    public WebhookReceiver Webhooks { get; } = new();
 
     /// <summary>A new integrator with one key for this app's environment.</summary>
     public async Task<TestIntegrator> CreateIntegratorAsync(string name = "Acme Remit", PaymentsEnvironment environment = PaymentsEnvironment.Sandbox)

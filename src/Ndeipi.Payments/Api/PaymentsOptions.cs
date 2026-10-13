@@ -53,6 +53,45 @@ public sealed class PaymentsOptions
 
     public CoinOptions Coin { get; set; } = new();
 
+    public WebhookOptions Webhooks { get; set; } = new();
+
+    public OnboardingOptions Onboarding { get; set; } = new();
+
+    /// <summary>Event delivery (FR-WH-04).</summary>
+    public sealed class WebhookOptions
+    {
+        /// <summary>How often the dispatcher looks for deliveries that are due.</summary>
+        public TimeSpan PollInterval { get; set; } = TimeSpan.FromSeconds(1);
+
+        /// <summary>The first retry's delay; each later retry doubles it, up to <see cref="MaxRetryDelay"/>.</summary>
+        public TimeSpan RetryBase { get; set; } = TimeSpan.FromSeconds(30);
+
+        public TimeSpan MaxRetryDelay { get; set; } = TimeSpan.FromHours(4);
+
+        /// <summary>Retrying stops this long after the delivery was created (FR-WH-04: two days).</summary>
+        public TimeSpan RetryWindow { get; set; } = TimeSpan.FromDays(2);
+
+        /// <summary>A response slower than this is a failure.</summary>
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
+
+        public int BatchSize { get; set; } = 50;
+
+        /// <summary>Events stay listable for this long (openapi.yaml, <c>GET /events</c>).</summary>
+        public TimeSpan Retention { get; set; } = TimeSpan.FromDays(30);
+    }
+
+    /// <summary>Hosted onboarding (FR-USER-03).</summary>
+    public sealed class OnboardingOptions
+    {
+        /// <summary>
+        /// Where the hosted terms-of-service page lives; a user's link is this plus a signed token.
+        /// The page itself is outside the SRS's scope (§1.2).
+        /// </summary>
+        public string TermsBaseUrl { get; set; } = "https://onboarding.sandbox.ndeipi.example/terms";
+
+        public TimeSpan LinkLifetime { get; set; } = TimeSpan.FromDays(7);
+    }
+
     /// <summary>
     /// NdeipiCoin: the opt-in second asset, converted to and from points at a locked quote. Its price
     /// comes from the last trade the treasury team recorded with Blockfinex's manual OTC desk.

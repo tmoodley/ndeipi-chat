@@ -1,4 +1,5 @@
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -22,6 +23,12 @@ builder.Services.AddScoped<IntegratorScope>();
 builder.Services.AddDbContext<PaymentsDbContext>((sp, o) =>
     o.UseSqlServer(sp.GetRequiredService<IConfiguration>().GetConnectionString("Payments"),
         sql => sql.MigrationsHistoryTable("__EFMigrationsHistory", PaymentsDbContext.Schema)));
+
+// Encrypts webhook signing keys at rest; the key ring lives in the payments database so every
+// instance can read what another wrote.
+builder.Services.AddDataProtection()
+    .SetApplicationName("Ndeipi.Payments")
+    .PersistKeysToDbContext<PaymentsDbContext>();
 
 builder.Services.Configure<JsonOptions>(o => PaymentsJson.Configure(o.SerializerOptions));
 // Malformed bodies throw, so they leave as the contract's 400 rather than an empty response.
