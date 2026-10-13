@@ -1,0 +1,131 @@
+@* One payment, with what this officer can do to it: approve or reject someone else's (FR-3.3), confirm
+   or discard an assistant draft of their own (FR-5.2), or withdraw one that hasn't reached the bank.
+   Approving sends the payment's terms digest, so what is approved is exactly what is shown. *@
+
+<section class="tr-card" style="@(Highlight ? "border-color: #7750F8; box-shadow: 0 0 0 1px #7750F8" : "")">
+    <div class="tr-row">
+        <span class="grow">
+            <b>@P.PayeeName</b>
+            <small>@Format.Rail(P.Rail) · @P.PayeeDisplay</small>
+        </span>
+        <span class="tr-big" style="font-size: 22px">@Format.Money(P.Amount)</span>
+    </div>
+    <div class="tr-actions">
+        <span class="tr-badge @Format.Tone(P.Status)">@Format.Status(P.Status)</span>
+        @if (P.InitiatorType == "agent")
+        {
+            <span class="tr-badge agent" title="Drafted by the assistant (@P.AgentModel)">✨ Assistant draft</span>
+        }
+        @if (P.RecipientCurrency is { } currency)
+        {
+            <span class="tr-badge">Paid in @currency</span>
+        }
+    </div>
+    <dl class="tr-facts">
+        <dt>For</dt><dd>@P.Purpose</dd>
+        @if (P.Memo is { } memo)
+        {
+            <dt>Reference</dt><dd>@memo</dd>
+        }
+        <dt>Asked by</dt><dd>@P.InitiatedBy · @Format.When(P.CreatedAt)</dd>
+        @if (P.RequiredApprovals > 0)
+        {
+            <dt>Approvals</dt>
+            <dd>
+                @P.Approvals.Count(a => a.Decision == "approve") of @P.RequiredApprovals
+                @foreach (var a in P.Approvals)
+                {
+                    <div class="small muted">@(a.Decision == "approve" ? "✅" : "⛔") @a.Officer, @Format.When(a.At)@(a.Note is null ? "" : $": {a.Note}")</div>
+                }
+                @if (P.Status == "pending_approval" && P.ApprovalExpiresAt is { } expires)
+                {
+                    <div class="small muted">Expires @Format.When(expires)</div>
+                }
+            </dd>
+        }
+        @if (P.FailureReason is { } reason)
+        {
+            <dt>Why</dt><dd>@reason</dd>
+        }
+        @if (P.DispatchedAt is { } sent)
+        {
+            <dt>To the bank</dt><dd>@Format.When(sent)@(P.ProviderStatus is null ? "" : $" · Meow: {P.ProviderStatus}")</dd>
+        }
+    </dl>
+
+    @if (P.Status == "bank_approval")
+    {
+        <div class="tr-note warn small">Meow's security policy holds this payment: an approver must also approve it in the Meow dashboard before money moves.</div>
+    }
+
+    @if (_error is not null)
+    {
+        <div class="tr-note warn small">@_error</div>
+    }
+
+    @if (_rejecting)
+    {
+        <label class="tr-field">Why are you rejecting it? The officer who asked will see this.
+            <textarea rows="2" maxlength="500" @bind="_reason" @bind:event="oninput"></textarea>
+        </label>
+        <div class="tr-actions">
+            <button class="danger" disabled="@(_busy || string.IsNullOrWhiteSpace(_reason))" @onclick='() => ActAsync("reject", new { reason = _reason })'>Reject payment</button>
+            <button class="secondary" @onclick="() => _rejecting = false">Back</button>
+        </div>
+    }
+    else
+    {
+        <div class="tr-actions">
+            @if (P.Status == "pending_approval" && !Mine)
+            {
+                <button class="primary" disabled="@_busy" @onclick='() => ActAsync("approve", new { terms_digest = P.TermsDigest })'>Approve @Format.Money(P.Amount)</button>
+                <button class="secondary" disabled="@_busy" @onclick="() => _rejecting = true">Reject</button>
+            }
+            @if (P.Status == "awaiting_confirmation" && Mine)
+            {
+                <button class="primary" disabled="@_busy" @onclick='() => ActAsync("confirm", null)'>Confirm and send</button>
+                <button class="secondary" disabled="@_busy" @onclick='() => ActAsync("cancel", null)'>Discard</button>
+            }
+            else if (P.Status == "pending_approval" && Mine)
+            {
+                <button class="secondary" disabled="@_busy" @onclick='() => ActAsync("cancel", null)'>Withdraw</button>
+            }
+            @if (P.Status == "pending_approval" && Mine)
+            {
+                <span class="small muted">Another officer must approve this.</span>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public TreasuryPaymentDto P { get; set; } = null!;
+    [Parameter] public EventCallback<TreasuryPaymentDto> Updated { get; set; }
+    [Parameter] public bool Highlight { get; set; }
+
+    bool _busy, _rejecting;
+    string? _reason, _error;
+
+    bool Mine => P.InitiatedById == App.OfficerId;
+
+    async Task ActAsync(string action, object? body)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var updated = await App.Api.SendAsync<TreasuryPaymentDto>(HttpMethod.Post, $"payments/{P.Id}/{action}", body ?? new { });
+            _rejecting = false;
+            await App.CountWaitingAsync();
+            await Updated.InvokeAsync(updated!);
+        }
+        catch (TreasuryException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

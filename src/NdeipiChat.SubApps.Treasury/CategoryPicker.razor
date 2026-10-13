@@ -1,0 +1,23 @@
+@* The merchant categories a card works at, from Meow's list. None chosen means any merchant: Meow's
+   controls allow listed categories only, they can't block one. *@
+
+<div class="tr-field">
+    <span>Works at @(Selected.Count == 0 ? "any merchant" : $"{Selected.Count} categor{(Selected.Count == 1 ? "y" : "ies")}")</span>
+    <div class="tr-chips" style="max-height: 150px; overflow-y: auto">
+        @foreach (var c in App.Settings?.CardCategories ?? [])
+        {
+            <button class="@(Selected.Contains(c) ? "on" : "")" aria-pressed="@Selected.Contains(c)" @onclick="() => Toggle(c)">@c</button>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public HashSet<string> Selected { get; set; } = null!;
+
+    void Toggle(string category)
+    {
+        if (!Selected.Remove(category))
+            Selected.Add(category);
+    }
+}

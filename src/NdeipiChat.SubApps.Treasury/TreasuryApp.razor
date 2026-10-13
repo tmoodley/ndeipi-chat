@@ -1,0 +1,203 @@
+@implements IAsyncDisposable
+
+@* Business Banking (SRS-NDE-MEOW-001): Ndeipi's treasury at Meow, for treasury officers. Balances and
+   statements, payees, payments with dual approval, corporate cards, the activity journal, and an
+   assistant that can draft payments for the officer to confirm. Opened at a tab with "tab=approvals". *@
+@attribute [SubAppRoot(TreasuryContract.AppId)]
+
+<style>
+    .content.embedded header.tr-bar { display: none; }
+    .tr .page { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 36px; }
+    .tr h2 { font-size: 20px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .tr h3 { font-size: 15px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .tr .muted { color: var(--muted); }
+    .tr .small { font-size: 13px; }
+    .tr-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .tr-tabs button { flex: none; border-radius: 18px; padding: 8px 14px; font-size: 14px; background: var(--secondary); color: var(--text); box-shadow: none; gap: 6px; }
+    .tr-tabs button.on { background: var(--brand); color: #fff; font-weight: 700; }
+    .tr-tabs .count { min-width: 20px; height: 20px; border-radius: 10px; padding: 0 6px; font-size: 12px; font-weight: 800; background: var(--danger); color: #fff; display: inline-grid; place-items: center; }
+    .tr-card { background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, var(--divider)); border-radius: 18px; box-shadow: var(--shadow, none); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }
+    .tr-accounts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .tr-account { border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 4px; color: #fff; background: linear-gradient(135deg, #1F2A44, #3D7BF7); cursor: pointer; border: 2px solid transparent; outline: none; }
+    .tr-account.wallet { background: linear-gradient(135deg, #0F9BD8, #1FC98A); }
+    .tr-account.on, .tr-account:focus-visible { border-color: var(--text); }
+    .tr-account .label { font-size: 13px; opacity: .85; font-weight: 700; display: flex; justify-content: space-between; gap: 8px; }
+    .tr-account .balance { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .tr-account .current { font-size: 13px; opacity: .85; }
+    .tr-row { display: flex; gap: 10px; align-items: center; }
+    .tr-row .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .tr-row .grow small { color: var(--muted); }
+    .tr-row .amount { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .tr-row .amount.in { color: var(--success); }
+    .tr-list { display: flex; flex-direction: column; }
+    .tr-list > .tr-row { padding: 9px 0; border-bottom: 1px solid var(--divider); }
+    .tr-list > .tr-row:last-child { border-bottom: none; }
+    .tr-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 12px; font-weight: 800; background: var(--secondary); color: var(--muted); white-space: nowrap; }
+    .tr-badge.ok { background: rgba(31, 169, 113, .16); color: var(--success); }
+    .tr-badge.wait { background: rgba(255, 196, 0, .2); color: #8A6100; }
+    .tr-badge.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .tr-badge.agent { background: rgba(119, 80, 248, .14); color: #6A45E8; }
+    .tr-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .tr-field { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 700; }
+    .tr-field input, .tr-field select, .tr-field textarea { font-weight: 500; font-size: 15px; }
+    .tr-field small { font-weight: 500; color: var(--muted); }
+    .tr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .tr-three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .tr-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .tr-chips button { flex: none; border-radius: 16px; padding: 6px 12px; font-size: 13px; background: var(--secondary); color: var(--text); box-shadow: none; white-space: nowrap; }
+    .tr-chips button.on { background: var(--brand); color: #fff; font-weight: 700; }
+    .tr-note { border-radius: 12px; padding: 10px 14px; font-size: 14px; background: var(--secondary); }
+    .tr-note.warn { background: rgba(255, 196, 0, .18); color: #8A6100; }
+    .tr-note.ok { background: rgba(31, 169, 113, .14); color: var(--success); }
+    .tr-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; }
+    .tr-facts dt { color: var(--muted); }
+    .tr-facts dd { margin: 0; overflow-wrap: anywhere; }
+    .tr-big { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .tr-cardface { border-radius: 16px; padding: 16px; color: #fff; background: linear-gradient(135deg, #2B2D42, #7750F8); display: flex; flex-direction: column; gap: 10px; min-height: 120px; }
+    .tr-cardface.frozen { background: linear-gradient(135deg, #6B7280, #9CA3AF); }
+    .tr-cardface.closed { background: linear-gradient(135deg, #9CA3AF, #D1D5DB); color: #374151; }
+    .tr-cardface .pan { font-size: 20px; letter-spacing: .12em; font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; }
+    .tr-chat { display: flex; flex-direction: column; gap: 10px; }
+    .tr-bubble { max-width: 85%; border-radius: 16px; padding: 10px 14px; white-space: pre-wrap; line-height: 1.5; font-size: 15px; }
+    .tr-bubble.user { align-self: flex-end; background: var(--brand); color: #fff; border-bottom-right-radius: 4px; }
+    .tr-bubble.assistant { align-self: flex-start; background: var(--secondary); color: var(--text); border-bottom-left-radius: 4px; }
+    .tr-intent { align-self: flex-start; width: min(100%, 420px); border: 2px solid #7750F8; border-radius: 16px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--glass-strong, var(--surface)); }
+    @@media (max-width: 560px) { .tr-two, .tr-three { grid-template-columns: 1fr; } .tr-tabs { flex-wrap: wrap; } }
+</style>
+
+<div class="tr">
+    <header class="bar tr-bar">
+        <button class="bar-back link" title="Back" @onclick="Context.NavigateToLauncher">‹</button>
+        <h1>Business Banking</h1>
+    </header>
+
+    <div class="page">
+        <nav class="tr-tabs" aria-label="Business Banking">
+            @foreach (var (tab, label) in Tabs)
+            {
+                <button class="@(_tab == tab ? "on" : "")" aria-current="@(_tab == tab ? "page" : null)" @onclick="() => Go(tab)">
+                    @label
+                    @if (tab == TreasuryTab.Approvals && _waiting > 0)
+                    {
+                        <span class="count" aria-label="@_waiting waiting">@_waiting</span>
+                    }
+                </button>
+            }
+        </nav>
+
+        @if (Settings is { Provider: "simulated" })
+        {
+            <div class="tr-note warn small">Sandbox: this server uses a simulated bank. No real money moves.</div>
+        }
+
+        <CascadingValue Value="this" IsFixed="true">
+            @switch (_tab)
+            {
+                case TreasuryTab.Overview: <Overview /> break;
+                case TreasuryTab.Pay: <PayForm /> break;
+                case TreasuryTab.Approvals: <Approvals /> break;
+                case TreasuryTab.Payments: <Payments /> break;
+                case TreasuryTab.Payees: <Payees /> break;
+                case TreasuryTab.Cards: <Cards /> break;
+                case TreasuryTab.Assistant: <AssistantChat /> break;
+                case TreasuryTab.Activity: <Activity /> break;
+            }
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    static readonly (TreasuryTab Tab, string Label)[] Tabs =
+    [
+        (TreasuryTab.Overview, "Overview"), (TreasuryTab.Pay, "Pay"), (TreasuryTab.Approvals, "Approvals"), (TreasuryTab.Payments, "Payments"),
+        (TreasuryTab.Payees, "Payees"), (TreasuryTab.Cards, "Cards"), (TreasuryTab.Assistant, "Assistant"), (TreasuryTab.Activity, "Activity")
+    ];
+
+    TreasuryTab _tab = TreasuryTab.Overview;
+    int _waiting;
+    IAsyncDisposable? _subscription;
+
+    public TreasuryApi Api { get; private set; } = null!;
+    public TreasurySettingsDto? Settings { get; private set; }
+
+    /// <summary>This officer as the server names them, to tell their own payments apart.</summary>
+    public string OfficerId => $"officer:{Context.UserId:N}";
+
+    /// <summary>Raised when anything in the treasury changes (from the server, live).</summary>
+    public event Action? Changed;
+
+    /// <summary>The last balances seen, shown at once on return to the overview while fresh ones load.</summary>
+    public IReadOnlyList<TreasuryAccountDto>? CachedAccounts { get; set; }
+
+    /// <summary>The account the overview shows, kept across tabs.</summary>
+    public string? SelectedAccountId { get; set; }
+
+    /// <summary>The assistant conversation, kept across tabs.</summary>
+    public string? AssistantSessionId { get; set; }
+
+    /// <summary>A payee to preselect in the pay form.</summary>
+    public string? PayPayeeId { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new TreasuryApi(Context.Api);
+        var tab = Context.Query.Split('&').Select(p => p.Split('=', 2)).FirstOrDefault(p => p is ["tab", _]);
+        if (tab is [_, var name] && Enum.TryParse<TreasuryTab>(name, ignoreCase: true, out var parsed))
+            _tab = parsed;
+
+        if (Context.Realtime is { } realtime)
+        {
+            try
+            {
+                _subscription = await realtime.SubscribeAsync(TreasuryContract.Topic, _ => InvokeAsync(async () =>
+                {
+                    await CountWaitingAsync();
+                    Changed?.Invoke();
+                    StateHasChanged();
+                }));
+            }
+            catch (Exception)
+            {
+                // Live updates are a nicety: each page loads the latest when opened.
+            }
+        }
+        try
+        {
+            Settings = await Api.GetAsync<TreasurySettingsDto>("settings");
+        }
+        catch (TreasuryException)
+        {
+            // The pages say what's wrong when they load.
+        }
+        await CountWaitingAsync();
+    }
+
+    /// <summary>Payments other officers asked for that this officer can approve.</summary>
+    public async Task CountWaitingAsync()
+    {
+        try
+        {
+            var pending = await Api.GetAsync<TreasuryList<TreasuryPaymentDto>>("payments?status=pending_approval&limit=200");
+            _waiting = pending.Data.Count(p => p.InitiatedById != OfficerId);
+        }
+        catch (TreasuryException)
+        {
+            _waiting = 0;
+        }
+        StateHasChanged();
+    }
+
+    public void Go(TreasuryTab tab)
+    {
+        _tab = tab;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+    }
+}

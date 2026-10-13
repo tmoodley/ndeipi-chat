@@ -1,0 +1,95 @@
+@implements IDisposable
+
+@* Every treasury payment, newest first, filterable by where it stands. Status follows the bank's
+   webhooks live: processing, sent, returned. *@
+
+<div class="tr-chips">
+    @foreach (var (status, label) in Filters)
+    {
+        <button class="@(_status == status ? "on" : "")" @onclick="() => FilterAsync(status)">@label</button>
+    }
+</div>
+
+@if (_error is not null)
+{
+    <div class="tr-note warn">@_error</div>
+}
+@if (_payments is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (_payments.Count == 0)
+{
+    <section class="tr-card"><p class="muted" style="margin: 0">No payments here.</p></section>
+}
+else
+{
+    <section class="tr-card">
+        <div class="tr-list">
+            @foreach (var p in _payments)
+            {
+                <div class="tr-row" role="button" tabindex="0" style="cursor: pointer" @key="p.Id"
+                     @onclick="() => _open = _open == p.Id ? null : p.Id" @onkeydown='e => { if (e.Key is "Enter" or " ") _open = _open == p.Id ? null : p.Id; }'>
+                    <span class="grow">
+                        <b>@p.PayeeName</b>
+                        <small>@Format.Rail(p.Rail) · @Format.When(p.CreatedAt) · @p.InitiatedBy</small>
+                    </span>
+                    <span class="tr-badge @Format.Tone(p.Status)">@Format.Status(p.Status)</span>
+                    <span class="amount">@Format.Money(p.Amount)</span>
+                </div>
+                @if (_open == p.Id)
+                {
+                    <PaymentCard P="p" Updated="Updated" />
+                }
+            }
+        </div>
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    static readonly (string? Status, string Label)[] Filters =
+    [
+        (null, "All"), ("awaiting_confirmation", "Drafts"), ("pending_approval", "Waiting"), ("processing", "Processing"),
+        ("bank_approval", "In Meow"), ("sent", "Sent"), ("returned", "Returned"), ("failed", "Failed"), ("blocked", "Blocked")
+    ];
+
+    List<TreasuryPaymentDto>? _payments;
+    string? _status, _open, _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    Task FilterAsync(string? status)
+    {
+        _status = status;
+        return LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _payments = (await App.Api.GetAsync<TreasuryList<TreasuryPaymentDto>>($"payments?limit=100{(_status is null ? "" : "&status=" + _status)}")).Data.ToList();
+            _error = null;
+        }
+        catch (TreasuryException e)
+        {
+            (_payments, _error) = (_payments ?? [], e.Message);
+        }
+    }
+
+    Task Updated(TreasuryPaymentDto _) => LoadAsync();
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

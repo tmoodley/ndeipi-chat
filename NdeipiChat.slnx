@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Ndeipi.Payments/Ndeipi.Payments.csproj" />
     <Project Path="src/NdeipiChat.Api/NdeipiChat.Api.csproj" />
     <Project Path="src/NdeipiChat.App/NdeipiChat.App.csproj" />
     <Project Path="src/NdeipiChat.Client.Core/NdeipiChat.Client.Core.csproj" />
@@ -10,6 +11,7 @@
     <Project Path="src/NdeipiChat.SubApps.Finance/NdeipiChat.SubApps.Finance.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Market/NdeipiChat.SubApps.Market.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Creators/NdeipiChat.SubApps.Creators.csproj" />
+    <Project Path="src/NdeipiChat.SubApps.Treasury/NdeipiChat.SubApps.Treasury.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Events/NdeipiChat.SubApps.Events.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Gigs/NdeipiChat.SubApps.Gigs.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Pos/NdeipiChat.SubApps.Pos.csproj" />
@@ -21,6 +23,7 @@
     <Project Path="templates/NdeipiChat.SubApps.Templates/NdeipiChat.SubApps.Templates.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Ndeipi.Payments.Tests/Ndeipi.Payments.Tests.csproj" />
     <Project Path="tests/NdeipiChat.Tests/NdeipiChat.Tests.csproj" />
   </Folder>
   <Folder Name="/tools/">

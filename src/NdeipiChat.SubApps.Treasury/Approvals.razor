@@ -1,0 +1,78 @@
+@implements IDisposable
+
+@* Dual custody (FR-3.3): payments at or over the threshold wait here until an officer other than the
+   one who asked approves them. Your own requests are listed apart; you can withdraw but not approve them. *@
+
+@if (_error is not null)
+{
+    <div class="tr-note warn">@_error</div>
+}
+@if (_pending is null)
+{
+    <p class="muted">Loading…</p>
+}
+else
+{
+    <h2>For you to decide</h2>
+    @if (!Theirs.Any())
+    {
+        <section class="tr-card"><p class="muted" style="margin: 0">Nothing is waiting for your approval.</p></section>
+    }
+    @foreach (var p in Theirs)
+    {
+        <PaymentCard @key="p.Id" P="p" Updated="Updated" />
+    }
+
+    @if (Mine.Any())
+    {
+        <h2>Yours, waiting on others</h2>
+        @foreach (var p in Mine)
+        {
+            <PaymentCard @key="p.Id" P="p" Updated="Updated" />
+        }
+    }
+}
+
+@code {
+    [CascadingParameter] public TreasuryApp App { get; set; } = null!;
+
+    List<TreasuryPaymentDto>? _pending;
+    string? _error;
+
+    IEnumerable<TreasuryPaymentDto> Theirs => _pending!.Where(p => p.InitiatedById != App.OfficerId);
+    IEnumerable<TreasuryPaymentDto> Mine => _pending!.Where(p => p.InitiatedById == App.OfficerId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _pending = (await App.Api.GetAsync<TreasuryList<TreasuryPaymentDto>>("payments?status=pending_approval&limit=200")).Data.ToList();
+            _error = null;
+        }
+        catch (TreasuryException e)
+        {
+            (_pending, _error) = (_pending ?? [], e.Message);
+        }
+    }
+
+    async Task Updated(TreasuryPaymentDto p)
+    {
+        await LoadAsync();
+        if (p.Status != "pending_approval")
+            _error = null;
+    }
+
+    public void Dispose() => App.Changed -= OnChanged;
+}
