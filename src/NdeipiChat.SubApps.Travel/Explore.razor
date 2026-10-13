@@ -1,0 +1,262 @@
+@inject IJSRuntime JS
+
+@* Finding stays and tours (FR-1): a place (or near me), dates and the party, then filters that come
+   from what the region actually has (FR-1.2), and results with availability for those dates. *@
+
+<section class="lt-card">
+    <div class="lt-tabs">
+        <button class="@(S.Type == TravelItemTypes.Stay ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Stay)">🛏️ Stays</button>
+        <button class="@(S.Type == TravelItemTypes.Tour ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Tour)">🧭 Tours & safaris</button>
+    </div>
+    <form class="lt-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+        <label class="lt-field place">Where
+            <input placeholder="Victoria Falls, Kruger, Harare…" @bind="_query" />
+        </label>
+        <label class="lt-field">@(S.Type == TravelItemTypes.Stay ? "Check-in" : "From")
+            <input type="date" min="@Today" @bind="_checkIn" />
+        </label>
+        <label class="lt-field">@(S.Type == TravelItemTypes.Stay ? "Check-out" : "To")
+            <input type="date" min="@Today" @bind="_checkOut" />
+        </label>
+        <label class="lt-field">Guests
+            <input type="number" min="1" max="30" @bind="_guests" />
+        </label>
+        @if (S.Type == TravelItemTypes.Stay)
+        {
+            <label class="lt-field">Rooms
+                <input type="number" min="1" max="@TravelContract.MaxRoomsPerBooking" @bind="_rooms" />
+            </label>
+        }
+    </form>
+    <div class="lt-actions">
+        <button class="primary" disabled="@_busy" @onclick="SearchAsync">Search</button>
+        <button class="secondary" disabled="@_busy" @onclick="NearMeAsync">📍 Near me</button>
+        @if (_near is not null)
+        {
+            <span class="lt-badge ok">Within @_radius km of you <button class="link" style="padding: 0 4px" title="Clear" @onclick="ClearNearAsync">✕</button></span>
+        }
+        <span style="flex: 1"></span>
+        <select style="width: auto" aria-label="Sort" @bind="_sort" @bind:after="SearchAsync">
+            <option value="recommended">Recommended</option>
+            <option value="price_asc">Price: low to high</option>
+            <option value="price_desc">Price: high to low</option>
+            @if (_near is not null)
+            {
+                <option value="distance">Nearest</option>
+            }
+        </select>
+    </div>
+</section>
+
+@if (_result is { Facets.Count: > 0 } r)
+{
+    <section class="lt-card" aria-label="Filters">
+        @foreach (var group in r.Facets.GroupBy(f => f.Field))
+        {
+            <div class="lt-row" style="align-items: flex-start">
+                <b class="small" style="width: 96px; flex: none; padding-top: 6px">@FacetTitle(group.Key)</b>
+                <div class="lt-chips">
+                    @foreach (var f in group)
+                    {
+                        var on = Selected(f.Field).Contains(f.Code);
+                        <button class="@(on ? "on" : "")" aria-pressed="@on" @onclick="() => ToggleAsync(f.Field, f.Code)">@f.Label<span class="n">@f.Count</span></button>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+}
+
+@if (_error is not null)
+{
+    <div class="lt-note warn">@_error</div>
+}
+
+@if (_result is null)
+{
+    <p class="muted">@(_busy ? "Searching…" : "Search for a place to see what's there.")</p>
+}
+else if (_result.Results.Count == 0)
+{
+    <section class="lt-card"><p class="muted" style="margin: 0">Nothing matches. Try other dates, fewer filters, or a wider area.</p></section>
+}
+else
+{
+    <p class="muted small" style="margin: 0">@_result.Results.Count result@(_result.Results.Count == 1 ? "" : "s")@(S.CheckIn is { } a && S.CheckOut is { } b ? $" for {Format.Day(a)} → {Format.Day(b)}" : "")</p>
+    <div class="lt-grid">
+        @foreach (var x in _result.Results)
+        {
+            <div class="lt-result" role="link" tabindex="0" @key="x.Id" aria-label="@x.Name" @onclick="() => Open(x)" @onkeydown='e => { if (e.Key is "Enter" or " ") Open(x); }'>
+                <div class="photo" style="@Format.Cover(x.PhotoUrl)">
+                    @if (!x.Available)
+                    {
+                        <span class="tag off">@(S.Type == TravelItemTypes.Stay && S.CheckIn is not null ? "Full for your dates" : "No departures")</span>
+                    }
+                    else if (x.DistanceKm is { } km)
+                    {
+                        <span class="tag">📍 @km km</span>
+                    }
+                </div>
+                <div class="body">
+                    <span class="name">@x.Name</span>
+                    <span class="where">@Format.Icon(x.Kind) @Kind(x) · @x.City, @x.Country@(x.Stars is { } s ? " · " + new string('★', s) : "")</span>
+                    @if (x.Summary is { } summary)
+                    {
+                        <span class="summary">@summary</span>
+                    }
+                    <div class="foot">
+                        <span class="muted small">by @x.VendorName</span>
+                        @if (x.FromPrice is { } price)
+                        {
+                            <span class="lt-price">@Format.Money(price)<small> /@x.PriceUnit</small></span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+
+    TravelSearchRequest S => App.Search;
+    TravelSearchResultDto? _result;
+    string? _query, _error;
+    DateOnly? _checkIn, _checkOut;
+    int _guests = 2, _rooms = 1, _radius = 50;
+    string _sort = "recommended";
+    (double Lat, double Lng)? _near;
+    bool _busy;
+
+    string Today => DateTime.Today.ToString("yyyy-MM-dd");
+
+    protected override async Task OnInitializedAsync()
+    {
+        (_query, _checkIn, _checkOut, _guests, _rooms, _sort) = (S.Query, S.CheckIn, S.CheckOut, S.Guests, S.Rooms, S.Sort);
+        if (S.Lat is { } lat && S.Lng is { } lng)
+            _near = (lat, lng);
+        await RunAsync();
+    }
+
+    Task TypeAsync(string type)
+    {
+        App.Search = S with { Type = type, PropertyTypes = null, Amenities = null, BoardPlans = null, Cancellation = null, MinStars = null, TourKinds = null, Difficulties = null };
+        return RunAsync();
+    }
+
+    Task SearchAsync()
+    {
+        App.Search = S with
+        {
+            Query = string.IsNullOrWhiteSpace(_query) ? null : _query.Trim(),
+            CheckIn = _checkIn,
+            CheckOut = _checkOut,
+            Guests = Math.Clamp(_guests, 1, 30),
+            Rooms = Math.Clamp(_rooms, 1, TravelContract.MaxRoomsPerBooking),
+            Lat = _near?.Lat,
+            Lng = _near?.Lng,
+            RadiusKm = _near is null ? null : _radius,
+            Sort = _sort
+        };
+        return RunAsync();
+    }
+
+    async Task RunAsync()
+    {
+        if (S.Type == TravelItemTypes.Stay && S.CheckIn is { } a && S.CheckOut is { } b && b <= a)
+        {
+            _error = "Check-out must be after check-in.";
+            return;
+        }
+        (_busy, _error) = (true, null);
+        try
+        {
+            _result = await App.Api.SendAsync<TravelSearchResultDto>(HttpMethod.Post, $"{TravelApi.Base}/search", S);
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task NearMeAsync()
+    {
+        var here = await JS.InvokeAsync<JsonElementOrNull>("ndeipi.location");
+        if (here?.latitude is not { } lat || here.longitude is not { } lng)
+        {
+            _error = "Your location isn't available. Allow it in the browser, or type a place.";
+            return;
+        }
+        (_near, _sort) = ((lat, lng), "distance");
+        await SearchAsync();
+    }
+
+    Task ClearNearAsync()
+    {
+        _near = null;
+        if (_sort == "distance")
+            _sort = "recommended";
+        return SearchAsync();
+    }
+
+    sealed record JsonElementOrNull(double? latitude, double? longitude);
+
+    IReadOnlyList<string> Selected(string field) => field switch
+    {
+        "property_type" => S.PropertyTypes ?? [],
+        "amenity" => S.Amenities ?? [],
+        "board_plan" => S.BoardPlans ?? [],
+        "cancellation" => S.Cancellation ?? [],
+        "stars" => S.MinStars is { } m ? [m.ToString()] : [],
+        "tour_kind" => S.TourKinds ?? [],
+        "difficulty" => S.Difficulties ?? [],
+        _ => []
+    };
+
+    Task ToggleAsync(string field, string code)
+    {
+        IReadOnlyList<string>? Toggle(IReadOnlyList<string>? list) =>
+            (list ?? []).Contains(code) ? [.. (list ?? []).Where(c => c != code)] : [.. (list ?? []), code];
+        App.Search = field switch
+        {
+            "property_type" => S with { PropertyTypes = Toggle(S.PropertyTypes) },
+            "amenity" => S with { Amenities = Toggle(S.Amenities) },
+            "board_plan" => S with { BoardPlans = Toggle(S.BoardPlans) },
+            "cancellation" => S with { Cancellation = Toggle(S.Cancellation) },
+            "stars" => S with { MinStars = S.MinStars?.ToString() == code ? null : int.Parse(code) },
+            "tour_kind" => S with { TourKinds = Toggle(S.TourKinds) },
+            "difficulty" => S with { Difficulties = Toggle(S.Difficulties) },
+            _ => S
+        };
+        return RunAsync();
+    }
+
+    static string FacetTitle(string field) => field switch
+    {
+        "property_type" => "Type",
+        "amenity" => "Has",
+        "board_plan" => "Meals",
+        "cancellation" => "Cancellation",
+        "stars" => "Stars (at least)",
+        "tour_kind" => "Kind",
+        "difficulty" => "Effort",
+        _ => field
+    };
+
+    string Kind(TravelResultDto x) => x.Type == TravelItemTypes.Stay
+        ? Format.Label(TravelContract.PropertyTypes, x.Kind)
+        : Format.Label(TravelContract.TourKinds, x.Kind);
+
+    void Open(TravelResultDto x)
+    {
+        if (x.Type == TravelItemTypes.Stay)
+            App.Go(new TravelView.Property(x.Id, S.CheckIn, S.CheckOut, S.Guests, S.Rooms));
+        else
+            App.Go(new TravelView.Tour(x.Id, S.Guests));
+    }
+}

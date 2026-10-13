@@ -20,6 +20,7 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.12" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.30.0" />
+    <PackageReference Include="QRCoder" Version="1.8.0" />
     <PackageReference Include="SkiaSharp" Version="4.152.0" />
     <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.152.0" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
@@ -43,12 +44,9 @@
   </PropertyGroup>
 
   <Target Name="SignSubAppBundles" AfterTargets="ComputeAndCopyFilesToPublishDirectory">
-    <Error Condition="!Exists('$(SubAppPublisherKey)') And '$(Configuration)' == 'Release' And '$(AllowUnsignedSubApps)' != 'true'"
-           Text="No sub-app publisher key at $(SubAppPublisherKey), so sub-apps can't be signed and the shell would refuse them. Set SubAppPublisherKey or NDEIPI_SUBAPP_KEY, or pass -p:AllowUnsignedSubApps=true." />
-    <Warning Condition="!Exists('$(SubAppPublisherKey)') And ('$(Configuration)' != 'Release' Or '$(AllowUnsignedSubApps)' == 'true')"
-             Text="Sub-apps are published unsigned; shells that require signatures will refuse them." />
-    <Exec Condition="Exists('$(SubAppPublisherKey)')"
-          Command="dotnet run --project &quot;$(_SubAppSigner)&quot; -c Release -- sign --site &quot;$(PublishDir)wwwroot&quot; --key &quot;$(SubAppPublisherKey)&quot; --out &quot;$(PublishDir)subapp-signatures.json&quot;" />
+    <Error Condition="!Exists('$(SubAppPublisherKey)') And '$(Configuration)' == 'Release' And '$(AllowUnsignedSubApps)' != 'true'" Text="No sub-app publisher key at $(SubAppPublisherKey), so sub-apps can't be signed and the shell would refuse them. Set SubAppPublisherKey or NDEIPI_SUBAPP_KEY, or pass -p:AllowUnsignedSubApps=true." />
+    <Warning Condition="!Exists('$(SubAppPublisherKey)') And ('$(Configuration)' != 'Release' Or '$(AllowUnsignedSubApps)' == 'true')" Text="Sub-apps are published unsigned; shells that require signatures will refuse them." />
+    <Exec Condition="Exists('$(SubAppPublisherKey)')" Command="dotnet run --project &quot;$(_SubAppSigner)&quot; -c Release -- sign --site &quot;$(PublishDir)wwwroot&quot; --key &quot;$(SubAppPublisherKey)&quot; --out &quot;$(PublishDir)subapp-signatures.json&quot;" />
     <!-- The file is written after the publish file list was worked out; list it too, so every way of
          deploying (Web Deploy, FTP, folder) ships this release's signatures rather than leaving the
          server with an older file, which makes the shell refuse new bundles as unsigned. -->

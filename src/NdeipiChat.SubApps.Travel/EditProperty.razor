@@ -1,0 +1,382 @@
+@* Listing a property (FR-2.1): the details travellers search by, photos, room types with their board
+   plans and nightly prices, a rate calendar to change prices or stop selling some nights, and
+   publishing. *@
+
+<section class="lt-card">
+    <h2>@(Id is null ? "Add a property" : "Edit property")</h2>
+    <div class="lt-two">
+        <label class="lt-field">Name<input maxlength="@TravelContract.MaxNameLength" @bind="_f.Name" @bind:event="oninput" /></label>
+        <label class="lt-field">Type
+            <select @bind="_f.Type">
+                @foreach (var (c, label) in TravelContract.PropertyTypes)
+                {
+                    <option value="@c">@label</option>
+                }
+            </select>
+        </label>
+    </div>
+    <label class="lt-field">Description<textarea rows="4" maxlength="@TravelContract.MaxDescriptionLength" @bind="_f.Description"></textarea></label>
+    <div class="lt-three">
+        <label class="lt-field">Town or area<input maxlength="80" @bind="_f.City" /></label>
+        <label class="lt-field">Country<input maxlength="80" @bind="_f.Country" /></label>
+        <label class="lt-field">Stars (optional)
+            <select @bind="_f.Stars">
+                <option value="0">None</option>
+                @for (var s = 1; s <= 5; s++)
+                {
+                    <option value="@s">@(new string('★', s))</option>
+                }
+            </select>
+        </label>
+    </div>
+    <label class="lt-field">Address<input maxlength="300" @bind="_f.Address" /></label>
+    <div class="lt-three">
+        <label class="lt-field">Latitude (optional)<input type="number" step="any" @bind="_f.Lat" /></label>
+        <label class="lt-field">Longitude (optional)<input type="number" step="any" @bind="_f.Lng" /></label>
+        <span class="lt-field">&nbsp;<button class="secondary" @onclick="HereAsync">📍 Use where I am</button></span>
+    </div>
+    <div class="lt-three">
+        <label class="lt-field">Check-in from<input type="time" @bind="_f.CheckIn" /></label>
+        <label class="lt-field">Check-out by<input type="time" @bind="_f.CheckOut" /></label>
+        <label class="lt-field">Cancellation
+            <select @bind="_f.Cancellation">
+                @foreach (var (c, label, detail) in TravelContract.CancellationPolicies)
+                {
+                    <option value="@c">@label: @detail</option>
+                }
+            </select>
+        </label>
+    </div>
+    <div class="lt-field">Amenities
+        <div class="lt-chips">
+            @foreach (var (c, label) in TravelContract.Amenities)
+            {
+                var on = _f.Amenities.Contains(c);
+                <button class="@(on ? "on" : "")" aria-pressed="@on" @onclick="() => Toggle(c)">@label</button>
+            }
+        </div>
+    </div>
+    @if (_error is not null)
+    {
+        <div class="lt-note warn">@_error</div>
+    }
+    <div class="lt-actions">
+        <button class="primary" disabled="@_busy" @onclick="SaveAsync">@(Id is null ? "Save and continue" : "Save")</button>
+        @if (_property is { } p)
+        {
+            @if (p.Status == "published")
+            {
+                <button class="secondary" disabled="@_busy" @onclick="() => PublishAsync(false)">Unpublish</button>
+            }
+            else if (p.Status == "draft")
+            {
+                <button class="secondary" disabled="@_busy" @onclick="() => PublishAsync(true)">Publish</button>
+            }
+            <span class="lt-badge @Format.Tone(p.Status)">@p.Status</span>
+            <button class="link" @onclick="() => App.Go(new TravelView.Property(p.Id, null, null, 2, 1))">See it as travellers do</button>
+        }
+    </div>
+</section>
+
+@if (_property is { } property)
+{
+    <section class="lt-card">
+        <h3>Photos</h3>
+        <PhotoStrip Type="stay" Id="property.Id" Photos="property.Photos" PhotosChanged="photos => _property = property with { Photos = photos }" />
+    </section>
+
+    <section class="lt-card">
+        <div class="lt-row"><h3 class="grow">Rooms</h3><button class="secondary" @onclick="() => _room = new()">+ Add a room type</button></div>
+        @foreach (var r in property.Rooms)
+        {
+            <div class="lt-row" @key="r.Id">
+                <span class="grow"><b>@r.Name</b><small>@Format.Label(TravelContract.RoomKinds, r.Kind) · sleeps @r.Capacity · @r.Units of them · @Format.Label(TravelContract.BoardPlans, r.BoardPlan) · @Format.Money(r.NightlyPrice)/night</small></span>
+                <button class="link" @onclick="() => _room = RoomForm.From(r)">Edit</button>
+                <button class="link" @onclick="() => CalendarAsync(r.Id)">Rates</button>
+            </div>
+        }
+        @if (_room is { } room)
+        {
+            <div class="lt-card" style="box-shadow: none">
+                <div class="lt-two">
+                    <label class="lt-field">Name<input maxlength="80" placeholder="Deluxe river chalet" @bind="room.Name" /></label>
+                    <label class="lt-field">Kind
+                        <select @bind="room.Kind">
+                            @foreach (var (c, label) in TravelContract.RoomKinds)
+                            {
+                                <option value="@c">@label</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+                <div class="lt-three">
+                    <label class="lt-field">Meals
+                        <select @bind="room.BoardPlan">
+                            @foreach (var (c, label) in TravelContract.BoardPlans)
+                            {
+                                <option value="@c">@label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="lt-field">Sleeps<input type="number" min="1" max="20" @bind="room.Capacity" /></label>
+                    <label class="lt-field">How many you have<input type="number" min="1" max="500" @bind="room.Units" /></label>
+                </div>
+                <div class="lt-two">
+                    <label class="lt-field">Price a night (USD)<input type="number" min="1" step="0.01" @bind="room.Price" /></label>
+                    <label class="lt-field">Description (optional)<input maxlength="1000" @bind="room.Description" /></label>
+                </div>
+                <div class="lt-actions">
+                    <button class="primary" disabled="@_busy" @onclick="SaveRoomAsync">Save room</button>
+                    @if (room.Id is { } roomId)
+                    {
+                        <button class="link" disabled="@_busy" @onclick="() => ArchiveRoomAsync(roomId)">Stop selling this room</button>
+                    }
+                    <button class="secondary" @onclick="() => _room = null">Cancel</button>
+                </div>
+            </div>
+        }
+    </section>
+
+    @if (_calendar is not null && _calendarRoom is { } calRoom)
+    {
+        <section class="lt-card">
+            <div class="lt-row">
+                <h3 class="grow">Rates: @property.Rooms.First(r => r.Id == calRoom).Name</h3>
+                <input type="date" style="width: auto" @bind="_calendarFrom" @bind:after="() => CalendarAsync(calRoom)" />
+            </div>
+            <div class="lt-cal">
+                @foreach (var n in _calendar)
+                {
+                    <div class="@(n.Closed ? "closed" : n.Booked + n.Held >= n.Units ? "full" : "")" title="@n.Booked booked, @n.Held held of @n.Units">
+                        <b>@n.Date.ToString("ddd d")</b>
+                        <span>@(n.Closed ? "Closed" : "$" + n.Price.ToString("0.##"))</span>
+                        <span class="muted">@(n.Units - n.Booked - n.Held) free</span>
+                    </div>
+                }
+            </div>
+            <div class="lt-three">
+                <label class="lt-field">From<input type="date" @bind="_rateFrom" /></label>
+                <label class="lt-field">To<input type="date" @bind="_rateTo" /></label>
+                <label class="lt-field">Price a night<input type="number" min="1" step="0.01" placeholder="unchanged" @bind="_ratePrice" /></label>
+            </div>
+            <div class="lt-actions">
+                <button class="primary" disabled="@(_busy || _ratePrice is null)" @onclick="() => RatesAsync(calRoom, null)">Set price</button>
+                <button class="secondary" disabled="@_busy" @onclick="() => RatesAsync(calRoom, true)">Stop selling these nights</button>
+                <button class="secondary" disabled="@_busy" @onclick="() => RatesAsync(calRoom, false)">Sell them again</button>
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public Guid? Id { get; set; }
+
+    sealed class Form
+    {
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "lodge";
+        public string? Description { get; set; }
+        public string City { get; set; } = "";
+        public string Country { get; set; } = "Zambia";
+        public string? Address { get; set; }
+        public double? Lat { get; set; }
+        public double? Lng { get; set; }
+        public int Stars { get; set; }
+        public TimeOnly CheckIn { get; set; } = new(14, 0);
+        public TimeOnly CheckOut { get; set; } = new(10, 0);
+        public string Cancellation { get; set; } = "moderate";
+        public HashSet<string> Amenities { get; set; } = [];
+    }
+
+    sealed class RoomForm
+    {
+        public Guid? Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Kind { get; set; } = "standard";
+        public string BoardPlan { get; set; } = "bed_breakfast";
+        public int Capacity { get; set; } = 2;
+        public int Units { get; set; } = 1;
+        public decimal Price { get; set; } = 100;
+        public string? Description { get; set; }
+
+        public static RoomForm From(RoomTypeDto r) => new()
+        {
+            Id = r.Id, Name = r.Name, Kind = r.Kind, BoardPlan = r.BoardPlan, Capacity = r.Capacity, Units = r.Units, Price = r.NightlyPrice, Description = r.Description
+        };
+    }
+
+    record PositionDto(double? latitude, double? longitude);
+
+    [Inject] IJSRuntime JS { get; set; } = null!;
+
+    Form _f = new();
+    RoomForm? _room;
+    PropertyDto? _property;
+    IReadOnlyList<RoomNightDto>? _calendar;
+    Guid? _calendarRoom;
+    DateOnly _calendarFrom = DateOnly.FromDateTime(DateTime.Today);
+    DateOnly? _rateFrom, _rateTo;
+    decimal? _ratePrice;
+    string? _error;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id is not { } id)
+            return;
+        try
+        {
+            _property = await App.Api.GetAsync<PropertyDto>($"{TravelApi.Base}/properties/{id}");
+            var p = _property;
+            _f = new Form
+            {
+                Name = p.Name, Type = p.Type, Description = p.Description, City = p.City, Country = p.Country, Address = p.Address, Lat = p.Lat, Lng = p.Lng,
+                Stars = p.Stars ?? 0, CheckIn = TimeOnly.Parse(p.CheckInTime), CheckOut = TimeOnly.Parse(p.CheckOutTime), Cancellation = p.Cancellation,
+                Amenities = [.. p.Amenities]
+            };
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    void Toggle(string code)
+    {
+        if (!_f.Amenities.Remove(code))
+            _f.Amenities.Add(code);
+    }
+
+    async Task HereAsync()
+    {
+        var here = await JS.InvokeAsync<PositionDto?>("ndeipi.location");
+        if (here?.latitude is { } lat && here.longitude is { } lng)
+            (_f.Lat, _f.Lng) = (Math.Round(lat, 6), Math.Round(lng, 6));
+        else
+            _error = "Your location isn't available; type the coordinates or leave them empty.";
+    }
+
+    async Task SaveAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var request = new SavePropertyRequest(_f.Name, _f.Type, _f.Description, _f.City, _f.Country, _f.Address, _f.Lat, _f.Lng, _f.Stars,
+                [.. _f.Amenities], _f.Cancellation, _f.CheckIn.ToString("HH:mm"), _f.CheckOut.ToString("HH:mm"));
+            _property = Id is { } id
+                ? await App.Api.SendAsync<PropertyDto>(HttpMethod.Put, $"{TravelApi.Base}/vendor/properties/{id}", request)
+                : await App.Api.SendAsync<PropertyDto>(HttpMethod.Post, $"{TravelApi.Base}/vendor/properties", request);
+            if (Id is null)
+                App.Replace(new TravelView.EditProperty(_property!.Id));
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task ReloadAsync() => _property = await App.Api.GetAsync<PropertyDto>($"{TravelApi.Base}/properties/{_property!.Id}");
+
+    async Task SaveRoomAsync()
+    {
+        var r = _room!;
+        (_busy, _error) = (true, null);
+        try
+        {
+            var request = new SaveRoomTypeRequest(r.Name, r.Kind, r.BoardPlan, r.Capacity, r.Units, r.Price, r.Description);
+            var path = $"{TravelApi.Base}/vendor/properties/{_property!.Id}/rooms";
+            await (r.Id is { } roomId
+                ? App.Api.SendAsync<RoomTypeDto>(HttpMethod.Put, $"{path}/{roomId}", request)
+                : App.Api.SendAsync<RoomTypeDto>(HttpMethod.Post, path, request));
+            _room = null;
+            await ReloadAsync();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task ArchiveRoomAsync(Guid roomId)
+    {
+        _busy = true;
+        try
+        {
+            await App.Api.SendAsync(HttpMethod.Delete, $"{TravelApi.Base}/vendor/properties/{_property!.Id}/rooms/{roomId}", null);
+            _room = null;
+            await ReloadAsync();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task PublishAsync(bool published)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await App.Api.SendAsync(HttpMethod.Post, $"{TravelApi.Base}/vendor/stay/{_property!.Id}/publish", new { published });
+            await ReloadAsync();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task CalendarAsync(Guid roomId)
+    {
+        _calendarRoom = roomId;
+        try
+        {
+            _calendar = await App.Api.GetAsync<List<RoomNightDto>>($"{TravelApi.Base}/vendor/properties/{_property!.Id}/rooms/{roomId}/calendar?from={_calendarFrom:yyyy-MM-dd}&days=28");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task RatesAsync(Guid roomId, bool? closed)
+    {
+        if (_rateFrom is not { } from || _rateTo is not { } to)
+        {
+            _error = "Choose the first and last night.";
+            return;
+        }
+        (_busy, _error) = (true, null);
+        try
+        {
+            await App.Api.SendAsync(HttpMethod.Put, $"{TravelApi.Base}/vendor/properties/{_property!.Id}/rooms/{roomId}/rates",
+                new SetRatesRequest(from, to, closed is null ? _ratePrice : null, closed));
+            await CalendarAsync(roomId);
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -1,0 +1,131 @@
+@implements IDisposable
+
+@* The voucher (FR-5.1, UI-2): a QR code that changes every 30 seconds, each one signed by a key that
+   never leaves this phone, so it can't be screenshotted and passed on, and it works with no signal.
+   The booking is kept on the phone for the same reason. *@
+
+@if (_booking is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var item = _booking.Items[0];
+    <section class="lt-card lt-voucher">
+        <h2>@item.Title</h2>
+        <span class="muted">@Format.Dates(item) · @item.Guests guest@(item.Guests == 1 ? "" : "s") · @_booking.LeadGuestName</span>
+        @if (_elsewhere)
+        {
+            <div class="lt-note">This voucher was opened on another phone, which is the one that shows the code.</div>
+            <button class="primary" disabled="@_busy" @onclick="MoveHereAsync">Show it on this phone instead</button>
+        }
+        else if (App.Context.Device is null)
+        {
+            <div class="lt-note">This app can't keep a key on this device. Show the booking reference <b>@_booking.Reference</b> or the PDF voucher instead.</div>
+        }
+        else if (_qr is not null)
+        {
+            <img src="@_qr" alt="Voucher code for @_booking.Reference" />
+            <div class="lt-bar-progress"><div style="width: @(SecondsLeft * 100 / TravelContract.QrWindowSeconds)%"></div></div>
+            <b style="font-size: 20px; letter-spacing: .08em">@_booking.Reference</b>
+            <span class="small muted">Show this at check-in. It refreshes itself and works offline.</span>
+        }
+        @if (_error is not null)
+        {
+            <div class="lt-note warn">@_error</div>
+        }
+    </section>
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    TravelBookingDto? _booking;
+    string? _qr, _error;
+    bool _elsewhere, _busy;
+    long _window = -1;
+    Timer? _timer;
+
+    string KeyName => $"voucher.{Id:N}";
+    string CacheName => $"booking.{Id:N}";
+    int SecondsLeft => TravelContract.QrWindowSeconds - (int)(DateTimeOffset.UtcNow.ToUnixTimeSeconds() % TravelContract.QrWindowSeconds);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var device = App.Context.Device;
+        try
+        {
+            _booking = await App.Api.GetAsync<TravelBookingDto>($"{TravelApi.Base}/bookings/{Id}");
+            if (device is not null)
+                await device.SetValueAsync(CacheName, ContractJson.Write(_booking));
+        }
+        catch (TravelException e)
+        {
+            // UI-2: with no signal, the booking this phone saved.
+            if (e.Offline && device is not null && await device.GetValueAsync(CacheName) is { } json)
+                _booking = ContractJson.Read<TravelBookingDto>(json);
+            else
+                _error = e.Message;
+        }
+        if (_booking is null || device is null)
+            return;
+
+        // A key made here signs the codes; the first phone to open the voucher registers it.
+        var mine = await device.GetPublicKeyAsync(KeyName);
+        if (_booking.HolderPublicKey is null)
+            await BindAsync();
+        else if (mine != _booking.HolderPublicKey)
+            _elsewhere = true;
+        if (!_elsewhere)
+            Start();
+    }
+
+    async Task BindAsync()
+    {
+        var device = App.Context.Device!;
+        try
+        {
+            var publicKey = await device.CreateKeyAsync(KeyName);
+            await App.Api.SendAsync(HttpMethod.Put, $"{TravelApi.Base}/bookings/{Id}/key", new BindTravelKeyRequest(publicKey));
+            _booking = _booking! with { HolderPublicKey = publicKey };
+            await device.SetValueAsync(CacheName, ContractJson.Write(_booking));
+            _elsewhere = false;
+        }
+        catch (TravelException e)
+        {
+            _error = e.Offline ? "Open the voucher once while online to set it up on this phone." : e.Message;
+        }
+    }
+
+    async Task MoveHereAsync()
+    {
+        _busy = true;
+        await BindAsync();
+        _busy = false;
+        if (!_elsewhere)
+            Start();
+    }
+
+    void Start()
+    {
+        _ = InvokeAsync(RenderAsync);
+        _timer ??= new Timer(_ => InvokeAsync(RenderAsync), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    async Task RenderAsync()
+    {
+        var window = DateTimeOffset.UtcNow.ToUnixTimeSeconds() / TravelContract.QrWindowSeconds;
+        if (window != _window && App.Context.Device is { } device)
+        {
+            var signature = await device.SignAsync(KeyName, TravelContract.QrPayload(Id, window));
+            if (signature is null)
+                _elsewhere = true;
+            else
+                (_qr, _window) = (Format.QrDataUrl(TravelContract.QrText(Id, window, signature)), window);
+        }
+        StateHasChanged();
+    }
+
+    public void Dispose() => _timer?.Dispose();
+}

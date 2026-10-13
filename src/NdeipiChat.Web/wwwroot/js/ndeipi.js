@@ -79,6 +79,18 @@
     objectUrl: (bytes, type) => URL.createObjectURL(new Blob([bytes], { type: type || 'image/jpeg' })),
     revokeObjectUrl: (url) => URL.revokeObjectURL(url),
 
+    // Hands the user a file to save, such as a travel voucher.
+    saveFile: (bytes, name, type) => {
+        const url = URL.createObjectURL(new Blob([bytes], { type: type || 'application/octet-stream' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = name;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
+
     // The browser's position for a registration; null if it's off, refused or times out.
     location: () => new Promise(resolve => {
       if (!navigator.geolocation) { resolve(null); return; }

@@ -1,0 +1,191 @@
+@* A place to stay (FR-2): photos, what it offers, its cancellation policy, and its rooms with what's
+   free for the chosen dates and what the stay costs (night prices can differ). Reserving holds the
+   room for 15 minutes and goes to checkout. *@
+
+@if (_property is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var p = _property;
+    <div class="lt-hero" style="@Format.Cover(_photo ?? p.Photos.FirstOrDefault()?.Url)">
+        <div class="over">
+            <h2>@p.Name</h2>
+            <span>@Format.Icon(p.Type) @Format.Label(TravelContract.PropertyTypes, p.Type) · @p.City, @p.Country@(p.Stars is { } s ? " · " + new string('★', s) : "")</span>
+        </div>
+    </div>
+    @if (p.Photos.Count > 1)
+    {
+        <div class="lt-thumbs">
+            @foreach (var photo in p.Photos)
+            {
+                <img src="@photo.ThumbUrl" alt="" loading="lazy" @onclick="() => _photo = photo.Url" />
+            }
+        </div>
+    }
+    @if (p.Status != "published")
+    {
+        <div class="lt-note warn">@(p.Status == "suspended" ? "Suspended by Ndeipi: travellers can't see or book this." : "Draft: only you can see this until you publish it.")</div>
+    }
+
+    <section class="lt-card">
+        @if (p.Description is { } description)
+        {
+            <p style="margin: 0; white-space: pre-wrap; line-height: 1.5">@description</p>
+        }
+        <div class="lt-chips">
+            @foreach (var a in p.Amenities)
+            {
+                <span class="lt-badge">@Format.Label(TravelContract.Amenities, a)</span>
+            }
+        </div>
+        <dl class="lt-facts">
+            <dt>Hosted by</dt><dd>@p.VendorName</dd>
+            @if (p.Address is { } address)
+            {
+                <dt>Address</dt><dd>@address</dd>
+            }
+            <dt>Check-in</dt><dd>from @p.CheckInTime · check-out by @p.CheckOutTime</dd>
+            <dt>Cancellation</dt><dd>@Policy(p.Cancellation)</dd>
+        </dl>
+        @if (p.IsMine)
+        {
+            <div class="lt-actions"><button class="secondary" @onclick="() => App.Go(new TravelView.EditProperty(p.Id))">✏️ Edit this property</button></div>
+        }
+        @if (App.Me?.IsAdmin == true && !p.IsMine)
+        {
+            <div class="lt-actions">
+                <button class="link" @onclick='() => AdminAsync(p.Status == "suspended" ? "active" : "suspended")'>@(p.Status == "suspended" ? "Restore listing (admin)" : "Suspend listing (admin)")</button>
+            </div>
+        }
+    </section>
+
+    <section class="lt-card">
+        <h3>Choose your dates</h3>
+        <div class="lt-three">
+            <label class="lt-field">Check-in<input type="date" min="@DateTime.Today.ToString("yyyy-MM-dd")" @bind="_checkIn" @bind:after="LoadAsync" /></label>
+            <label class="lt-field">Check-out<input type="date" min="@DateTime.Today.AddDays(1).ToString("yyyy-MM-dd")" @bind="_checkOut" @bind:after="LoadAsync" /></label>
+            <label class="lt-field">Guests<input type="number" min="1" max="60" @bind="_guests" /></label>
+        </div>
+        @if (_checkIn is null || _checkOut is null)
+        {
+            <span class="muted small">Pick dates to see what's free and the price of your stay.</span>
+        }
+    </section>
+
+    @if (_error is not null)
+    {
+        <div class="lt-note warn">@_error</div>
+    }
+
+    <h3>Rooms</h3>
+    @foreach (var r in p.Rooms)
+    {
+        var rooms = Math.Max(1, (int)Math.Ceiling(_guests / (double)r.Capacity));
+        <section class="lt-card" @key="r.Id">
+            <div class="lt-row">
+                <span class="grow">
+                    <b>@r.Name</b>
+                    <small>@Format.Label(TravelContract.RoomKinds, r.Kind) · sleeps @r.Capacity · @Format.Label(TravelContract.BoardPlans, r.BoardPlan)</small>
+                </span>
+                <span class="lt-price">@Format.Money(r.StayPrice is { } total && _checkIn is { } a && _checkOut is { } b ? total / (b.DayNumber - a.DayNumber) : r.NightlyPrice)<small> /night</small></span>
+            </div>
+            @if (r.Description is { } d)
+            {
+                <span class="small muted">@d</span>
+            }
+            @if (r.AvailableUnits is { } free && r.StayPrice is { } stay)
+            {
+                <div class="lt-row">
+                    <span class="grow small">
+                        @if (free == 0)
+                        {
+                            <span class="lt-badge bad">Full for these dates</span>
+                        }
+                        else
+                        {
+                            <span>@rooms room@(rooms == 1 ? "" : "s") for @_guests · <b>@Format.Money(stay * rooms)</b> for @Format.Nights(_checkIn!.Value, _checkOut!.Value)</span>
+                            @if (free <= 3)
+                            {
+                                <span class="lt-badge wait">Only @free left</span>
+                            }
+                        }
+                    </span>
+                    @if (!p.IsMine)
+                    {
+                        <button class="primary" disabled="@(_busy || free < rooms)" @onclick="() => ReserveAsync(r, rooms)">Reserve</button>
+                    }
+                </div>
+            }
+        </section>
+    }
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter, EditorRequired] public TravelView.Property View { get; set; } = null!;
+
+    PropertyDto? _property;
+    DateOnly? _checkIn, _checkOut;
+    int _guests = 2;
+    string? _error, _photo;
+    bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        (_checkIn, _checkOut, _guests) = (View.CheckIn, View.CheckOut, View.Guests);
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        _error = null;
+        var dates = _checkIn is { } a && _checkOut is { } b && b > a ? $"?checkIn={a:yyyy-MM-dd}&checkOut={b:yyyy-MM-dd}" : "";
+        try
+        {
+            _property = await App.Api.GetAsync<PropertyDto>($"{TravelApi.Base}/properties/{View.Id}{dates}");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task ReserveAsync(RoomTypeDto room, int rooms)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            var hold = await App.Api.SendAsync<TravelHoldDto>(HttpMethod.Post, $"{TravelApi.Base}/holds",
+                new TravelHoldRequest(TravelItemTypes.Stay, room.Id, _checkIn, _checkOut, rooms, _guests));
+            App.Go(new TravelView.Checkout(hold!.Id));
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+            await LoadAsync();
+            _error ??= e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task AdminAsync(string status)
+    {
+        try
+        {
+            await App.Api.SendAsync(HttpMethod.Put, $"{TravelApi.Base}/admin/stay/{View.Id}/status", new SetStatusRequest(status, null));
+            await LoadAsync();
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    static string Policy(string code) =>
+        TravelContract.CancellationPolicies.FirstOrDefault(c => c.Code == code) is { Label: { } label } policy ? $"{label}: {policy.Detail}" : code;
+}

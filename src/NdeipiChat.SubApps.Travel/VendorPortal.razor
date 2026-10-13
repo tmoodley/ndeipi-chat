@@ -1,0 +1,162 @@
+@implements IDisposable
+
+@* The vendor portal: become a vendor (after KYC), then listings, bookings received, check-in and the
+   business profile. Earnings are what bookings paid this month, less Ndeipi's fee. *@
+
+@if (App.Me is null)
+{
+    <p class="muted">Loading…</p>
+}
+else if (App.Me.Vendor is null)
+{
+    <section class="lt-card">
+        <h2>Sell stays and tours on Lets Travel</h2>
+        <p style="margin: 0">List your lodge, hotel, camp or tours; travellers book and pay from their Ndeipi wallet, and you're paid straight into yours, less a @(App.Me.Vendor?.FeePercent ?? 5)% Ndeipi fee.</p>
+        @if (App.Me.CanBecomeVendor)
+        {
+            <ProfileForm Saved="SavedAsync" />
+        }
+        else
+        {
+            <div class="lt-note warn">Verify your identity under Me &gt; Wallet first. Vendors are paid into their wallet, which needs a verified identity.</div>
+        }
+    </section>
+}
+else
+{
+    <div class="lt-tabs">
+        @foreach (var (tab, label) in Tabs)
+        {
+            <button class="@(Tab == tab ? "on" : "")" @onclick="() => App.Replace(new TravelView.Vendor(tab))">@label</button>
+        }
+    </div>
+    @if (App.Me.Vendor.Status == "suspended")
+    {
+        <div class="lt-note warn">Your vendor account is suspended: travellers can't see or book your listings. Contact Ndeipi support.</div>
+    }
+    @if (_error is not null)
+    {
+        <div class="lt-note warn">@_error</div>
+    }
+
+    @switch (Tab)
+    {
+        case "listings":
+            @if (_dashboard is { } d)
+            {
+                <div class="lt-stats">
+                    <div class="lt-stat"><b>@Format.Money(d.EarnedThisMonth)</b><span>Earned this month</span></div>
+                    <div class="lt-stat"><b>@Format.Money(d.FeesThisMonth)</b><span>Ndeipi fees</span></div>
+                    <div class="lt-stat"><b>@d.Bookings.Count(b => b.Status == TravelBookingStatuses.Confirmed)</b><span>Confirmed bookings</span></div>
+                </div>
+                <div class="lt-actions">
+                    <button class="primary" @onclick="() => App.Go(new TravelView.EditProperty(null))">+ Add a property</button>
+                    <button class="secondary" @onclick="() => App.Go(new TravelView.EditTour(null))">+ Add a tour</button>
+                </div>
+                @if (d.Listings.Count == 0)
+                {
+                    <section class="lt-card"><p class="muted" style="margin: 0">Nothing listed yet.</p></section>
+                }
+                <div class="lt-grid">
+                    @foreach (var l in d.Listings)
+                    {
+                        <div class="lt-result" role="link" tabindex="0" @key="l.Id" @onclick="() => Edit(l)" @onkeydown='e => { if (e.Key is "Enter" or " ") Edit(l); }'>
+                            <div class="photo" style="@Format.Cover(l.PhotoUrl); height: 110px"><span class="tag">@Format.Icon(l.Kind) @(l.Type == TravelItemTypes.Stay ? "Stay" : "Tour")</span></div>
+                            <div class="body">
+                                <span class="name">@l.Name</span>
+                                <span class="where">@l.City</span>
+                                <div class="foot">
+                                    <span class="lt-badge @Format.Tone(l.Status)">@l.Status</span>
+                                    <span class="small muted">@l.UpcomingBookings upcoming</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="muted">Loading…</p>
+            }
+            break;
+
+        case "bookings":
+            @if (_dashboard is { } dash)
+            {
+                @if (dash.Bookings.Count == 0)
+                {
+                    <section class="lt-card"><p class="muted" style="margin: 0">No bookings yet.</p></section>
+                }
+                @foreach (var b in dash.Bookings)
+                {
+                    var item = b.Items[0];
+                    <div class="lt-card" role="link" tabindex="0" style="cursor: pointer" @key="b.Id" @onclick="() => App.Go(new TravelView.Booking(b.Id))" @onkeydown='e => { if (e.Key is "Enter" or " ") App.Go(new TravelView.Booking(b.Id)); }'>
+                        <div class="lt-row">
+                            <span class="grow"><b>@b.LeadGuestName · @item.Title</b><small>@item.Subtitle · @Format.Dates(item) · @item.Guests guest@(item.Guests == 1 ? "" : "s")</small></span>
+                            <span class="lt-badge @Format.Tone(b.Status)">@Format.Status(b.Status)</span>
+                        </div>
+                        <span class="small muted">@b.Reference · you receive @Format.Money(b.Total - b.Fee)</span>
+                    </div>
+                }
+            }
+            break;
+
+        case "check-in":
+            <CheckIn />
+            break;
+
+        case "profile":
+            <section class="lt-card">
+                <h3>Business profile</h3>
+                <ProfileForm Vendor="App.Me.Vendor" Saved="SavedAsync" />
+            </section>
+            break;
+    }
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public string Tab { get; set; } = "listings";
+
+    static readonly (string Tab, string Label)[] Tabs = [("listings", "Listings"), ("bookings", "Bookings"), ("check-in", "Check-in"), ("profile", "Profile")];
+
+    VendorDashboardDto? _dashboard;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        App.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    void OnChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    async Task LoadAsync()
+    {
+        if (App.Me?.Vendor is null)
+            return;
+        try
+        {
+            _dashboard = await App.Api.GetAsync<VendorDashboardDto>($"{TravelApi.Base}/vendor/dashboard");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task SavedAsync()
+    {
+        await App.RefreshMeAsync();
+        await LoadAsync();
+    }
+
+    void Edit(VendorListingDto l) =>
+        App.Go(l.Type == TravelItemTypes.Stay ? new TravelView.EditProperty(l.Id) : new TravelView.EditTour(l.Id));
+
+    public void Dispose() => App.Changed -= OnChanged;
+}

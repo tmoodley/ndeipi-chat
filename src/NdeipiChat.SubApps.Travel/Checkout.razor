@@ -1,0 +1,146 @@
+@implements IDisposable
+
+@* Checkout (FR-2.3, FR-4): the room or seats are held for 15 minutes while the traveller enters the
+   lead guest and pays from the Ndeipi wallet. The price is in US dollars, with rough equivalents in
+   regional currencies (FR-4.1), and Believe Points can come off Ndeipi's fee (FR-4.3). *@
+
+@if (_hold is null)
+{
+    <p class="@(_error is null ? "muted" : "error")">@(_error ?? "Loading…")</p>
+}
+else
+{
+    var h = _hold;
+    var left = h.ExpiresAt - DateTimeOffset.UtcNow;
+    <section class="lt-card">
+        <div class="lt-row">
+            <span class="grow">
+                <h2>@h.Title</h2>
+                <small>@h.Subtitle</small>
+            </span>
+        </div>
+        <span>@(h.CheckIn is { } a ? $"{Format.Day(a)} → {Format.Day(h.CheckOut!.Value)} · {Format.Nights(a, h.CheckOut.Value)}" : h.StartsAt is { } s ? Format.When(s) : "") · @h.Guests guest@(h.Guests == 1 ? "" : "s")</span>
+        @if (h.Status == "active" && left > TimeSpan.Zero)
+        {
+            <div class="lt-note @(left < TimeSpan.FromMinutes(3) ? "warn" : "")">
+                ⏳ Held for you for <span class="lt-timer">@((int)left.TotalMinutes):@left.Seconds.ToString("00")</span>. If you don't pay by then it goes back on sale.
+            </div>
+        }
+        else if (_booking is null)
+        {
+            <div class="lt-note warn">Your 15 minutes ran out and this was released. <button class="link" @onclick="App.BackAsync">Choose again</button></div>
+        }
+    </section>
+
+    <section class="lt-card">
+        <h3>Price</h3>
+        <div class="lt-lines">
+            @foreach (var l in h.Lines)
+            {
+                <span>@l.Label</span><span>@Format.Money(l.Amount)</span>
+            }
+            @if (Discount > 0)
+            {
+                <span>Believe Points (@Points)</span><span>−@Format.Money(Discount)</span>
+            }
+            <span class="total">You pay</span><span class="total">@Format.Money(h.Total - Discount)</span>
+        </div>
+        <span class="small muted">About @string.Join(" · ", h.Approximations.Select(x => Format.Approx(x.Label, x.Amount * (h.Total - Discount) / h.Total))). You're charged in US dollars from your Ndeipi wallet; other currencies are approximate.</span>
+        @if (h.MaxPointsDiscount > 0 && h.PointsBalance >= 1)
+        {
+            <label class="lt-row" style="cursor: pointer">
+                <input type="checkbox" style="width: 18px; height: 18px" @bind="_redeem" />
+                <span class="grow">Use Believe Points<small>You have @h.PointsBalance.ToString("N0"); @h.PointsPerDollar points = $1, up to @Format.Money(h.MaxPointsDiscount) off this booking.</small></span>
+            </label>
+        }
+    </section>
+
+    @if (_booking is null)
+    {
+        <section class="lt-card">
+            <h3>Lead guest</h3>
+            <label class="lt-field">Full name, as on their ID<input autocomplete="name" maxlength="@TravelContract.MaxNameLength" @bind="_name" @bind:event="oninput" /></label>
+            <div class="lt-two">
+                <label class="lt-field">Phone (for the host)<input type="tel" autocomplete="tel" maxlength="40" @bind="_phone" /></label>
+                <label class="lt-field">Passport or ID number (optional)<input maxlength="40" @bind="_idNumber" /></label>
+            </div>
+            <span class="small muted">The ID number is only for park permits and the host's register. It's stored encrypted and shown only to you and the host.</span>
+            <label class="lt-field">Requests for the host (optional)<textarea rows="2" maxlength="@TravelContract.MaxRequestsLength" @bind="_requests"></textarea></label>
+            @if (_error is not null)
+            {
+                <div class="lt-note warn">@_error</div>
+            }
+            <div class="lt-actions">
+                <button class="primary" disabled="@(_busy || h.Status != "active" || left <= TimeSpan.Zero || string.IsNullOrWhiteSpace(_name))" @onclick="PayAsync">
+                    @(_busy ? "Paying…" : $"Pay {Format.Money(h.Total - Discount)} from my wallet")
+                </button>
+                <button class="secondary" disabled="@_busy" @onclick="ReleaseAsync">Cancel</button>
+            </div>
+        </section>
+    }
+}
+
+@code {
+    [CascadingParameter] public TravelApp App { get; set; } = null!;
+    [Parameter] public Guid HoldId { get; set; }
+
+    TravelHoldDto? _hold;
+    TravelBookingDto? _booking;
+    string? _name, _phone, _idNumber, _requests, _error;
+    bool _busy, _redeem;
+    Timer? _tick;
+
+    decimal Discount => _redeem && _hold is { } h ? Math.Min(h.MaxPointsDiscount, Math.Floor(h.PointsBalance * 100m / h.PointsPerDollar) / 100m) : 0;
+    int Points => _hold is { } h ? (int)Math.Ceiling(Discount * h.PointsPerDollar) : 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _name = App.Context.DisplayName;
+        try
+        {
+            _hold = await App.Api.GetAsync<TravelHoldDto>($"{TravelApi.Base}/holds/{HoldId}");
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        _tick = new Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    async Task PayAsync()
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            _booking = await App.Api.SendAsync<TravelBookingDto>(HttpMethod.Post, $"{TravelApi.Base}/holds/{HoldId}/checkout",
+                new TravelCheckoutRequest(_name!.Trim(), _phone, _idNumber, _requests, _redeem));
+            if (_booking!.Status == TravelBookingStatuses.Failed)
+                _error = _booking.Error ?? "The payment didn't go through.";
+            else
+                App.Replace(new TravelView.Booking(_booking.Id));
+        }
+        catch (TravelException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task ReleaseAsync()
+    {
+        try
+        {
+            await App.Api.SendAsync(HttpMethod.Delete, $"{TravelApi.Base}/holds/{HoldId}", null);
+        }
+        catch (TravelException)
+        {
+            // It expires by itself anyway.
+        }
+        await App.BackAsync();
+    }
+
+    public void Dispose() => _tick?.Dispose();
+}

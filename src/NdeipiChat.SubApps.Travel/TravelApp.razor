@@ -1,0 +1,215 @@
+@implements IAsyncDisposable
+
+@* Lets Travel (Hotel & Tours Booking SRS): find stays and tours, book and pay from the Ndeipi wallet,
+   and travel on an offline QR voucher; vendors list and run their properties and tours in the vendor
+   portal. Opened at a booking with "booking={id}", a stay with "property={id}" or a tour with "tour={id}". *@
+@attribute [SubAppRoot(TravelContract.AppId)]
+
+<style>
+    .content.embedded header.lt-bar { display: none; }
+    .lt .page { max-width: 980px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; padding-bottom: 40px; }
+    .lt h2 { font-size: 22px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .lt h3 { font-size: 16px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .lt .muted { color: var(--muted); }
+    .lt .small { font-size: 13px; }
+    .lt-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+    .lt-tabs button, .lt-chips button { flex: none; border-radius: 18px; padding: 7px 14px; font-size: 14px; background: var(--secondary); color: var(--text); box-shadow: none; white-space: nowrap; }
+    .lt-tabs button.on, .lt-chips button.on { background: var(--brand); color: #fff; font-weight: 700; }
+    .lt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .lt-chips button { padding: 5px 11px; font-size: 13px; }
+    .lt-chips button .n { opacity: .7; margin-left: 4px; font-size: 12px; }
+    .lt-card { background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, var(--divider)); border-radius: 18px; box-shadow: var(--shadow, none); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; color: var(--text); }
+    .lt-search { display: grid; grid-template-columns: 2fr 1fr 1fr .7fr .7fr; gap: 8px; align-items: end; }
+    .lt-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); min-width: 0; }
+    .lt-field input, .lt-field select, .lt-field textarea { font-weight: 500; font-size: 15px; color: var(--text); }
+    .lt-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .lt-three { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+    .lt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 14px; }
+    .lt-result { border-radius: 18px; overflow: hidden; display: flex; flex-direction: column; background: var(--glass-strong, var(--surface)); border: 1px solid var(--glass-border, var(--divider)); box-shadow: var(--shadow, none); cursor: pointer; color: var(--text); outline: none; transition: transform .15s ease; }
+    .lt-result:hover, .lt-result:focus-visible { transform: translateY(-2px); }
+    .lt-result:focus-visible { box-shadow: 0 0 0 3px var(--brand); }
+    .lt-result .photo { height: 150px; position: relative; }
+    .lt-result .photo .tag { position: absolute; left: 10px; top: 10px; border-radius: 10px; padding: 3px 9px; font-size: 12px; font-weight: 800; background: rgba(0, 0, 0, .55); color: #fff; }
+    .lt-result .photo .tag.off { background: rgba(229, 72, 77, .9); }
+    .lt-result .body { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
+    .lt-result .name { font-size: 16px; font-weight: 800; }
+    .lt-result .where { font-size: 13px; color: var(--muted); }
+    .lt-result .summary { font-size: 13px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .lt-result .foot { display: flex; justify-content: space-between; align-items: baseline; margin-top: auto; padding-top: 8px; }
+    .lt-price { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+    .lt-price small { font-size: 12px; color: var(--muted); font-weight: 600; }
+    .lt-hero { border-radius: 20px; height: 220px; position: relative; overflow: hidden; }
+    .lt-hero .over { position: absolute; inset: auto 0 0 0; padding: 18px; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.65)); }
+    .lt-hero .over h2 { color: #fff; }
+    .lt-thumbs { display: flex; gap: 8px; overflow-x: auto; }
+    .lt-thumbs img { width: 96px; height: 72px; object-fit: cover; border-radius: 10px; flex: none; cursor: pointer; }
+    .lt-row { display: flex; gap: 10px; align-items: center; }
+    .lt-row .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .lt-row .grow small { color: var(--muted); }
+    .lt-list > .lt-row { padding: 9px 0; border-bottom: 1px solid var(--divider); }
+    .lt-list > .lt-row:last-child { border-bottom: none; }
+    .lt-badge { display: inline-block; border-radius: 10px; padding: 2px 9px; font-size: 12px; font-weight: 800; background: var(--secondary); color: var(--muted); white-space: nowrap; }
+    .lt-badge.ok { background: rgba(31, 169, 113, .16); color: var(--success); }
+    .lt-badge.wait { background: rgba(255, 196, 0, .2); color: #8A6100; }
+    .lt-badge.bad { background: rgba(229, 72, 77, .14); color: var(--danger); }
+    .lt-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .lt-note { border-radius: 12px; padding: 10px 14px; font-size: 14px; background: var(--secondary); }
+    .lt-note.warn { background: rgba(255, 196, 0, .18); color: #8A6100; }
+    .lt-note.ok { background: rgba(31, 169, 113, .14); color: var(--success); }
+    .lt-lines { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 14px; }
+    .lt-lines .total { font-weight: 800; font-size: 17px; border-top: 1px solid var(--divider); padding-top: 8px; }
+    .lt-timer { font-variant-numeric: tabular-nums; font-weight: 800; }
+    .lt-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; font-size: 14px; }
+    .lt-facts dt { color: var(--muted); }
+    .lt-facts dd { margin: 0; overflow-wrap: anywhere; }
+    .lt-voucher { align-items: center; text-align: center; }
+    .lt-voucher img { width: min(280px, 80vw); image-rendering: pixelated; background: #fff; padding: 10px; border-radius: 14px; }
+    .lt-bar-progress { height: 4px; border-radius: 2px; background: var(--secondary); width: min(280px, 80vw); overflow: hidden; }
+    .lt-bar-progress div { height: 100%; background: var(--brand); transition: width 1s linear; }
+    .lt-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+    .lt-stat { border-radius: 16px; padding: 12px 14px; background: var(--secondary); display: flex; flex-direction: column; gap: 2px; }
+    .lt-stat b { font-size: 22px; font-variant-numeric: tabular-nums; }
+    .lt-stat span { font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+    .lt-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; font-size: 12px; }
+    .lt-cal div { min-width: 0; overflow: hidden; }
+    .lt-cal div { border-radius: 8px; padding: 6px 4px; background: var(--secondary); text-align: center; display: flex; flex-direction: column; gap: 2px; }
+    .lt-cal div.closed { background: rgba(229, 72, 77, .14); }
+    .lt-cal div.full { background: rgba(255, 196, 0, .2); }
+    .lt-add { width: 96px; height: 72px; border-radius: 10px; border: 2px dashed var(--divider); display: grid; place-items: center; font-size: 24px; color: var(--muted); position: relative; overflow: hidden; cursor: pointer; flex: none; }
+    .lt-add input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+    .lt-photo { position: relative; flex: none; }
+    .lt-photo button { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; padding: 0; border-radius: 50%; background: rgba(0, 0, 0, .6); color: #fff; font-size: 13px; box-shadow: none; }
+    @@media (max-width: 720px) { .lt-search { grid-template-columns: 1fr 1fr; } .lt-search .place { grid-column: 1 / -1; } }
+    @@media (max-width: 480px) { .lt-two, .lt-three { grid-template-columns: 1fr; } .lt-cal { font-size: 10px; gap: 2px; } .lt-cal div { padding: 4px 1px; } }
+</style>
+
+<div class="lt">
+    <header class="bar lt-bar">
+        <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+        <h1>@Title</h1>
+    </header>
+
+    <div class="page">
+        @if (_view is TravelView.Explore or TravelView.Trips or TravelView.Vendor)
+        {
+            <nav class="lt-tabs" aria-label="Lets Travel">
+                <button class="@(_view is TravelView.Explore ? "on" : "")" @onclick="() => Go(new TravelView.Explore(), root: true)">🔎 Explore</button>
+                <button class="@(_view is TravelView.Trips ? "on" : "")" @onclick="() => Go(new TravelView.Trips(), root: true)">🧳 My trips</button>
+                <button class="@(_view is TravelView.Vendor ? "on" : "")" @onclick="() => Go(new TravelView.Vendor(), root: true)">🏨 For vendors</button>
+            </nav>
+        }
+
+        <CascadingValue Value="this" IsFixed="true">
+            @switch (_view)
+            {
+                case TravelView.Explore: <Explore /> break;
+                case TravelView.Property p: <PropertyPage @key="p" View="p" /> break;
+                case TravelView.Tour t: <TourPage @key="t" View="t" /> break;
+                case TravelView.Checkout c: <Checkout @key="c" HoldId="c.HoldId" /> break;
+                case TravelView.Trips: <Trips /> break;
+                case TravelView.Booking b: <BookingPage @key="b" Id="b.Id" /> break;
+                case TravelView.Voucher v: <VoucherPage @key="v" Id="v.Id" /> break;
+                case TravelView.Vendor v: <VendorPortal @key="v" Tab="@v.Tab" /> break;
+                case TravelView.EditProperty e: <EditProperty @key="e" Id="e.Id" /> break;
+                case TravelView.EditTour e: <EditTour @key="e" Id="e.Id" /> break;
+            }
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    TravelView _view = new TravelView.Explore();
+    readonly Stack<TravelView> _history = new();
+    IAsyncDisposable? _subscription;
+
+    public TravelApi Api { get; private set; } = null!;
+    public TravelMeDto? Me { get; private set; }
+
+    /// <summary>The last search, kept while browsing results and listings.</summary>
+    public TravelSearchRequest Search { get; set; } = new(TravelItemTypes.Stay);
+
+    /// <summary>Raised when a booking of theirs (or, as a vendor, one they received) changes, live.</summary>
+    public event Action? Changed;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new TravelApi(Context.Api);
+        var query = Context.Query.Split('&').Select(p => p.Split('=', 2)).Where(p => p.Length == 2)
+            .GroupBy(p => p[0]).ToDictionary(g => g.Key, g => g.First()[1]);
+        if (query.TryGetValue("booking", out var b) && Guid.TryParse(b, out var booking))
+            Go(new TravelView.Booking(booking));
+        else if (query.TryGetValue("property", out var p) && Guid.TryParse(p, out var property))
+            Go(new TravelView.Property(property, null, null, 2, 1));
+        else if (query.TryGetValue("tour", out var t) && Guid.TryParse(t, out var tour))
+            Go(new TravelView.Tour(tour, 2));
+
+        if (Context.Realtime is { } realtime)
+        {
+            try
+            {
+                _subscription = await realtime.SubscribeAsync(TravelContract.Topic(Context.UserId), _ => InvokeAsync(() => Changed?.Invoke()));
+            }
+            catch (Exception)
+            {
+                // Live updates are a nicety: pages show the latest when they load.
+            }
+        }
+        await RefreshMeAsync();
+    }
+
+    public async Task RefreshMeAsync()
+    {
+        try
+        {
+            Me = await Api.GetAsync<TravelMeDto>($"{TravelApi.Base}/me");
+        }
+        catch (TravelException)
+        {
+            // Pages say what's wrong when they load.
+        }
+        StateHasChanged();
+    }
+
+    string Title => _view switch
+    {
+        TravelView.Checkout => "Checkout",
+        TravelView.Booking or TravelView.Voucher => "Your booking",
+        TravelView.Vendor or TravelView.EditProperty or TravelView.EditTour => "Vendor portal",
+        _ => "Lets Travel"
+    };
+
+    public void Go(TravelView view, bool root = false)
+    {
+        if (root)
+            _history.Clear();
+        else
+            _history.Push(_view);
+        _view = view;
+        StateHasChanged();
+    }
+
+    public void Replace(TravelView view)
+    {
+        _view = view;
+        StateHasChanged();
+    }
+
+    public Task BackAsync()
+    {
+        if (_history.TryPop(out var previous))
+        {
+            _view = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        return _view is TravelView.Explore ? Context.NavigateToLauncher() : Task.Run(() => InvokeAsync(() => Go(new TravelView.Explore(), root: true)));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_subscription is not null)
+            await _subscription.DisposeAsync();
+    }
+}
