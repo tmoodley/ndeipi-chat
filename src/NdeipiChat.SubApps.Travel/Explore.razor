@@ -1,42 +1,147 @@
 @inject IJSRuntime JS
 
 @* Finding stays and tours (FR-1): a place (or near me), dates and the party, then filters that come
-   from what the region actually has (FR-1.2), and results with availability for those dates. *@
+   from what the region actually has (FR-1.2), and results with availability for those dates. Before
+   anyone searches, it opens on the top destinations and what's recommended. *@
 
-<section class="lt-card">
-    <div class="lt-tabs">
-        <button class="@(S.Type == TravelItemTypes.Stay ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Stay)">🛏️ Stays</button>
-        <button class="@(S.Type == TravelItemTypes.Tour ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Tour)">🧭 Tours & safaris</button>
+<section class="lt-heroband">
+    <svg class="scene" viewBox="0 0 1200 400" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+            <linearGradient id="lt-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1E3A8A" /><stop offset=".55" stop-color="#C2410C" /><stop offset="1" stop-color="#F59E0B" /></linearGradient>
+        </defs>
+        <rect width="1200" height="400" fill="url(#lt-sky)" />
+        <circle cx="860" cy="250" r="70" fill="#FDE68A" opacity=".85" />
+        <path d="M0 300 140 210 260 270 420 160 560 250 700 190 860 280 1000 200 1200 290V400H0z" fill="#7C2D12" opacity=".75" />
+        <path d="M0 340 180 280 330 320 520 250 700 320 900 270 1060 330 1200 300V400H0z" fill="#431407" opacity=".9" />
+        <path d="M120 400V330M114 338l6-14 6 14M980 400V320M972 330l8-18 8 18" stroke="#1C0A03" stroke-width="5" />
+        <path d="M0 372C240 350 420 390 640 368S1000 352 1200 376V400H0z" fill="#1C0A03" />
+    </svg>
+    <div class="inner">
+        <h1>Let the journey begin</h1>
+        <p>Lodges, camps and tours across Africa, booked in minutes and paid from your Ndeipi wallet</p>
+        <div class="lt-type" role="tablist" aria-label="What to find">
+            <button role="tab" aria-selected="@(S.Type == TravelItemTypes.Stay)" class="@(S.Type == TravelItemTypes.Stay ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Stay)">Stays</button>
+            <button role="tab" aria-selected="@(S.Type == TravelItemTypes.Tour)" class="@(S.Type == TravelItemTypes.Tour ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Tour)">Tours &amp; safaris</button>
+        </div>
     </div>
-    <form class="lt-search" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-        <label class="lt-field place">Where
-            <input placeholder="Victoria Falls, Kruger, Harare…" @bind="_query" />
-        </label>
-        <label class="lt-field">@(S.Type == TravelItemTypes.Stay ? "Check-in" : "From")
-            <input type="date" min="@Today" @bind="_checkIn" />
-        </label>
-        <label class="lt-field">@(S.Type == TravelItemTypes.Stay ? "Check-out" : "To")
-            <input type="date" min="@Today" @bind="_checkOut" />
-        </label>
-        <label class="lt-field">Guests
-            <input type="number" min="1" max="30" @bind="_guests" />
-        </label>
-        @if (S.Type == TravelItemTypes.Stay)
+</section>
+
+<form class="lt-searchbar" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+    <label class="sb-field place">
+        <Icon Name="pin" />
+        <span class="sb-text">
+            <span class="sb-label">Location</span>
+            <input placeholder="@(_near is null ? "Where are you going?" : $"Within {_radius} km of you")" @bind="_query" aria-label="Location" />
+        </span>
+        @if (_near is null)
         {
-            <label class="lt-field">Rooms
-                <input type="number" min="1" max="@TravelContract.MaxRoomsPerBooking" @bind="_rooms" />
-            </label>
+            <button type="button" class="sb-near" title="Near me" aria-label="Search near me" disabled="@_busy" @onclick="NearMeAsync"><Icon Name="locate" Size="18" /></button>
         }
-    </form>
-    <div class="lt-actions">
-        <button class="primary" disabled="@_busy" @onclick="SearchAsync">Search</button>
-        <button class="secondary" disabled="@_busy" @onclick="NearMeAsync">📍 Near me</button>
-        @if (_near is not null)
+        else
         {
-            <span class="lt-badge ok">Within @_radius km of you <button class="link" style="padding: 0 4px" title="Clear" @onclick="ClearNearAsync">✕</button></span>
+            <button type="button" class="sb-near on" title="Stop searching near me" aria-label="Stop searching near me" @onclick="ClearNearAsync">✕</button>
         }
-        <span style="flex: 1"></span>
-        <select style="width: auto" aria-label="Sort" @bind="_sort" @bind:after="SearchAsync">
+    </label>
+    <div class="sb-dates">
+        <label class="sb-field">
+            <Icon Name="calendar" />
+            <span class="sb-text">
+                <span class="sb-label">@(S.Type == TravelItemTypes.Stay ? "Check in" : "From")</span>
+                <input type="date" min="@Today" @bind="_checkIn" aria-label="@(S.Type == TravelItemTypes.Stay ? "Check in" : "From")" />
+            </span>
+        </label>
+        <span class="sb-arrow"><Icon Name="arrow" Size="16" /></span>
+        <label class="sb-field">
+            <Icon Name="calendar" />
+            <span class="sb-text">
+                <span class="sb-label">@(S.Type == TravelItemTypes.Stay ? "Check out" : "To")</span>
+                <input type="date" min="@(_checkIn?.ToString("yyyy-MM-dd") ?? Today)" @bind="_checkOut" aria-label="@(S.Type == TravelItemTypes.Stay ? "Check out" : "To")" />
+            </span>
+        </label>
+    </div>
+    <div class="sb-field party">
+        <Icon Name="users" />
+        <button type="button" class="sb-text sb-party" aria-expanded="@_party" @onclick="() => _party = !_party">
+            <span class="sb-label">Guests</span>
+            <span class="sb-value">@Party</span>
+        </button>
+        @if (_party)
+        {
+            <div class="sb-pop" role="dialog" aria-label="Guests">
+                <div class="step"><span>Guests</span>
+                    <button type="button" aria-label="Fewer guests" disabled="@(_guests <= 1)" @onclick="() => _guests--">−</button><b>@_guests</b><button type="button" aria-label="More guests" disabled="@(_guests >= 30)" @onclick="() => _guests++">+</button>
+                </div>
+                @if (S.Type == TravelItemTypes.Stay)
+                {
+                    <div class="step"><span>Rooms</span>
+                        <button type="button" aria-label="Fewer rooms" disabled="@(_rooms <= 1)" @onclick="() => _rooms--">−</button><b>@_rooms</b><button type="button" aria-label="More rooms" disabled="@(_rooms >= TravelContract.MaxRoomsPerBooking)" @onclick="() => _rooms++">+</button>
+                    </div>
+                }
+                <button type="button" class="link" @onclick="() => _party = false">Done</button>
+            </div>
+        }
+    </div>
+    <button type="submit" class="primary sb-go" disabled="@_busy"><Icon Name="search" Size="18" /> Search</button>
+</form>
+
+@if (_error is not null)
+{
+    <div class="lt-note warn">@_error</div>
+}
+
+@if (Browsing)
+{
+    <div class="lt-promos">
+        <div class="lt-promo blue">
+            <div class="text">
+                <b>Pay from your wallet</b>
+                <span>Every booking is paid from your Ndeipi wallet and confirmed on the spot, with a voucher that works offline.</span>
+                <span class="kicker">Use Believe Points for money off at checkout</span>
+            </div>
+            <span class="art"><Icon Name="wallet" Size="64" /></span>
+        </div>
+        <div class="lt-promo sun">
+            <div class="text">
+                <b>Run a lodge or tour?</b>
+                <span>List your rooms and departures, take bookings and check guests in by QR.</span>
+                <button class="secondary" @onclick="() => App.Go(new TravelView.Vendor(), root: true)">List with Lets Travel</button>
+            </div>
+            <span class="art"><Icon Name="store" Size="64" /></span>
+        </div>
+    </div>
+
+    @if (_destinations is { Count: > 0 })
+    {
+        <h2 class="lt-section">Top destinations</h2>
+        <div class="lt-places">
+            @foreach (var d in _destinations)
+            {
+                <button class="lt-place" style="@Format.Cover(d.PhotoUrl)" @key="(d.City, d.Country)" @onclick="() => GoToAsync(d)">
+                    <span class="shade"></span>
+                    <span class="city">@d.City</span>
+                    <span class="counts">@Counts(d)</span>
+                </button>
+            }
+        </div>
+    }
+
+    <h2 class="lt-section">Recommended for you</h2>
+    <div class="lt-tabs center" role="tablist" aria-label="Recommended">
+        <button role="tab" aria-selected="@(S.Type == TravelItemTypes.Stay)" class="@(S.Type == TravelItemTypes.Stay ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Stay)">Stays</button>
+        <button role="tab" aria-selected="@(S.Type == TravelItemTypes.Tour)" class="@(S.Type == TravelItemTypes.Tour ? "on" : "")" @onclick="() => TypeAsync(TravelItemTypes.Tour)">Tours &amp; safaris</button>
+    </div>
+}
+else
+{
+    <div class="lt-resultsbar">
+        <div class="grow">
+            <h2>@Heading</h2>
+            @if (_result is { } found)
+            {
+                <span class="muted small">@found.Results.Count result@(found.Results.Count == 1 ? "" : "s")@(S.CheckIn is { } a && S.CheckOut is { } b ? $" · {Format.Day(a)} → {Format.Day(b)}" : "") · @Party</span>
+            }
+        </div>
+        <select aria-label="Sort" @bind="_sort" @bind:after="SearchAsync">
             <option value="recommended">Recommended</option>
             <option value="price_asc">Price: low to high</option>
             <option value="price_desc">Price: high to low</option>
@@ -45,31 +150,27 @@
                 <option value="distance">Nearest</option>
             }
         </select>
+        <button class="link" @onclick="ClearAsync">Clear search</button>
     </div>
-</section>
 
-@if (_result is { Facets.Count: > 0 } r)
-{
-    <section class="lt-card" aria-label="Filters">
-        @foreach (var group in r.Facets.GroupBy(f => f.Field))
-        {
-            <div class="lt-row" style="align-items: flex-start">
-                <b class="small" style="width: 96px; flex: none; padding-top: 6px">@FacetTitle(group.Key)</b>
-                <div class="lt-chips">
-                    @foreach (var f in group)
-                    {
-                        var on = Selected(f.Field).Contains(f.Code);
-                        <button class="@(on ? "on" : "")" aria-pressed="@on" @onclick="() => ToggleAsync(f.Field, f.Code)">@f.Label<span class="n">@f.Count</span></button>
-                    }
+    @if (_result is { Facets.Count: > 0 } r)
+    {
+        <section class="lt-card" aria-label="Filters">
+            @foreach (var group in r.Facets.GroupBy(f => f.Field))
+            {
+                <div class="lt-row" style="align-items: flex-start">
+                    <b class="small" style="width: 96px; flex: none; padding-top: 6px">@FacetTitle(group.Key)</b>
+                    <div class="lt-chips">
+                        @foreach (var f in group)
+                        {
+                            var on = Selected(f.Field).Contains(f.Code);
+                            <button class="@(on ? "on" : "")" aria-pressed="@on" @onclick="() => ToggleAsync(f.Field, f.Code)">@f.Label<span class="n">@f.Count</span></button>
+                        }
+                    </div>
                 </div>
-            </div>
-        }
-    </section>
-}
-
-@if (_error is not null)
-{
-    <div class="lt-note warn">@_error</div>
+            }
+        </section>
+    }
 }
 
 @if (_result is null)
@@ -78,13 +179,12 @@
 }
 else if (_result.Results.Count == 0)
 {
-    <section class="lt-card"><p class="muted" style="margin: 0">Nothing matches. Try other dates, fewer filters, or a wider area.</p></section>
+    <section class="lt-card"><p class="muted" style="margin: 0">@(Browsing ? "Nothing is listed yet. Check back soon." : "Nothing matches. Try other dates, fewer filters, or a wider area.")</p></section>
 }
 else
 {
-    <p class="muted small" style="margin: 0">@_result.Results.Count result@(_result.Results.Count == 1 ? "" : "s")@(S.CheckIn is { } a && S.CheckOut is { } b ? $" for {Format.Day(a)} → {Format.Day(b)}" : "")</p>
     <div class="lt-grid">
-        @foreach (var x in _result.Results)
+        @foreach (var x in Browsing ? _result.Results.Take(9) : _result.Results)
         {
             <div class="lt-result" role="link" tabindex="0" @key="x.Id" aria-label="@x.Name" @onclick="() => Open(x)" @onkeydown='e => { if (e.Key is "Enter" or " ") Open(x); }'>
                 <div class="photo" style="@Format.Cover(x.PhotoUrl)">
@@ -94,21 +194,34 @@ else
                     }
                     else if (x.DistanceKm is { } km)
                     {
-                        <span class="tag">📍 @km km</span>
+                        <span class="tag">@km km away</span>
                     }
+                    <span class="avatar" title="@x.VendorName">@Initials(x.VendorName)</span>
                 </div>
                 <div class="body">
+                    @if (x.Stars is { } s and > 0)
+                    {
+                        <span class="stars" aria-label="@s stars">@(new string('★', s))</span>
+                    }
+                    else
+                    {
+                        <span class="kind">@Format.Icon(x.Kind) @Kind(x)</span>
+                    }
                     <span class="name">@x.Name</span>
-                    <span class="where">@Format.Icon(x.Kind) @Kind(x) · @x.City, @x.Country@(x.Stars is { } s ? " · " + new string('★', s) : "")</span>
+                    <span class="where">@x.City, @x.Country</span>
                     @if (x.Summary is { } summary)
                     {
                         <span class="summary">@summary</span>
                     }
                     <div class="foot">
-                        <span class="muted small">by @x.VendorName</span>
                         @if (x.FromPrice is { } price)
                         {
-                            <span class="lt-price">@Format.Money(price)<small> /@x.PriceUnit</small></span>
+                            <span><span class="muted small">From </span>
+                            <span class="lt-price">@Format.Money(price)<small> /@x.PriceUnit</small></span></span>
+                        }
+                        else
+                        {
+                            <span class="muted small">by @x.VendorName</span>
                         }
                     </div>
                 </div>
@@ -122,21 +235,52 @@ else
 
     TravelSearchRequest S => App.Search;
     TravelSearchResultDto? _result;
+    IReadOnlyList<TravelDestinationDto>? _destinations;
     string? _query, _error;
     DateOnly? _checkIn, _checkOut;
     int _guests = 2, _rooms = 1, _radius = 50;
     string _sort = "recommended";
     (double Lat, double Lng)? _near;
-    bool _busy;
+    bool _busy, _party;
 
     string Today => DateTime.Today.ToString("yyyy-MM-dd");
+
+    /// <summary>No place, location or dates yet: show destinations and recommendations, not results.</summary>
+    bool Browsing => S.Query is null && S.Lat is null && S.CheckIn is null && S.CheckOut is null;
+
+
+    string Party => S.Type == TravelItemTypes.Stay
+        ? $"{Plural(_guests, "guest")}, {Plural(_rooms, "room")}"
+        : Plural(_guests, "traveller");
+
+    string Heading => (S.Type == TravelItemTypes.Stay ? "Stays" : "Tours & safaris")
+        + (S.Query is { } q ? $" in {q}" : S.Lat is not null ? " near you" : "");
+
+    static string Plural(int n, string noun) => n == 1 ? $"1 {noun}" : $"{n} {noun}s";
+
+    static string Counts(TravelDestinationDto d) => string.Join(" · ",
+        new[] { d.Stays > 0 ? Plural(d.Stays, "stay") : null, d.Tours > 0 ? Plural(d.Tours, "tour") : null }.Where(s => s is not null));
+
+    static string Initials(string name) => string.Concat(name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
 
     protected override async Task OnInitializedAsync()
     {
         (_query, _checkIn, _checkOut, _guests, _rooms, _sort) = (S.Query, S.CheckIn, S.CheckOut, S.Guests, S.Rooms, S.Sort);
         if (S.Lat is { } lat && S.Lng is { } lng)
             _near = (lat, lng);
-        await RunAsync();
+        await Task.WhenAll(RunAsync(), LoadDestinationsAsync());
+    }
+
+    async Task LoadDestinationsAsync()
+    {
+        try
+        {
+            _destinations = await App.Api.GetAsync<List<TravelDestinationDto>>($"{TravelApi.Base}/destinations");
+        }
+        catch (TravelException)
+        {
+            // Destinations are a starting point; searching still works without them.
+        }
     }
 
     Task TypeAsync(string type)
@@ -147,6 +291,7 @@ else
 
     Task SearchAsync()
     {
+        _party = false;
         App.Search = S with
         {
             Query = string.IsNullOrWhiteSpace(_query) ? null : _query.Trim(),
@@ -159,6 +304,21 @@ else
             RadiusKm = _near is null ? null : _radius,
             Sort = _sort
         };
+        return RunAsync();
+    }
+
+    Task GoToAsync(TravelDestinationDto d)
+    {
+        (_query, _near) = (d.City, null);
+        if (_sort == "distance")
+            _sort = "recommended";
+        return SearchAsync();
+    }
+
+    Task ClearAsync()
+    {
+        (_query, _checkIn, _checkOut, _near, _sort, _error) = (null, null, null, null, "recommended", null);
+        App.Search = new TravelSearchRequest(S.Type, Guests: S.Guests, Rooms: S.Rooms);
         return RunAsync();
     }
 
@@ -192,7 +352,7 @@ else
             _error = "Your location isn't available. Allow it in the browser, or type a place.";
             return;
         }
-        (_near, _sort) = ((lat, lng), "distance");
+        (_near, _sort, _query) = ((lat, lng), "distance", null);
         await SearchAsync();
     }
 

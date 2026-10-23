@@ -150,6 +150,28 @@ public sealed class TravelCatalog(ChatDbContext db, TravelPhotos photos, IOption
         return new TravelSearchResultDto([.. Sort(results, r.Sort).Take(100)], facets, Now);
     }
 
+    /// <summary>
+    /// The places with the most published stays and tours, each with a cover photo from one of them,
+    /// so Explore can open on somewhere to go before anyone has searched.
+    /// </summary>
+    public async Task<IReadOnlyList<TravelDestinationDto>> DestinationsAsync(int count, CancellationToken ct)
+    {
+        var stays = await db.TravelProperties.AsNoTracking()
+            .Where(p => p.Status == Published && db.TravelVendors.Any(v => v.UserId == p.VendorId && v.Status == Active))
+            .Select(p => new { p.City, p.Country, p.PhotoIds }).Take(2000).ToListAsync(ct);
+        var tours = await db.TourPackages.AsNoTracking()
+            .Where(t => t.Status == Published && db.TravelVendors.Any(v => v.UserId == t.VendorId && v.Status == Active))
+            .Select(t => new { t.City, t.Country, t.PhotoIds }).Take(2000).ToListAsync(ct);
+        var places = stays.Select(x => (x.City, x.Country, x.PhotoIds, Stay: true))
+            .Concat(tours.Select(x => (x.City, x.Country, x.PhotoIds, Stay: false)))
+            .GroupBy(x => (x.City.Trim().ToUpperInvariant(), x.Country.Trim().ToUpperInvariant()));
+        return [.. places
+            .Select(g => new TravelDestinationDto(g.First().City.Trim(), g.First().Country.Trim(), g.Count(x => x.Stay), g.Count(x => !x.Stay),
+                g.OrderByDescending(x => x.Stay).Select(x => photos.Cover(x.PhotoIds)).FirstOrDefault(u => u is not null)))
+            .OrderByDescending(d => d.Stays + d.Tours).ThenBy(d => d.City)
+            .Take(Math.Clamp(count, 1, 24))];
+    }
+
     static IEnumerable<TravelResultDto> Sort(IEnumerable<TravelResultDto> results, string sort) => sort switch
     {
         "price_asc" => results.OrderBy(x => x.FromPrice ?? decimal.MaxValue),
