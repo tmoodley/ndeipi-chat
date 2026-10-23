@@ -155,6 +155,9 @@ public sealed record TravelResultDto(
 
 public sealed record TravelSearchResultDto(IReadOnlyList<TravelResultDto> Results, IReadOnlyList<TravelFacetDto> Facets, DateTimeOffset AsOf);
 
+/// <summary>A place with published stays or tours, for the Explore page's top destinations.</summary>
+public sealed record TravelDestinationDto(string City, string Country, int Stays, int Tours, string? PhotoUrl);
+
 // ---- Stays (FR-2) ----
 
 public sealed record TravelPhotoDto(Guid Id, string Url, string ThumbUrl);

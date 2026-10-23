@@ -38,6 +38,8 @@ public static class TravelModule
         // ---- Finding (FR-1)
         api.MapPost("/search", async (TravelSearchRequest request, HttpContext http, TravelCatalog catalog) =>
             Results.Ok(await catalog.SearchAsync(request, http.RequestAborted)));
+        api.MapGet("/destinations", async (int? count, HttpContext http, TravelCatalog catalog) =>
+            Results.Ok(await catalog.DestinationsAsync(count ?? 6, http.RequestAborted)));
         api.MapGet("/properties/{id:guid}", async (Guid id, DateOnly? checkIn, DateOnly? checkOut, HttpContext http, CurrentUserService users, TravelCatalog catalog) =>
             Found(await catalog.PropertyAsync(await Me(http, users), id, checkIn, checkOut, http.RequestAborted)));
         api.MapGet("/tours/{id:guid}", async (Guid id, HttpContext http, CurrentUserService users, TravelCatalog catalog) =>

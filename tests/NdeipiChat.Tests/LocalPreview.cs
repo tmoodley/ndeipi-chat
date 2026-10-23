@@ -222,6 +222,38 @@ public sealed class LocalPreview
         for (var day = 3; day <= 9; day += 2)
             await tendai.PostAsync<DepartureDto>($"api/travel/vendor/tours/{cruise.Id}/departures", new SaveDepartureRequest(DateTimeOffset.UtcNow.Date.AddDays(day).AddHours(14.5), null, "Mwila"));
         (await tendai.Http.PostAsJsonAsync($"api/travel/vendor/tour/{cruise.Id}/publish", new { published = true })).EnsureSuccessStatusCode();
+        // More places, so Explore's top destinations and recommendations have something to show.
+        async Task ListAsync(string type, Guid id, SkiaSharp.SKColor top, SkiaSharp.SKColor bottom)
+        {
+            using var bitmap = new SkiaSharp.SKBitmap(1200, 800);
+            using (var canvas = new SkiaSharp.SKCanvas(bitmap))
+            using (var paint = new SkiaSharp.SKPaint { Shader = SkiaSharp.SKShader.CreateLinearGradient(new(0, 0), new(0, 800), [top, bottom], SkiaSharp.SKShaderTileMode.Clamp) })
+                canvas.DrawRect(0, 0, 1200, 800, paint);
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(SkiaSharp.SKImage.FromBitmap(bitmap).Encode(SkiaSharp.SKEncodedImageFormat.Png, 100).ToArray()), "file", "photo.png");
+            (await tendai.Http.PostAsync($"api/travel/vendor/{type}/{id}/photos", form)).EnsureSuccessStatusCode();
+            (await tendai.Http.PostAsJsonAsync($"api/travel/vendor/{type}/{id}/publish", new { published = true })).EnsureSuccessStatusCode();
+        }
+        var places = new[]
+        {
+            ("Hwange Bush Camp", "bush_camp", "Hwange", "Zimbabwe", -18.73, 26.95, 3, 180m, new SkiaSharp.SKColor(0xD9, 0x77, 0x06), new SkiaSharp.SKColor(0x78, 0x35, 0x0F)),
+            ("Meikles Garden Hotel", "hotel", "Harare", "Zimbabwe", -17.83, 31.05, 5, 210m, new SkiaSharp.SKColor(0x3D, 0x7B, 0xF7), new SkiaSharp.SKColor(0x1E, 0x29, 0x3B)),
+            ("Bo-Kaap Guesthouse", "guesthouse", "Cape Town", "South Africa", -33.92, 18.41, 4, 95m, new SkiaSharp.SKColor(0xF4, 0x72, 0xB6), new SkiaSharp.SKColor(0x1E, 0x3A, 0x8A)),
+            ("Chobe Riverfront Lodge", "lodge", "Kasane", "Botswana", -17.81, 25.15, 4, 260m, new SkiaSharp.SKColor(0x10, 0xB9, 0x81), new SkiaSharp.SKColor(0x06, 0x4E, 0x3B)),
+            ("Stone Town Rooftops", "apartment", "Zanzibar", "Tanzania", -6.16, 39.19, 3, 85m, new SkiaSharp.SKColor(0x06, 0xB6, 0xD4), new SkiaSharp.SKColor(0x0E, 0x74, 0x90)),
+        };
+        foreach (var (name, kind, city, country, lat, lng, stars, price, top, bottom) in places)
+        {
+            var place = await tendai.PostAsync<PropertyDto>("api/travel/vendor/properties", new SavePropertyRequest(name, kind,
+                $"A {stars}-star {kind.Replace('_', ' ')} in {city}.", city, country, null, lat, lng, stars, ["wifi", "restaurant"], "flexible", "14:00", "10:00"));
+            await tendai.PostAsync<RoomTypeDto>($"api/travel/vendor/properties/{place.Id}/rooms", new SaveRoomTypeRequest("Double room", "standard", "bed_breakfast", 2, 5, price, null));
+            await ListAsync("stay", place.Id, top, bottom);
+        }
+        var walk = await tendai.PostAsync<TourDto>("api/travel/vendor/tours", new SaveTourRequest("Hwange walking safari", "walking_safari",
+            "A morning on foot with an armed guide, reading tracks to the waterholes.", "Hwange", "Zimbabwe", -18.7, 26.9, 4, 8, "moderate", 90m, true, "Breakfast in the bush", "Main camp gate"));
+        await tendai.PostAsync<DepartureDto>($"api/travel/vendor/tours/{walk.Id}/departures", new SaveDepartureRequest(DateTimeOffset.UtcNow.Date.AddDays(5).AddHours(5.5), null, "Tafadzwa"));
+        await ListAsync("tour", walk.Id, new SkiaSharp.SKColor(0xFB, 0xBF, 0x24), new SkiaSharp.SKColor(0x92, 0x40, 0x0E));
+
         var checkIn = DateOnly.FromDateTime(DateTime.UtcNow.AddDays(14));
         var stayHold = await me.PostAsync<TravelHoldDto>("api/travel/holds", new TravelHoldRequest(TravelItemTypes.Stay, chalet.Id, checkIn, checkIn.AddDays(3), 1, 2));
         await me.PostAsync<TravelBookingDto>($"api/travel/holds/{stayHold.Id}/checkout", new TravelCheckoutRequest("Ty Preview", "+263 77 000 0000", null, "Anniversary trip!"));

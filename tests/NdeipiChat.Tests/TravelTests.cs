@@ -135,6 +135,7 @@ public sealed class TravelTests(TestApp app) : IClassFixture<TestApp>
         var bigParty = await traveler.PostAsync<TravelSearchResultDto>($"{Base}/search", new TravelSearchRequest(TravelItemTypes.Stay, city, Guests: 40));
         var tours = await traveler.PostAsync<TravelSearchResultDto>($"{Base}/search", new TravelSearchRequest(TravelItemTypes.Tour, city, Guests: 2, TourKinds: ["river_cruise"]));
         var detail = await traveler.GetAsync<PropertyDto>($"{Base}/properties/{lodge.Id}?checkIn={checkIn:yyyy-MM-dd}&checkOut={checkIn.AddDays(2):yyyy-MM-dd}");
+        var destinations = await traveler.GetAsync<List<TravelDestinationDto>>($"{Base}/destinations?count=24");
 
         var result = Assert.Single(stays.Results);
         Assert.Equal((lodge.Id, "night", true), (result.Id, result.PriceUnit, result.Available));
@@ -146,6 +147,9 @@ public sealed class TravelTests(TestApp app) : IClassFixture<TestApp>
         Assert.Contains(nearby.Results, r => r.Id == lodge.Id && r.DistanceKm < 5);
         Assert.Empty(bigParty.Results);
         Assert.Single(tours.Results);
+        // Explore's top destinations count the place's published stays and tours.
+        Assert.Contains(destinations, d => d is { Stays: 1, Tours: 1 } && d.City == city);
+        Assert.Equal(destinations.OrderByDescending(d => d.Stays + d.Tours).Select(d => d.City), destinations.Select(d => d.City));
         var deluxe = detail.Rooms.Single(r => r.Id == room.Id);
         Assert.Equal((3, 400m), (deluxe.AvailableUnits, deluxe.StayPrice));
         Assert.Equal([220m, 180m], deluxe.NightPrices);
