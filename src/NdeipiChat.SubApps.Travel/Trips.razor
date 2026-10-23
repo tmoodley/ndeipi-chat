@@ -1,49 +1,90 @@
 @implements IDisposable
+@using System.Globalization
 
 @* The traveller's bookings: upcoming first, then past and cancelled. Updates live as payments confirm
    or a departure moves. *@
 
-@if (_error is not null)
-{
-    <div class="lt-note warn">@_error</div>
-}
-@if (_bookings is null)
+<div class="lt-pagehead">
+    <div class="grow">
+        <h2>My trips</h2>
+        <span class="muted">Your stays and tours, each with a voucher that works offline.</span>
+    </div>
+    <button class="secondary" @onclick="() => App.Go(new TravelView.Explore(), root: true)">Find a stay or a tour</button>
+</div>
+
+@if (_bookings is null && _error is null)
 {
     <p class="muted">Loading…</p>
 }
-else if (_bookings.Count == 0)
+else if (_bookings is not { Count: > 0 })
 {
-    <section class="lt-card">
-        <p style="margin: 0">No trips yet.</p>
-        <div class="lt-actions"><button class="primary" @onclick="() => App.Go(new TravelView.Explore(), root: true)">Find a stay or a tour</button></div>
+    <section class="lt-card lt-empty">
+        @if (_error is not null)
+        {
+            <span class="lt-empty-icon" aria-hidden="true">⚠️</span>
+            <h3>Your trips didn't load</h3>
+            <p class="muted">@_error</p>
+            <button class="primary" disabled="@_loading" @onclick="RetryAsync">@(_loading ? "Trying…" : "Try again")</button>
+        }
+        else
+        {
+            <span class="lt-empty-icon" aria-hidden="true">🧳</span>
+            <h3>No trips yet</h3>
+            <p class="muted">When you book a stay or a tour, it shows up here with its voucher and a chat with your host.</p>
+            <button class="primary" @onclick="() => App.Go(new TravelView.Explore(), root: true)">Find a stay or a tour</button>
+        }
     </section>
 }
 else
 {
-    @foreach (var (title, list) in Groups())
+    @if (_error is not null)
     {
-        if (list.Count == 0)
-            continue;
-        <h3>@title</h3>
-        @foreach (var b in list)
+        <div class="lt-note warn">@_error</div>
+    }
+    var groups = Groups().ToList();
+    <div class="lt-tabs" role="tablist" aria-label="Trips">
+        @foreach (var (key, title, list) in groups)
+        {
+            <button role="tab" aria-selected="@(_tab == key)" class="@(_tab == key ? "on" : "")" @onclick="() => _tab = key">@title <span class="lt-count">@list.Count</span></button>
+        }
+    </div>
+    var shown = groups.First(g => g.Key == _tab).List;
+    @if (shown.Count == 0)
+    {
+        <section class="lt-card lt-empty small-empty"><p class="muted">@(_tab == "upcoming" ? "Nothing coming up. Your next trip will show here." : "Nothing here.")</p></section>
+    }
+    <div class="lt-trips">
+        @foreach (var b in shown)
         {
             var item = b.Items[0];
-            <div class="lt-card" role="link" tabindex="0" style="cursor: pointer" @key="b.Id" @onclick="() => App.Go(new TravelView.Booking(b.Id))" @onkeydown='e => { if (e.Key is "Enter" or " ") App.Go(new TravelView.Booking(b.Id)); }'>
-                <div class="lt-row">
-                    <span class="grow"><b>@item.Title</b><small>@item.Subtitle</small></span>
+            var day = item.CheckIn ?? (item.StartsAt is { } s ? DateOnly.FromDateTime(s.ToLocalTime().DateTime) : (DateOnly?)null);
+            <div class="lt-trip" role="link" tabindex="0" @key="b.Id" @onclick="() => App.Go(new TravelView.Booking(b.Id))" @onkeydown='e => { if (e.Key is "Enter" or " ") App.Go(new TravelView.Booking(b.Id)); }'>
+                <div class="when @(b.Status is TravelBookingStatuses.Canceled or TravelBookingStatuses.Failed ? "off" : "")" aria-hidden="true">
+                    @if (day is { } d)
+                    {
+                        <span class="m">@d.ToString("MMM", CultureInfo.CurrentCulture)</span>
+                        <span class="d">@d.Day</span>
+                        <span class="w">@d.ToString("ddd", CultureInfo.CurrentCulture)</span>
+                    }
+                </div>
+                <div class="what">
+                    <span class="kind">@(item.Type == TravelItemTypes.Stay ? "Stay" : "Tour") · @b.VendorName</span>
+                    <b>@item.Title</b>
+                    <span class="muted small">@item.Subtitle</span>
+                    <span class="muted small">@Format.Dates(item) · @b.Reference</span>
+                    @if (b.Notice is { } notice)
+                    {
+                        <div class="lt-note warn small">@notice</div>
+                    }
+                </div>
+                <div class="side">
                     <span class="lt-badge @Format.Tone(b.Status)">@Format.Status(b.Status)</span>
+                    <span class="lt-price">@Format.Money(b.Total - b.Discount)</span>
+                    <span class="chev" aria-hidden="true">›</span>
                 </div>
-                <div class="lt-row small">
-                    <span class="grow">@Format.Dates(item) · @b.Reference</span>
-                    <span class="lt-price" style="font-size: 15px">@Format.Money(b.Total - b.Discount)</span>
-                </div>
-                @if (b.Notice is { } notice)
-                {
-                    <div class="lt-note warn small">@notice</div>
-                }
             </div>
         }
-    }
+    </div>
 }
 
 @code {
@@ -51,11 +92,16 @@ else
 
     List<TravelBookingDto>? _bookings;
     string? _error;
+    string _tab = "upcoming";
+    bool _loading;
 
     protected override async Task OnInitializedAsync()
     {
         App.Changed += OnChanged;
         await LoadAsync();
+        // Open on the first tab with something in it.
+        if (_bookings is { Count: > 0 })
+            _tab = Groups().FirstOrDefault(g => g.List.Count > 0).Key ?? "upcoming";
     }
 
     void OnChanged() => _ = InvokeAsync(async () =>
@@ -63,6 +109,13 @@ else
         await LoadAsync();
         StateHasChanged();
     });
+
+    async Task RetryAsync()
+    {
+        _loading = true;
+        await LoadAsync();
+        _loading = false;
+    }
 
     async Task LoadAsync()
     {
@@ -73,18 +126,18 @@ else
         }
         catch (TravelException e)
         {
-            (_bookings, _error) = (_bookings ?? [], e.Message);
+            _error = e.Message;
         }
     }
 
-    IEnumerable<(string, List<TravelBookingDto>)> Groups()
+    IEnumerable<(string Key, string Title, List<TravelBookingDto> List)> Groups()
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
         bool Ahead(TravelBookingDto b) => b.Items[0] is var i && (i.CheckOut is { } o ? o >= today : i.StartsAt >= DateTimeOffset.UtcNow.AddHours(-12));
         var live = _bookings!.Where(b => b.Status is TravelBookingStatuses.Confirmed or TravelBookingStatuses.PendingPayment or TravelBookingStatuses.CheckedIn).ToList();
-        yield return ("Upcoming", [.. live.Where(Ahead).OrderBy(b => b.Items[0].CheckIn?.ToDateTime(TimeOnly.MinValue) ?? b.Items[0].StartsAt?.UtcDateTime)]);
-        yield return ("Past", [.. live.Where(b => !Ahead(b))]);
-        yield return ("Cancelled or not paid", [.. _bookings!.Except(live)]);
+        yield return ("upcoming", "Upcoming", [.. live.Where(Ahead).OrderBy(b => b.Items[0].CheckIn?.ToDateTime(TimeOnly.MinValue) ?? b.Items[0].StartsAt?.UtcDateTime)]);
+        yield return ("past", "Past", [.. live.Where(b => !Ahead(b))]);
+        yield return ("cancelled", "Cancelled", [.. _bookings!.Except(live)]);
     }
 
     public void Dispose() => App.Changed -= OnChanged;

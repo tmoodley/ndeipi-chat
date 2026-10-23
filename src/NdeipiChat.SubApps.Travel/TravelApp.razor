@@ -87,6 +87,32 @@
     .lt-resultsbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
     .lt-resultsbar .grow { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 2px; }
     .lt-resultsbar select { width: auto; }
+
+    /* My trips, and empty or failed pages. */
+    .lt-pagehead { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 10px 0 4px; }
+    .lt-pagehead .grow { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 4px; }
+    .lt .lt-pagehead h2 { font-size: clamp(24px, 3vw, 30px); letter-spacing: -.01em; }
+    .lt-empty { align-items: center; text-align: center; padding: 40px 24px; gap: 10px; background: var(--lt-solid); }
+    .lt-empty p { margin: 0; max-width: 440px; }
+    .lt-empty.small-empty { padding: 22px; }
+    .lt-empty-icon { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; background: var(--brand-soft); margin-bottom: 4px; }
+    .lt-count { display: inline-block; min-width: 22px; margin-left: 6px; padding: 1px 7px; border-radius: 10px; font-size: 12px; font-weight: 700; background: var(--secondary); }
+    .lt-tabs button.on .lt-count { background: rgba(255, 255, 255, .25); }
+    .lt-trips { display: flex; flex-direction: column; gap: 14px; }
+    .lt-trip { display: grid; grid-template-columns: 76px 1fr auto; gap: 18px; align-items: center; padding: 16px 18px; border-radius: 16px; background: var(--lt-solid); border: 1px solid var(--divider); box-shadow: 0 1px 3px rgba(16, 24, 40, .08), 0 6px 18px rgba(16, 24, 40, .05); cursor: pointer; color: var(--text); outline: none; transition: transform .2s ease, box-shadow .2s ease; }
+    .lt-trip:hover, .lt-trip:focus-visible { transform: translateY(-2px); box-shadow: var(--shadow-strong); }
+    .lt-trip:focus-visible { box-shadow: 0 0 0 3px var(--brand); }
+    .lt-trip .when { height: 84px; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; background: linear-gradient(160deg, var(--brand), #7C3AED); line-height: 1.1; }
+    .lt-trip .when.off { background: var(--secondary); color: var(--muted); }
+    .lt-trip .when .m { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; opacity: .9; }
+    .lt-trip .when .d { font-size: 30px; font-weight: 800; }
+    .lt-trip .when .w { font-size: 12px; opacity: .85; }
+    .lt-trip .what { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .lt-trip .what b { font-size: 17px; letter-spacing: -.01em; }
+    .lt-trip .what .kind { font-size: 12px; font-weight: 700; color: var(--brand); text-transform: uppercase; letter-spacing: .04em; }
+    .lt-trip .what .lt-note { margin-top: 6px; }
+    .lt-trip .side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .lt-trip .chev { font-size: 22px; color: var(--muted); line-height: 1; }
     .lt-chips { display: flex; gap: 6px; flex-wrap: wrap; }
     .lt-chips button { padding: 5px 11px; font-size: 13px; }
     .lt-chips button .n { opacity: .7; margin-left: 4px; font-size: 12px; }
@@ -172,6 +198,11 @@
         .lt-place { height: 180px; }
         .lt-promo .art { display: none; }
         .sb-dates .lt-icon { display: none; }
+        .lt-trip { grid-template-columns: 60px 1fr; gap: 14px; padding: 14px; }
+        .lt-trip .when { height: 70px; }
+        .lt-trip .when .d { font-size: 24px; }
+        .lt-trip .side { grid-column: 2; flex-direction: row; align-items: center; justify-content: space-between; }
+        .lt-trip .chev { display: none; }
         .lt-nav .brand span { display: none; }
     }
     @@media (max-width: 480px) { .lt-two, .lt-three { grid-template-columns: 1fr; } .lt-cal { font-size: 10px; gap: 2px; } .lt-cal div { padding: 4px 1px; } }
@@ -224,11 +255,17 @@
     public TravelApi Api { get; private set; } = null!;
     public TravelMeDto? Me { get; private set; }
 
+    /// <summary>Why <see cref="Me"/> couldn't be loaded, so pages that need it can say so instead of waiting.</summary>
+    public string? MeError { get; private set; }
+
     /// <summary>The last search, kept while browsing results and listings.</summary>
     public TravelSearchRequest Search { get; set; } = new(TravelItemTypes.Stay);
 
     /// <summary>Raised when a booking of theirs (or, as a vendor, one they received) changes, live.</summary>
     public event Action? Changed;
+
+    /// <summary>Raised when <see cref="Me"/> (or <see cref="MeError"/>) arrives, for pages rendered before it did.</summary>
+    public event Action? MeChanged;
 
     protected override async Task OnInitializedAsync()
     {
@@ -261,12 +298,14 @@
         try
         {
             Me = await Api.GetAsync<TravelMeDto>($"{TravelApi.Base}/me");
+            MeError = null;
         }
-        catch (TravelException)
+        catch (TravelException e)
         {
-            // Pages say what's wrong when they load.
+            MeError = e.Message;
         }
         StateHasChanged();
+        MeChanged?.Invoke();
     }
 
     string Title => _view switch

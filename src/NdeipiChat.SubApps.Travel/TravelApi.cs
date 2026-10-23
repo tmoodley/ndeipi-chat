@@ -69,6 +69,8 @@ public sealed class TravelApi(HttpClient http)
                 HttpStatusCode.Unauthorized => "Your sign-in has expired. Reload the page.",
                 HttpStatusCode.NotFound => "That isn't here any more.",
                 HttpStatusCode.RequestEntityTooLarge => "That photo is too big.",
+                // The server's own failure: its problem title ("An error occurred…") says nothing useful.
+                >= HttpStatusCode.InternalServerError => "Lets Travel isn't available right now. Please try again in a few minutes.",
                 _ => await ProblemTitleAsync(response)
             });
     }

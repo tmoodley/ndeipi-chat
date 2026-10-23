@@ -3,7 +3,16 @@
 @* The vendor portal: become a vendor (after KYC), then listings, bookings received, check-in and the
    business profile. Earnings are what bookings paid this month, less Ndeipi's fee. *@
 
-@if (App.Me is null)
+@if (App.Me is null && App.MeError is { } meError)
+{
+    <section class="lt-card lt-empty">
+        <span class="lt-empty-icon" aria-hidden="true">🏨</span>
+        <h3>The vendor portal didn't load</h3>
+        <p class="muted">@meError</p>
+        <button class="primary" disabled="@_retrying" @onclick="RetryAsync">@(_retrying ? "Trying…" : "Try again")</button>
+    </section>
+}
+else if (App.Me is null)
 {
     <p class="muted">Loading…</p>
 }
@@ -126,6 +135,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         App.Changed += OnChanged;
+        App.MeChanged += OnChanged;
         await LoadAsync();
     }
 
@@ -149,6 +159,15 @@ else
         }
     }
 
+    bool _retrying;
+
+    async Task RetryAsync()
+    {
+        _retrying = true;
+        await App.RefreshMeAsync(); // MeChanged loads the dashboard
+        _retrying = false;
+    }
+
     async Task SavedAsync()
     {
         await App.RefreshMeAsync();
@@ -158,5 +177,9 @@ else
     void Edit(VendorListingDto l) =>
         App.Go(l.Type == TravelItemTypes.Stay ? new TravelView.EditProperty(l.Id) : new TravelView.EditTour(l.Id));
 
-    public void Dispose() => App.Changed -= OnChanged;
+    public void Dispose()
+    {
+        App.Changed -= OnChanged;
+        App.MeChanged -= OnChanged;
+    }
 }
