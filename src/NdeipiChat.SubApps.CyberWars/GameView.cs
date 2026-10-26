@@ -57,8 +57,10 @@ public sealed class GameView
             Entities[e.Id] = e;
             Ghosts.Remove(e.Id);
         }
+        // Out of sight, buildings and veins stay where they were last seen, dimmed; units just vanish (UI-2a).
         foreach (var id in delta.Removed)
-            if (Entities.Remove(id, out var gone) && gone.OwnerId != Me)
+            if (Entities.Remove(id, out var gone) && gone.OwnerId != Me
+                && (gone.Kind.StartsWith("vein.") || CyberWarsRules.Item(gone.Kind) is { IsStructure: true }))
                 Ghosts[id] = gone;
         Last = delta;
         Refresh();

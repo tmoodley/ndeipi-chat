@@ -54,6 +54,17 @@
                 </div>
                 break;
 
+            case CyberWarsCardMessageViewModel card:
+                <a class="cw-chat-card" href="@card.Route">
+                    <span class="cw-chat-card-icon">@card.Icon</span>
+                    <span class="cw-chat-card-body">
+                        <span class="cw-chat-card-title">@card.Title</span>
+                        <span class="cw-chat-card-text">@card.Text</span>
+                        <span class="cw-chat-card-action">@card.Action ›</span>
+                    </span>
+                </a>
+                break;
+
             case ListingMessageViewModel listing:
                 <div class="listing-card @(listing.IsOpen ? "" : "closed")">
                     @if (listing.HasCover)

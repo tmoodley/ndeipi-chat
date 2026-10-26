@@ -75,6 +75,7 @@ public abstract partial class TransferFormViewModel : ObservableObject, INavigat
             Recipient = Recipients.Count == 1 ? Recipients[0] : null;
             OnPropertyChanged(nameof(ShowRecipientPicker));
             await LoadAsync();
+            Prefill(parameters);
         }
         catch (ApiException ex)
         {
@@ -83,6 +84,23 @@ public abstract partial class TransferFormViewModel : ObservableObject, INavigat
     }
 
     protected virtual Task LoadAsync() => Task.CompletedTask;
+
+    public const string ToParameter = "to";
+    public const string AmountParameter = "amount";
+    public const string SymbolParameter = "symbol";
+
+    /// <summary>
+    /// Fills the form in from a link, e.g. a CyberWars /send-coop card. It only fills it in: nothing
+    /// moves until the person checks it and taps send.
+    /// </summary>
+    protected virtual void Prefill(IReadOnlyDictionary<string, object> parameters)
+    {
+        if (parameters.TryGetValue(ToParameter, out var to) && Guid.TryParse(to?.ToString(), out var id)
+            && Recipients.FirstOrDefault(r => r.Id == id) is { } recipient)
+            Recipient = recipient;
+        if (parameters.TryGetValue(AmountParameter, out var amount) && amount?.ToString() is { Length: > 0 } text)
+            Amount = text;
+    }
 
     protected abstract (string Kind, object Payload)? BuildMessage();
 
@@ -186,6 +204,20 @@ public sealed partial class AssetTransferViewModel : TransferFormViewModel
             Tokens.Add(new TokenChoice($"{token.Symbol} · {token.Chain}", token));
         Tokens.Add(TokenChoice.Custom);
         SelectedToken = Tokens[0];
+    }
+
+    protected override void Prefill(IReadOnlyDictionary<string, object> parameters)
+    {
+        base.Prefill(parameters);
+        if (!parameters.TryGetValue(SymbolParameter, out var value) || value?.ToString() is not { Length: > 0 } symbol)
+            return;
+        if (Tokens.FirstOrDefault(t => string.Equals(t.Token?.Symbol, symbol, StringComparison.OrdinalIgnoreCase)) is { } known)
+            SelectedToken = known;
+        else
+        {
+            SelectedToken = TokenChoice.Custom;
+            Symbol = symbol;
+        }
     }
 
     protected override (string, object)? BuildMessage()

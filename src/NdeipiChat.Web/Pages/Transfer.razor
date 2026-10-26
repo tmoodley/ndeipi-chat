@@ -86,8 +86,19 @@
 @code {
     [Parameter] public Guid Id { get; set; }
 
-    protected override Task OnInitializedAsync() =>
-        Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id });
+    // A link such as a CyberWars /send-coop card fills the form in; the person still checks it and taps Transfer.
+    [SupplyParameterFromQuery(Name = TransferFormViewModel.ToParameter)] public string? To { get; set; }
+    [SupplyParameterFromQuery(Name = TransferFormViewModel.AmountParameter)] public string? PrefillAmount { get; set; }
+    [SupplyParameterFromQuery(Name = TransferFormViewModel.SymbolParameter)] public string? PrefillSymbol { get; set; }
+
+    protected override Task OnInitializedAsync()
+    {
+        var parameters = new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id };
+        foreach (var (key, value) in new[] { (TransferFormViewModel.ToParameter, To), (TransferFormViewModel.AmountParameter, PrefillAmount), (TransferFormViewModel.SymbolParameter, PrefillSymbol) })
+            if (value is { Length: > 0 })
+                parameters[key] = value;
+        return Vm.OnNavigatedToAsync(parameters);
+    }
 
     void ChooseToken(ChangeEventArgs e)
     {

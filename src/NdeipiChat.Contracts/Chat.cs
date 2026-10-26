@@ -85,6 +85,9 @@ public static class MessageKinds
     /// <summary>An offer on a listing: cash or a barter (<see cref="MarketOfferPayload"/>).</summary>
     public const string MarketOffer = "market.offer";
 
+    /// <summary>A CyberWars card: a map ping, a raid alert or a war-room command's answer (<see cref="CyberWarsCardPayload"/>).</summary>
+    public const string CyberWarsCard = "cyberwars.card";
+
     /// <summary>The kinds that can be forwarded to another chat.</summary>
     public static readonly IReadOnlyList<string> Forwardable = [Text, Media, MarketListing];
 }

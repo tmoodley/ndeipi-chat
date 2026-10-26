@@ -12,7 +12,7 @@
         --cw-line: var(--divider, rgba(0,0,0,.08)); --cw-brand: var(--brand, #3d7bf7);
         --cw-ok: #1fa971; --cw-warn: #e8a317; --cw-bad: #e5484d; --cw-gold: #f5c542; --cw-copper: #e07a3a;
         position: relative; display: flex; flex-direction: column; color: var(--cw-text);
-        height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; background: #05070a;
+        height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; background: var(--page, #eef1f8);
     }
     @@media (max-width: 760px) {
         .cw { height: calc(100dvh - var(--tabs-height, 64px) - 34px - env(safe-area-inset-bottom)); }
@@ -28,7 +28,7 @@
     .cw-muted { color: var(--cw-muted); }
 
     /* Lobby */
-    .cw-lobby { margin: auto; width: min(560px, 100%); padding: 24px 16px; overflow: auto; max-height: 100%; }
+    .cw-lobby { margin: 0 auto; width: min(560px, 100%); padding: 16px; overflow: auto; max-height: 100%; }
     .cw-card { background: var(--cw-panel); border: 1px solid var(--cw-line); border-radius: 20px; padding: 20px; }
     .cw-card h1 { margin: 0 0 4px; font-size: 1.5rem; }
     .cw-card p { margin: 6px 0 14px; }
@@ -132,6 +132,46 @@
         padding: 10px 16px; border-radius: 999px; background: var(--cw-bad); color: #fff; font-weight: 600; font-size: .88rem; pointer-events: none;
     }
 
+    /* Command screen (Phase 02): tabs, the world map and the alliance. */
+    .cw-tabsbar { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+    .cw-tabsbar .cw-tab { font-size: .9rem; font-weight: 700; }
+    .cw-lobby .cw-card + .cw-card { margin-top: 10px; }
+    .cw-active-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+    .cw-btn-danger { background: var(--cw-bad); border-color: var(--cw-bad); color: #fff; }
+    .cw-link { display: inline-flex; align-items: center; text-decoration: none; }
+    .cw-input, .cw-select {
+        min-height: 44px; border-radius: 12px; border: 1px solid var(--cw-line); padding: 0 12px; flex: 1; min-width: 0;
+        background: var(--secondary, rgba(0,0,0,.04)); color: var(--cw-text); font-size: .95rem;
+    }
+    .cw-select { width: 100%; margin: 4px 0 10px; }
+    .cw-world { display: block; width: min(100%, 360px); margin: 0 auto; }
+    .cw-sector { cursor: pointer; }
+    .cw-sector polygon { fill: #9b5a33; stroke: rgba(0,0,0,.35); stroke-width: 2; }
+    .cw-sector.cw-empty polygon { fill: #b9835c; }
+    .cw-sector.cw-mine polygon { fill: #1fa971; }
+    .cw-sector.cw-ally polygon { fill: #3d7bf7; }
+    .cw-sector.cw-rival polygon { fill: #e5484d; }
+    .cw-sector.cw-picked polygon { stroke: #fff; stroke-width: 4; }
+    .cw-sector text { font-size: 18px; pointer-events: none; }
+    .cw-legend { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: .78rem; margin: 6px 0; }
+    .cw-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+    .cw-dot.cw-mine { background: #1fa971; } .cw-dot.cw-ally { background: #3d7bf7; } .cw-dot.cw-rival { background: #e5484d; }
+    .cw-sector-card { display: grid; gap: 8px; padding: 12px; margin-top: 8px; border-radius: 14px; border: 1px solid var(--cw-line); }
+    .cw-members { margin: 6px 0 10px; padding-left: 18px; }
+
+    /* Raids */
+    .cw-ent.cw-enemy::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -2px; height: 7px; border-radius: 50%; background: rgba(229,72,77,.7); z-index: -1; }
+    .cw-ent.cw-firing { animation: cw-flash .3s ease-out; }
+    .cw-hp { position: absolute; left: 8px; right: 8px; top: 0; height: 4px; border-radius: 2px; background: rgba(0,0,0,.6); overflow: hidden; }
+    .cw-hp i { display: block; height: 100%; background: #3ee08f; }
+    .cw-enemy .cw-hp i { background: var(--cw-bad); }
+    .cw-crate { width: 30px; height: 30px; margin: -15px 0 0 -15px; font-size: 20px; }
+    .cw-boxsel { position: absolute; border: 2px dashed #3ee08f; background: rgba(62,224,143,.12); pointer-events: none; z-index: 3; }
+    .cw-hit { touch-action: none; }
+    .cw-ai { position: absolute; right: 12px; top: 10px; z-index: 4; padding: 6px 12px; border-radius: 12px; background: rgba(5,7,10,.8); color: #ffd27a; font-size: .82rem; }
+    .cw-btn.cw-on { background: var(--cw-bad); border-color: var(--cw-bad); color: #fff; }
+    @@keyframes cw-flash { from { filter: drop-shadow(0 0 10px #ffd27a) brightness(1.6); } to { filter: drop-shadow(0 3px 2px rgba(0,0,0,.55)); } }
+
     /* Phone (UI-1a): the viewport fills the screen and the sidebar is a bottom drawer. */
     @@media (max-width: 767px) {
         .cw-main { grid-template-columns: minmax(0, 1fr); }
@@ -177,33 +217,10 @@ else if (_view is null)
 {
     <header class="cw-hud">
         <button class="cw-back" title="Back to your apps" @onclick="Context.NavigateToLauncher">‹</button>
-        <div class="cw-title">CyberWars: GN Mining<small>Genesis Mining · solo skirmish</small></div>
+        <div class="cw-title">CyberWars: GN Mining<small>Genesis Mining · Alliance Wars</small></div>
     </header>
-    <div class="cw-lobby">
-        <div class="cw-card">
-            <h1>⛏️ Genesis Mining</h1>
-            <p class="cw-muted">
-                Deploy a NodeBoss Command Center in a Zambian province, power it, build an Ore Bonded Warehouse and
-                send harvesters to the gold and copper veins. Refine @CyberWarsRules.SkirmishGoal.ToString("N0") ore credits to win.
-                Ore credits are play credits: no cash value, and nothing real is ever at stake.
-            </p>
-            <div class="cw-muted">@RankLine</div>
-            <div class="cw-provinces" role="radiogroup" aria-label="Province">
-                @foreach (var province in Enum.GetValues<ZambianProvince>())
-                {
-                    var p = province;
-                    <button class="cw-province @(p == _province ? "cw-on" : "")" role="radio" aria-checked="@(p == _province)" @onclick="() => _province = p">@ProvinceName(p)</button>
-                }
-            </div>
-            <div class="cw-row">
-                <button class="cw-btn cw-btn-primary" disabled="@_busy" @onclick="StartAsync">Start skirmish in @ProvinceName(_province)</button>
-                @if (_me.ActiveMatchId is { } active)
-                {
-                    <button class="cw-btn" disabled="@_busy" @onclick="() => OpenAsync(active)">Resume your skirmish</button>
-                }
-            </div>
-        </div>
-    </div>
+    <Command Context="Context" Me="_me" Busy="_busy" FocusSector="@_focusSector"
+             OnStart="StartAsync" OnResume="OpenAsync" OnRaid="ShowAsync" OnChanged="LoadAsync" OnToast="Toast" />
 }
 else
 {
@@ -211,24 +228,35 @@ else
     var (supply, demand) = view.Power;
     <header class="cw-hud">
         <button class="cw-back" title="Back to your apps" @onclick="LeaveAsync">‹</button>
-        <div class="cw-title">CyberWars<small>@ProvinceName(view.Map.Province) · tick @view.Tick</small></div>
+        <div class="cw-title">CyberWars<small>@Subtitle(view)</small></div>
         <div class="cw-stats">
             <div class="cw-stat" title="Ore credits: play credits for this match">💰 @view.Last.OreCredits.ToString("N0") <span>credits</span></div>
-            <div class="cw-stat" title="Refined toward the goal">
-                🏦 @view.Last.OreRefined.ToString("N0")
-                <div class="cw-goal"><i style="width:@Pct((double)view.Last.OreRefined, (double)CyberWarsRules.SkirmishGoal)%"></i></div>
-            </div>
+            @if (view.Start.Mode == MatchModes.Raid)
+            {
+                <div class="cw-stat" title="GN Tokens from scrap crates">🪙 @view.Last.GnTokensEarned.ToString("N0") <span>GN</span></div>
+                <div class="cw-stat" title="Time left in the raid">⏱ @Clock(Math.Max(0, CyberWarsRules.RaidMinutes * 60L * CyberWarsContract.TicksPerSecond - view.Tick)) <span>left</span></div>
+            }
+            else
+            {
+                <div class="cw-stat" title="Refined toward the goal">
+                    🏦 @view.Last.OreRefined.ToString("N0")
+                    <div class="cw-goal"><i style="width:@Pct((double)view.Last.OreRefined, (double)CyberWarsRules.SkirmishGoal)%"></i></div>
+                </div>
+                <div class="cw-stat" title="Match time">⏱ @Clock(view.Tick)</div>
+            }
             <div class="cw-stat" title="Power supply / demand">⚡ @supply/@demand</div>
-            <div class="cw-stat" title="Match time">⏱ @Clock(view.Tick)</div>
         </div>
-        <button class="cw-btn cw-end" @onclick="EndAsync">End</button>
+        @if (!view.IsOver)
+        {
+            <button class="cw-btn cw-end" @onclick="EndAsync">@(view.Start.Mode == MatchModes.Raid ? "Give up" : "End")</button>
+        }
     </header>
 
     <div class="cw-main">
         <div class="cw-viewport" @ref="_viewport">
             <div class="cw-board" style="width:@Px(_layout!.PixelWidth)px;height:@Px(_layout.PixelHeight)px">
                 <HexLayer View="view" Layout="_layout" Placing="_placeCells" />
-                <div class="cw-hit" @onclick="OnGround" @oncontextmenu="OnGroundRight" @oncontextmenu:preventDefault="true"></div>
+                <div class="cw-hit" @ref="_hit" @onclick="OnGround" @oncontextmenu="OnGroundRight" @oncontextmenu:preventDefault="true"></div>
                 @foreach (var e in view.Ghosts.Values)
                 {
                     <div class="@Classes(e, ghost: true)" style="@Where(e.At)" title="Last seen here"></div>
@@ -241,7 +269,11 @@ else
                          @oncontextmenu="() => OnEntity(entity, true)" @oncontextmenu:preventDefault="true" @oncontextmenu:stopPropagation="true">
                         @if (!entity.Kind.StartsWith("vein."))
                         {
-                            @(CyberWarsRules.Item(entity.Kind)?.Icon ?? "❔")
+                            @Icon(entity.Kind)
+                        }
+                        @if (HealthOf(entity) is { } health)
+                        {
+                            <div class="cw-hp"><i style="width:@Pct(health, 1)%"></i></div>
                         }
                         @if (LoadOf(entity) is { } load)
                         {
@@ -259,6 +291,10 @@ else
         @if (_placing is { } placing)
         {
             <div class="cw-banner">Tap a lit hex to place the @CyberWarsRules.Item(placing)?.Name <button class="cw-btn" @onclick="() => SetPlacing(null)">Cancel</button></div>
+        }
+        @if (view.Last.UnderAi is { Count: > 0 } ai)
+        {
+            <div class="cw-ai" role="status">🤖 AI defending @string.Join(", ", ai.Select(PlayerName))'s base</div>
         }
         @if (_cue is { } cue)
         {
@@ -288,8 +324,15 @@ else
                         }
                         @if (selected.Any(s => CyberWarsRules.Item(s.Kind) is { IsStructure: false }))
                         {
-                            <div class="cw-muted">Tap the ground to move; tap a vein or rig to harvest.</div>
-                            <div class="cw-row"><button class="cw-btn" @onclick="StopAsync">Stop (S)</button><button class="cw-btn" @onclick="() => _selected.Clear()">Deselect</button></div>
+                            <div class="cw-muted">@(view.Start.Mode == MatchModes.Raid ? "Tap the ground to move, an enemy to attack; engineers capture buildings. Drag to select." : "Tap the ground to move; tap a vein or rig to harvest. Drag to select.")</div>
+                            <div class="cw-row">
+                                <button class="cw-btn" @onclick="StopAsync">Stop (S)</button>
+                                @if (view.Start.Mode == MatchModes.Raid)
+                                {
+                                    <button class="cw-btn @(_attackMove ? "cw-on" : "")" aria-pressed="@_attackMove" @onclick="() => _attackMove = !_attackMove">Attack-move (A)</button>
+                                }
+                                <button class="cw-btn" @onclick="() => _selected.Clear()">Deselect</button>
+                            </div>
                         }
                     </div>
                 }
@@ -307,7 +350,8 @@ else
                     @foreach (var item in CyberWarsRules.Catalogue.Where(i => i.Tab == _tab && i.Key != CyberWarsRules.CommandCenter))
                     {
                         var it = item;
-                        var locked = CyberWarsRules.Locked(it, view.Start.Rank, view.Owned);
+                        var locked = CyberWarsRules.Locked(it, view.Start.Rank, view.Owned)
+                            ?? (CyberWarsRules.FactorySources(it.Factory).Any(view.Owned.Contains) ? null : $"Needs a {CyberWarsRules.Item(CyberWarsRules.FactorySources(it.Factory).FirstOrDefault())?.Name ?? it.Factory}");
                         var jobs = view.Last.Queue.Where(j => j.ItemKey == it.Key).ToList();
                         var head = jobs.FirstOrDefault(j => j.Started || j.Ready);
                         <button class="cw-item @(locked is null ? "" : "cw-locked")" title="@(locked ?? it.Name)" @onclick="() => OnItemAsync(it, locked)">
@@ -358,21 +402,30 @@ else
         {
             <div class="cw-over">
                 <div class="cw-card" style="max-width:420px">
-                    <h1>@(view.Last.Status == MatchStatuses.Won ? "🏆 Skirmish won" : "Skirmish over")</h1>
+                    <h1>@Headline(view)</h1>
                     <p>@view.Last.EndReason</p>
-                    <p class="cw-muted">Refined @view.Last.OreRefined.ToString("N0") ore credits in @Clock(view.Tick).</p>
+                    <p class="cw-muted">
+                        @if (view.Start.Mode == MatchModes.Raid)
+                        {
+                            <span>@view.Last.GnTokensEarned.ToString("N0") GN Tokens from scrap crates go to your account.</span>
+                        }
+                        else
+                        {
+                            <span>Refined @view.Last.OreRefined.ToString("N0") ore credits in @Clock(view.Tick).</span>
+                        }
+                    </p>
                     <div class="cw-row">
-                        <button class="cw-btn cw-btn-primary" @onclick="NewSkirmishAsync">New skirmish</button>
+                        <button class="cw-btn cw-btn-primary" @onclick="NewSkirmishAsync">Back to command</button>
                         <button class="cw-btn" @onclick="Context.NavigateToLauncher">Back to apps</button>
                     </div>
                 </div>
             </div>
         }
-        @if (_toast is { } toast)
-        {
-            <div class="cw-toast" role="alert" @key="_toastId">@toast</div>
-        }
     </div>
+}
+@if (_toast is { } toast)
+{
+    <div class="cw-toast" role="alert" @key="_toastId">@toast</div>
 }
 </div>
 
@@ -406,13 +459,31 @@ else
     bool _centre;
     bool _resyncing;
 
+    string? _focusSector;
+    bool _attackMove;
+    DotNetObjectReference<CyberWarsApp>? _self;
+    ElementReference _hit;
     ElementReference _viewport;
     ElementReference _minimap;
     IJSObjectReference? _js;
     IAsyncDisposable? _subscription;
     CancellationTokenSource? _life;
 
-    protected override Task OnInitializedAsync() => LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        // Opened from a chat card: a raid to defend ("match=") or a sector on the map ("sector=", FR-2.2a).
+        foreach (var pair in Context.Query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (pair.Split('=', 2) is not [var key, var value])
+                continue;
+            value = Uri.UnescapeDataString(value);
+            if (key == "match" && Guid.TryParse(value, out var matchId))
+                await OpenAsync(matchId);
+            else if (key == "sector")
+                _focusSector = value;
+        }
+    }
 
     async Task LoadAsync()
     {
@@ -429,12 +500,9 @@ else
         }
     }
 
-    string RankLine => _me!.Rank == PlayerRank.None
-        ? $"No rank pack: you play with {CyberWarsRules.RigSlots(PlayerRank.None)} NodeBoss rig."
-        : $"{_me.Rank} rank: {CyberWarsRules.RigSlots(_me.Rank)} rig slots.";
-
-    async Task StartAsync()
+    async Task StartAsync(ZambianProvince province)
     {
+        _province = province;
         _busy = true;
         try
         {
@@ -596,6 +664,8 @@ else
             return;
         _js ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/NdeipiChat.SubApps.CyberWars/cyberwars.js");
         await _js.InvokeVoidAsync("bindMinimap", _minimap, _viewport);
+        _self ??= DotNetObjectReference.Create(this);
+        await _js.InvokeVoidAsync("bindBoard", _hit, _viewport, _self);
         if (_centre)
         {
             _centre = false;
@@ -623,7 +693,7 @@ else
                 return;
             }
             var results = await response.Content.ReadFromJsonAsync<List<OrderResultDto>>(ContractJson.Options);
-            if (results?.FirstOrDefault(r => !r.Accepted) is { } refused)
+            if (results?.FirstOrDefault(r => !r.Accepted) is { } refused && !view.IsOver)
             {
                 _marker = null;
                 Toast(refused.Reason ?? "The server refused that order.");
@@ -678,7 +748,10 @@ else
         if (harvesters.Count > 0 && view.VeinAt(cell) is { } vein)
             await SendAsync(Order(OrderKind.Harvest, harvesters, entity: vein.Id));
         else
-            await SendAsync(Order(OrderKind.Move, units, cell));
+        {
+            await SendAsync(Order(_attackMove ? OrderKind.AttackMove : OrderKind.Move, units, cell));
+            _attackMove = false;
+        }
     }
 
     async Task OnEntity(EntityDto e, bool right)
@@ -691,6 +764,11 @@ else
         }
         var harvesters = SelectedUnits.Where(id => view.Entities[id].Kind == CyberWarsRules.Harvester).ToList();
         var mine = e.OwnerId == view.Me;
+        if (!mine && e.OwnerId != Guid.Empty && SelectedUnits is { Count: > 0 } squad)
+        {
+            await AttackAsync(e, squad);
+            return;
+        }
         var harvestable = e.Kind.StartsWith("vein.") || (mine && e.Kind.StartsWith("rig."));
         if (harvesters.Count > 0 && harvestable)
         {
@@ -736,6 +814,28 @@ else
         await SendAsync(Order(OrderKind.Build, item: item.Key));
     }
 
+    /// <summary>Selected fighters attack the enemy; selected engineers capture it if it's a building (FR-2.3).</summary>
+    async Task AttackAsync(EntityDto enemy, List<Guid> units)
+    {
+        var view = _view!;
+        Mark(enemy.At);
+        var structure = CyberWarsRules.Item(enemy.Kind) is { IsStructure: true };
+        var engineers = units.Where(id => CyberWarsRules.Item(view.Entities[id].Kind) is { Captures: true }).ToList();
+        var fighters = units.Where(id => CyberWarsRules.Item(view.Entities[id].Kind) is { Attack: > 0 }).ToList();
+        if (engineers.Count > 0 && structure)
+            await SendAsync(Order(OrderKind.Capture, engineers, entity: enemy.Id));
+        if (fighters.Count > 0)
+        {
+            if (CyberWarsRules.Indestructible(enemy.Kind))
+                await SendAsync(Order(OrderKind.AttackMove, fighters, enemy.At));
+            else
+                await SendAsync(Order(OrderKind.Attack, fighters, entity: enemy.Id));
+        }
+        var others = units.Except(engineers.Where(_ => structure)).Except(fighters).ToList();
+        if (others.Count > 0)
+            await SendAsync(Order(OrderKind.Move, others, enemy.At));
+    }
+
     Task CancelAsync(BuildJobDto job) => SendAsync(Order(OrderKind.Cancel, entity: job.JobId, item: job.ItemKey));
 
     Task StopAsync() => SelectedUnits is { Count: > 0 } units ? SendAsync(Order(OrderKind.Stop, units)) : Task.CompletedTask;
@@ -751,6 +851,8 @@ else
         }
         else if (e.Key is "s" or "S")
             await StopAsync();
+        else if (e.Key is "a" or "A" && _view.Start.Mode == MatchModes.Raid)
+            _attackMove = !_attackMove;
     }
 
     void SetPlacing(string? key)
@@ -772,8 +874,26 @@ else
     {
         await StopFollowingAsync();
         _view = null;
+        _selected.Clear();
         await LoadAsync();
     }
+
+    /// <summary>A box dragged over the battlefield (FR-2.3): selects the player's own units inside it.</summary>
+    [JSInvokable]
+    public Task SelectBox(double x1, double y1, double x2, double y2) => InvokeAsync(() =>
+    {
+        if (_view is not { } view || _layout is null)
+            return;
+        var (left, right, top, bottom) = (Math.Min(x1, x2), Math.Max(x1, x2), Math.Min(y1, y2), Math.Max(y1, y2));
+        _selected.Clear();
+        foreach (var e in view.Mine.Where(e => CyberWarsRules.Item(e.Kind) is { IsStructure: false }))
+        {
+            var (x, y) = _layout.Centre(e.At);
+            if (x >= left && x <= right && y >= top && y <= bottom)
+                _selected.Add(e.Id);
+        }
+        StateHasChanged();
+    });
 
     async Task LeaveAsync()
     {
@@ -795,6 +915,7 @@ else
     public async ValueTask DisposeAsync()
     {
         await StopFollowingAsync();
+        _self?.Dispose();
         if (_js is not null)
             try { await _js.DisposeAsync(); } catch (JSDisconnectedException) { }
     }
@@ -827,7 +948,7 @@ else
         }
     }
 
-    static async Task<string> ProblemAsync(HttpResponseMessage response)
+    public static async Task<string> ProblemAsync(HttpResponseMessage response)
     {
         try
         {
@@ -844,8 +965,10 @@ else
     string Classes(EntityDto e, bool ghost)
     {
         var item = CyberWarsRules.Item(e.Kind);
-        var kind = e.Kind.StartsWith("vein.") ? $"cw-vein {(e.Kind == "vein.gold" ? "cw-gold" : "")}" : item is { IsStructure: true } ? "cw-struct" : "cw-unit";
-        return $"cw-ent {kind} {(ghost ? "cw-ghost" : "")} {(e.OwnerId == _view!.Me ? "cw-mine" : "")} {(_selected.Contains(e.Id) ? "cw-sel" : "")}";
+        var kind = e.Kind.StartsWith("vein.") ? $"cw-vein {(e.Kind == "vein.gold" ? "cw-gold" : "")}"
+            : e.Kind.StartsWith(CyberWarsRules.CrateKind) ? "cw-crate" : item is { IsStructure: true } ? "cw-struct" : "cw-unit";
+        var side = e.OwnerId == _view!.Me ? "cw-mine" : e.OwnerId != Guid.Empty ? "cw-enemy" : "";
+        return $"cw-ent {kind} {side} {(ghost ? "cw-ghost" : "")} {(e.State == "firing" ? "cw-firing" : "")} {(_selected.Contains(e.Id) ? "cw-sel" : "")}";
     }
 
     string Where(HexCell cell)
@@ -876,7 +999,37 @@ else
         return e.State is { } state ? $"{Name(e.Kind)} · {state}" : Name(e.Kind);
     }
 
-    static string ProvinceName(ZambianProvince p) => p == ZambianProvince.NorthWestern ? "North-Western" : p.ToString();
+    static string ProvinceName(ZambianProvince p) => CyberWarsWorld.ProvinceName(p);
+
+    static string Icon(string kind) => kind switch
+    {
+        "crate.gn" => "🪙",
+        "crate.ore" => "📦",
+        _ => CyberWarsRules.Item(kind)?.Icon ?? "❔",
+    };
+
+    /// <summary>A damaged unit or building shows how much is left.</summary>
+    static double? HealthOf(EntityDto e) =>
+        CyberWarsRules.Item(e.Kind) is { Health: > 0 } item && e.Health < item.Health ? Math.Max(0, e.Health) / (double)item.Health : null;
+
+    string PlayerName(Guid id) => _view?.Start.Players?.FirstOrDefault(p => p.UserId == id)?.Name ?? "a player";
+
+    string Subtitle(GameView view)
+    {
+        if (view.Start.Mode != MatchModes.Raid)
+            return $"{ProvinceName(view.Map.Province)} · tick {view.Tick}";
+        var me = view.Start.Players?.FirstOrDefault(p => p.UserId == view.Me);
+        var foe = view.Start.Players?.FirstOrDefault(p => p.UserId != view.Me);
+        var place = view.Start.Sector is { } s ? CyberWarsWorld.SectorName(view.Map.Province, s) : ProvinceName(view.Map.Province);
+        return me?.Side == MatchSides.Defender ? $"Defending {place} from {foe?.Name}" : $"Raiding {foe?.Name} · {place}";
+    }
+
+    static string Headline(GameView view) => view.Last switch
+    {
+        { WinnerId: { } w } when w == view.Me => view.Start.Mode == MatchModes.Raid ? "🏆 Victory" : "🏆 Skirmish won",
+        { WinnerId: not null } => "🛡️ Defeat",
+        _ => view.Start.Mode == MatchModes.Raid ? "Raid over" : "Skirmish over",
+    };
 
     static string Pct(double value, double of) => (of <= 0 ? 0 : Math.Clamp(value / of * 100, 0, 100)).ToString("0.#", CultureInfo.InvariantCulture);
 

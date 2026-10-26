@@ -74,6 +74,37 @@ public sealed class ConversationService(ChatDbContext db, ChatNotifier notifier,
         return (await ListForAsync(creator.Id, conversation.Id, ct)).Single();
     }
 
+    /// <summary>
+    /// A group a feature owns and fills as people join (a CyberWars war room): it may start with
+    /// just its owner, unlike a group someone starts in Chats.
+    /// </summary>
+    public async Task<Guid> CreateGroupForAsync(User owner, string title, CancellationToken ct)
+    {
+        var now = clock.GetUtcNow();
+        var conversation = new Conversation { Id = Guid.NewGuid(), Type = ConversationType.Group, Title = title[..Math.Min(title.Length, 100)], CreatedAt = now, LastActivityAt = now };
+        conversation.Members.Add(new ConversationMember { UserId = owner.Id, JoinedAt = now });
+        db.Conversations.Add(conversation);
+        await db.SaveChangesAsync(ct);
+        await notifier.ToUser(owner.ClerkUserId).ConversationUpdated((await ListForAsync(owner.Id, conversation.Id, ct)).Single());
+        return conversation.Id;
+    }
+
+    /// <summary>Adds someone to a group; it shows in their Chats straight away.</summary>
+    public async Task AddMemberAsync(Guid conversationId, User user, CancellationToken ct)
+    {
+        if (await db.Members.AnyAsync(m => m.ConversationId == conversationId && m.UserId == user.Id, ct))
+            return;
+        if (await db.Members.CountAsync(m => m.ConversationId == conversationId, ct) >= MaxGroupSize)
+            throw new ChatRejectedException($"Groups are limited to {MaxGroupSize} people.");
+        db.Members.Add(new ConversationMember { ConversationId = conversationId, UserId = user.Id, JoinedAt = clock.GetUtcNow() });
+        await db.SaveChangesAsync(ct);
+        await notifier.ToUser(user.ClerkUserId).ConversationUpdated((await ListForAsync(user.Id, conversationId, ct)).Single());
+    }
+
+    /// <summary>Takes someone out of a group: they can no longer read or send in it.</summary>
+    public Task RemoveMemberAsync(Guid conversationId, User user, CancellationToken ct) =>
+        db.Members.Where(m => m.ConversationId == conversationId && m.UserId == user.Id).ExecuteDeleteAsync(ct);
+
     /// <summary>The user's conversations, most recently active first -- or just one of them.</summary>
     public async Task<IReadOnlyList<ConversationDto>> ListForAsync(Guid userId, Guid? conversationId, CancellationToken ct)
     {

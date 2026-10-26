@@ -70,6 +70,7 @@ public static class MauiProgram
             .AddMessageTemplate<MediaMessageViewModel, MediaMessageView>()
             .AddMessageTemplate<ListingMessageViewModel, ListingMessageView>()
             .AddMessageTemplate<OfferMessageViewModel, OfferMessageView>()
+            .AddMessageTemplate<CyberWarsCardMessageViewModel, CyberWarsCardMessageView>()
             .AddMessageTemplate<UnsupportedMessageViewModel, UnsupportedMessageView>();
         builder.Services.AddSingleton<MessageTemplateSelector>();
 

@@ -1306,3 +1306,11 @@ textarea { resize: vertical; min-height: 90px; }
 .forward-list { overflow-y: auto; display: flex; flex-direction: column; }
 .forward-row { display: flex; align-items: center; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--divider); cursor: pointer; }
 .forward-row input { width: 20px; height: 20px; }
+
+/* CyberWars cards in a chat (cyberwars.card): pings, raid alerts and war-room command answers. */
+.cw-chat-card { display: flex; gap: 12px; width: 290px; max-width: 100%; padding: 12px 14px; border-radius: 18px; background: var(--glass-strong); border: 1px solid var(--glass-border); box-shadow: var(--shadow); color: var(--text); text-decoration: none; }
+.cw-chat-card-icon { font-size: 24px; line-height: 1.2; }
+.cw-chat-card-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cw-chat-card-title { font-weight: 700; }
+.cw-chat-card-text { font-size: 13px; color: var(--muted); }
+.cw-chat-card-action { font-size: 13px; font-weight: 700; color: var(--brand); }

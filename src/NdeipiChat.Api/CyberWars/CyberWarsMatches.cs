@@ -72,7 +72,7 @@ public sealed class CyberWarsMatches(IServiceScopeFactory scopes, ChatNotifier n
             string? blob = null;
             long tick;
             bool over, idle;
-            string status;
+            (Guid UserId, IReadOnlyList<BaseStructure> Layout)? home = null;
             lock (live.Gate)
             {
                 var engine = live.Engine;
@@ -85,11 +85,13 @@ public sealed class CyberWarsMatches(IServiceScopeFactory scopes, ChatNotifier n
                 }
                 over = engine.IsOver;
                 tick = engine.State.Tick;
-                status = engine.State.Status;
                 if (idle || over || tick - live.SavedTick >= SnapshotEveryTicks)
                 {
                     blob = ContractJson.Write(engine.State);
                     live.SavedTick = tick;
+                    // A skirmish base is the player's home base: the one raiders find (FR-2.1).
+                    if (!engine.IsRaid && engine.State.Players is [var solo] && engine.BaseOf(solo.UserId) is { } layout)
+                        home = (solo.UserId, layout);
                 }
             }
 
@@ -98,7 +100,7 @@ public sealed class CyberWarsMatches(IServiceScopeFactory scopes, ChatNotifier n
                 foreach (var (topic, delta) in deltas)
                     await notifier.PublishAsync(topic, delta);
                 if (blob is not null)
-                    await SaveAsync(id, tick, blob, over ? status : null, ct);
+                    await SaveAsync(id, tick, blob, over, home, ct);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
@@ -110,7 +112,7 @@ public sealed class CyberWarsMatches(IServiceScopeFactory scopes, ChatNotifier n
         }
     }
 
-    async Task SaveAsync(Guid matchId, long tick, string blob, string? finalStatus, CancellationToken ct)
+    async Task SaveAsync(Guid matchId, long tick, string blob, bool over, (Guid UserId, IReadOnlyList<BaseStructure> Layout)? home, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
@@ -122,9 +124,11 @@ public sealed class CyberWarsMatches(IServiceScopeFactory scopes, ChatNotifier n
             db.CyberWarsSnapshots.Add(new CyberWarsSnapshot { MatchId = matchId, Tick = tick, StateBlob = blob, At = now });
             await db.SaveChangesAsync(ct);
         }
-        if (finalStatus is not null)
-            await db.CyberWarsMatches.Where(m => m.Id == matchId && m.EndedAt == null)
-                .ExecuteUpdateAsync(s => s.SetProperty(m => m.Status, finalStatus).SetProperty(m => m.EndedAt, now), ct);
+        var world = scope.ServiceProvider.GetRequiredService<CyberWarsWorldService>();
+        if (home is { } h)
+            await world.SaveBaseAsync(h.UserId, h.Layout, ct);
+        if (over && ContractJson.Read<MatchState>(blob) is { } final)
+            await world.SettleAsync(final, ct);
     }
 }
 

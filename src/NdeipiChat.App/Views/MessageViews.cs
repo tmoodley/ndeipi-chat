@@ -74,6 +74,17 @@ public partial class ListingMessageView : MessageRow
     }
 }
 
+public partial class CyberWarsCardMessageView : MessageRow
+{
+    public CyberWarsCardMessageView() => InitializeComponent();
+
+    async void OnOpen(object? sender, EventArgs e)
+    {
+        if (BindingContext is CyberWarsCardMessageViewModel { Delivery: DeliveryStatus.Sent } card)
+            await CyberWarsNavigation.OpenAsync(AppServices.Get<INavigator>(), card);
+    }
+}
+
 public partial class OfferMessageView : MessageRow
 {
     public OfferMessageView() => InitializeComponent();

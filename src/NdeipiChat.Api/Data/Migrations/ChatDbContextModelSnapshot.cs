@@ -22,6 +22,96 @@ namespace NdeipiChat.Api.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsAlliance", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("LeaderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Province")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("CyberWarsAlliances");
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsAllianceMember", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AllianceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("JoinedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("LastReinforceAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("AllianceId");
+
+                    b.ToTable("CyberWarsAllianceMembers");
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsBase", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("LayoutJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Province")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("SectorQ")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SectorR")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("int");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("Province", "SectorQ", "SectorR")
+                        .IsUnique();
+
+                    b.ToTable("CyberWarsBases");
+                });
+
             modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsMatch", b =>
                 {
                     b.Property<Guid>("Id")
@@ -34,10 +124,21 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.Property<DateTimeOffset?>("EndedAt")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
                     b.Property<string>("Province")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("nvarchar(16)");
+
+                    b.Property<int?>("SectorQ")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("SectorR")
+                        .HasColumnType("int");
 
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("datetimeoffset");
@@ -50,9 +151,14 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.Property<Guid?>("WinnerAllianceId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("WinnerUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Status", "StartedAt");
+
+                    b.HasIndex("Province", "SectorQ", "SectorR", "Status");
 
                     b.ToTable("CyberWarsMatches");
                 });
@@ -64,6 +170,11 @@ namespace NdeipiChat.Api.Data.Migrations
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Side")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.HasKey("MatchId", "UserId");
 
@@ -139,6 +250,34 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.ToTable("CyberWarsPlayers");
                 });
 
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsSectorControl", b =>
+                {
+                    b.Property<string>("Province")
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("SectorQ")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SectorR")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("CapturedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid>("ControllerUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Province", "SectorQ", "SectorR");
+
+                    b.HasIndex("ControllerUserId");
+
+                    b.ToTable("CyberWarsSectorControls");
+                });
+
             modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsSnapshot", b =>
                 {
                     b.Property<Guid>("MatchId")
@@ -157,6 +296,46 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.HasKey("MatchId");
 
                     b.ToTable("CyberWarsSnapshots");
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsStrike", b =>
+                {
+                    b.Property<Guid>("AllianceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("ApprovedUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Province")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<int>("SectorQ")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SectorR")
+                        .HasColumnType("int");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.HasKey("AllianceId");
+
+                    b.ToTable("CyberWarsStrikes");
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsStrikeBallot", b =>
+                {
+                    b.Property<Guid>("AllianceId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("AllianceId", "UserId");
+
+                    b.ToTable("CyberWarsStrikeBallots");
                 });
 
             modelBuilder.Entity("NdeipiChat.Api.Data.BankTransfer", b =>
@@ -4392,6 +4571,39 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.ToTable("TravelVendors");
                 });
 
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsAlliance", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.Data.Conversation", null)
+                        .WithMany()
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsAllianceMember", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.CyberWars.CyberWarsAlliance", null)
+                        .WithMany()
+                        .HasForeignKey("AllianceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NdeipiChat.Api.Data.User", null)
+                        .WithOne()
+                        .HasForeignKey("NdeipiChat.Api.CyberWars.CyberWarsAllianceMember", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsBase", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.Data.User", null)
+                        .WithOne()
+                        .HasForeignKey("NdeipiChat.Api.CyberWars.CyberWarsBase", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsMatchPlayer", b =>
                 {
                     b.HasOne("NdeipiChat.Api.CyberWars.CyberWarsMatch", null)
@@ -4416,11 +4628,38 @@ namespace NdeipiChat.Api.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsSectorControl", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.Data.User", null)
+                        .WithMany()
+                        .HasForeignKey("ControllerUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsSnapshot", b =>
                 {
                     b.HasOne("NdeipiChat.Api.CyberWars.CyberWarsMatch", null)
                         .WithOne()
                         .HasForeignKey("NdeipiChat.Api.CyberWars.CyberWarsSnapshot", "MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsStrike", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.CyberWars.CyberWarsAlliance", null)
+                        .WithOne()
+                        .HasForeignKey("NdeipiChat.Api.CyberWars.CyberWarsStrike", "AllianceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.CyberWars.CyberWarsStrikeBallot", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.CyberWars.CyberWarsStrike", null)
+                        .WithMany()
+                        .HasForeignKey("AllianceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
