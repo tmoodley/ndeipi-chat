@@ -1,0 +1,151 @@
+@inherits GameComponent
+
+@if (SelectedIndex is null)
+{
+    <div class="nf-panel">
+        <div class="nf-panel-title">How to play</div>
+        <ol class="nf-howto">
+            <li>✂️ Cut forage on a <b>Pasture</b>.</li>
+            <li>🛖 Fill the <b>Kraal</b> trough, then register cattle &amp; goats.</li>
+            <li>💩 Collect manure &amp; urine every day.</li>
+            <li>🍂 Compost manure, 🛢️ ferment urine into bio-fertilizer.</li>
+            <li>🌱 Run regenerative practices on fields &amp; pastures.</li>
+            <li>🔆 Build a <b>NodeBoss</b> node to verify carbon and mint credits.</li>
+        </ol>
+        <p class="nf-muted nf-small">Tap any plot to inspect it.</p>
+    </div>
+}
+else
+{
+    var t = Game.GetTile(SelectedIndex.Value);
+    <div class="nf-panel">
+        <div class="nf-insp-head">
+            <span class="nf-insp-icon">@Rules.Icon(t.Kind)</span>
+            <div>
+                <div class="nf-insp-title">@Rules.Label(t.Kind)</div>
+                <div class="nf-muted nf-small">Plot @(t.Index + 1)@(t.Kind != TileKind.Empty ? $" · Level {t.Level}" : "")</div>
+            </div>
+        </div>
+
+        @switch (t.Kind)
+        {
+            case TileKind.Empty:
+                <p class="nf-muted">Choose a building in the toolbar, then tap this plot to build.</p>
+                break;
+
+            case TileKind.Pasture:
+                <Meter Label="Standing forage" Value="t.Forage" Max="Rules.PastureCap * t.Level" Unit="kg" Tone="green" />
+                <div class="nf-actions">
+                    <button class="nf-btn nf-btn-primary" @onclick="() => Game.HarvestForage(t.Index)">✂️ Cut forage</button>
+                </div>
+                <PracticeList Tile="t" />
+                break;
+
+            case TileKind.Kraal:
+                var herd = Game.AnimalsIn(t.Index).ToList();
+                var need = Game.DailyForageNeed(t.Index);
+                <div class="nf-herd-strip">
+                    @if (herd.Count == 0)
+                    {
+                        <span class="nf-muted nf-small">Empty kraal — register your first animal.</span>
+                    }
+                    @foreach (var a in herd)
+                    {
+                        <span class="@($"nf-herd-chip nf-s-{a.Status.ToString().ToLowerInvariant()}")" title="@a.Name · @a.TagNumber · @a.Status">@a.Icon @a.Name</span>
+                    }
+                </div>
+                <div class="nf-muted nf-small">@herd.Count / @Rules.KraalCapacity(t) head · eats @need.ToString("0.#") kg/day</div>
+                <Meter Label="Trough" Value="t.Forage" Max="Math.Max(1, need * 3)" Unit="kg" Tone="green" />
+                <div class="nf-kv"><span>💩 Manure on floor</span><b>@t.ManureKg.ToString("0") kg</b></div>
+                <div class="nf-kv"><span>💧 Urine in sump</span><b>@t.UrineL.ToString("0") L</b></div>
+                <div class="nf-actions">
+                    <button class="nf-btn" @onclick="() => Game.FeedKraal(t.Index)">🌾 Feed (@S.Inventory.ForageKg.ToString("0") kg)</button>
+                    <button class="nf-btn" @onclick="() => Game.CollectKraal(t.Index)">🪣 Collect</button>
+                    <button class="nf-btn nf-btn-primary" @onclick="() => OnRegister.InvokeAsync(t.Index)">➕ Register animal</button>
+                </div>
+                break;
+
+            case TileKind.CompostPit:
+                <Meter Label="Manure composting" Value="t.ManureKg" Max="Rules.CompostThroughput * t.Level" Unit="kg/day" Tone="brown" />
+                <div class="nf-kv"><span>🍂 Compost ready</span><b>@t.CompostKg.ToString("0") kg</b></div>
+                <p class="nf-muted nf-small">Composting avoids methane from open manure storage — each kg processed adds pending carbon.</p>
+                <div class="nf-actions">
+                    <button class="nf-btn" @onclick="() => Game.LoadProcessor(t.Index)">⬇️ Load manure (@S.Inventory.ManureKg.ToString("0") kg)</button>
+                    <button class="nf-btn nf-btn-primary" @onclick="() => Game.CollectProcessor(t.Index)">🧺 Collect compost</button>
+                </div>
+                break;
+
+            case TileKind.UrineTank:
+                <Meter Label="Urine fermenting" Value="t.UrineL" Max="Rules.UrineThroughput * t.Level" Unit="L/day" Tone="amber" />
+                <div class="nf-kv"><span>💧 Bio-fertilizer ready</span><b>@t.BioFertL.ToString("0") L</b></div>
+                <p class="nf-muted nf-small">Fermented cow urine replaces synthetic nitrogen on your fields.</p>
+                <div class="nf-actions">
+                    <button class="nf-btn" @onclick="() => Game.LoadProcessor(t.Index)">⬇️ Load urine (@S.Inventory.UrineL.ToString("0") L)</button>
+                    <button class="nf-btn nf-btn-primary" @onclick="() => Game.CollectProcessor(t.Index)">🧺 Collect</button>
+                </div>
+                break;
+
+            case TileKind.RegenField:
+                <div class="nf-kv"><span>Crop</span><b>@CropLabel(t)</b></div>
+                <div class="nf-actions">
+                    @if (t.Crop == CropStage.Fallow)
+                    {
+                        <button class="nf-btn nf-btn-primary" @onclick="() => Game.Plant(t.Index)">🌱 Plant (@Rules.SeedCost.ToString("0") NDX)</button>
+                    }
+                    else if (t.Crop == CropStage.Ready)
+                    {
+                        <button class="nf-btn nf-btn-primary" @onclick="() => Game.HarvestCrop(t.Index)">🌽 Harvest</button>
+                    }
+                    else
+                    {
+                        <span class="nf-muted nf-small">Growing… day @t.CropDays</span>
+                    }
+                </div>
+                <PracticeList Tile="t" />
+                break;
+
+            case TileKind.NodeBoss:
+                <div class="nf-kv"><span>☀️ Solar output today</span><b>@((Rules.NodeKwhPerDay * t.Level * Rules.SolarFactor(S.Weather)).ToString("0")) kWh</b></div>
+                <div class="nf-kv"><span>🖥️ Nodes online</span><b>@Game.NodeCount</b></div>
+                <div class="nf-kv"><span>🌍 Pending carbon</span><b>@S.PendingCarbonT.ToString("0.000") tCO₂e</b></div>
+                <Meter Label="Ready to mint" Value="S.PendingCarbonT" Max="Rules.MinMintT" Unit="t" Tone="green" />
+                <p class="nf-muted nf-small">The node verifies your practice and manure-management evidence, withholds a 10% buffer, and mints the rest as carbon credits on the Sousveillance ledger.</p>
+                <div class="nf-actions">
+                    <button class="nf-btn nf-btn-primary" disabled="@minting" @onclick="Mint">🪙 Verify &amp; mint</button>
+                </div>
+                break;
+        }
+
+        @if (t.Kind != TileKind.Empty)
+        {
+            <div class="nf-actions nf-foot">
+                <button class="nf-btn nf-btn-ghost nf-btn-sm" disabled="@(t.Level >= Rules.MaxLevel)" @onclick="() => Game.Upgrade(t.Index)">
+                    ⬆️ @(t.Level >= Rules.MaxLevel ? "Max level" : $"Upgrade ({Rules.UpgradeCost(t):0} NDX)")
+                </button>
+                <button class="nf-btn nf-btn-ghost nf-btn-sm nf-danger" @onclick="() => Game.Demolish(t.Index)">🧹 Clear</button>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int? SelectedIndex { get; set; }
+    [Parameter] public EventCallback<int> OnRegister { get; set; }
+
+    private bool minting;
+
+    private async Task Mint()
+    {
+        minting = true;
+        try { await Game.VerifyAndMintAsync(); }
+        finally { minting = false; }
+    }
+
+    private static string CropLabel(Tile t) => t.Crop switch
+    {
+        CropStage.Planted => "🌱 Seedling",
+        CropStage.Growing => "🌿 Growing",
+        CropStage.Ready => "🌽 Ready to harvest",
+        _ => "🟫 Fallow",
+    };
+}

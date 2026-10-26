@@ -1,0 +1,45 @@
+@inherits GameComponent
+
+<div>
+    <div class="nf-summary">
+        <span class="nf-chip">🐄 @S.Animals.Count(a => a.Species == Species.Cattle) cattle</span>
+        <span class="nf-chip">🐐 @S.Animals.Count(a => a.Species == Species.Goat) goats</span>
+        <span class="nf-chip nf-chip-green">✅ @S.Animals.Count(a => a.Status == VerificationStatus.Verified) verified</span>
+        <span class="nf-chip nf-chip-amber">⏳ @S.Animals.Count(a => a.Status == VerificationStatus.Pending) pending</span>
+        <span class="nf-chip">🏦 @S.Animals.Count(a => a.CattleBondRef != null) cattle bonds</span>
+    </div>
+
+    @if (S.Animals.Count == 0)
+    {
+        <p class="nf-muted">No animals yet. Select a kraal on the map and tap <b>Register animal</b>.</p>
+    }
+    else
+    {
+        <div class="nf-table-wrap">
+            <table class="nf-table">
+                <thead>
+                    <tr>
+                        <th></th><th>Name</th><th>Ear tag</th><th>Breed</th><th>Weight</th>
+                        <th>Health</th><th>Kraal</th><th>Status</th><th>Cattle bond</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in S.Animals.OrderByDescending(a => a.RegisteredDay).ThenBy(a => a.Name))
+                    {
+                        <tr>
+                            <td>@a.Icon</td>
+                            <td><b>@a.Name</b></td>
+                            <td><code>@a.TagNumber</code></td>
+                            <td>@a.Breed</td>
+                            <td>@a.WeightKg.ToString("0") kg</td>
+                            <td><div class="nf-bar nf-mini"><div class="nf-fill nf-green" style="width:@(Pct(a.Health, 100))%"></div></div></td>
+                            <td>#@(a.KraalIndex + 1)</td>
+                            <td><span class="@($"nf-status nf-s-{a.Status.ToString().ToLowerInvariant()}")" title="@a.Attestor">@a.Status</span></td>
+                            <td>@(a.CattleBondRef ?? "—")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

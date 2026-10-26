@@ -1,0 +1,511 @@
+@* Ndeipi.City, the farm game. The shell loads this library the first time the game is opened and
+   renders this component. The engine (FarmGameService) runs here on the device, with NodeBoss
+   simulated, and saves the farm in the shell's device storage, per user. Leaving the app stops the
+   day clock. *@
+@attribute [SubAppRoot(FarmContract.AppId)]
+@implements IDisposable
+
+<style>
+    .content.embedded .nf-back { display: none; }
+    .nf {
+        --nf-sky-1: #7cc8f2; --nf-sky-2: #c8ecff;
+        --nf-grass: #7bc043; --nf-grass-dark: #5a9a2b;
+        --nf-soil: #8b5a2b; --nf-soil-dark: #6b4220;
+        --nf-wood: #f4e1b8; --nf-wood-edge: #c9a86a; --nf-paper: #fff8e6; --nf-paper-on: #fff0d1;
+        --nf-ink: #3b2a14; --nf-muted: #7a6a52;
+        --nf-primary: #ff9f1c; --nf-primary-dark: #e07b00;
+        --nf-green: #2e9d4f; --nf-amber: #f4b400; --nf-red: #d64545; --nf-gold: #ffcc33;
+        --nf-radius: 14px;
+        min-height: 100vh;
+        color: var(--nf-ink);
+        background: linear-gradient(180deg, var(--nf-sky-1) 0%, var(--nf-sky-2) 220px, #e9f6d8 220px, #d9efc0 100%);
+    }
+    .nf * { box-sizing: border-box; }
+    :where(.nf) button { color: var(--nf-ink); box-shadow: none; }
+    :where(.nf) button:disabled { cursor: not-allowed; opacity: .5; }
+    :where(.nf) input { color: var(--nf-ink); background: #fff; width: auto; }
+    .nf h3, .nf h4 { text-transform: none; letter-spacing: 0; color: var(--nf-ink); }
+    .nf code, .nf-hash { font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: .78rem; }
+
+    .nf-muted { color: var(--nf-muted); }
+    .nf-small { font-size: .82rem; }
+    .nf-boot { display: grid; place-items: center; min-height: 60vh; font-size: 1.4rem; font-weight: 600; }
+    .nf-game { max-width: 1400px; margin: 0 auto; padding: 14px 16px 32px; }
+
+    /* HUD */
+    .nf-hud {
+        display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+        background: var(--nf-wood); border: 3px solid var(--nf-wood-edge); border-radius: 20px;
+        padding: 10px 16px; box-shadow: 0 6px 0 var(--nf-wood-edge), 0 10px 24px rgba(0,0,0,.15);
+    }
+    .nf-brand { display: flex; align-items: center; gap: 10px; }
+    .nf-back { background: none; border: 0; padding: 0 6px 0 0; font-size: 1.9rem; line-height: 1; font-weight: 600; }
+    .nf-logo { font-size: 2.2rem; filter: drop-shadow(0 2px 0 rgba(0,0,0,.2)); }
+    .nf-brand-title { font-size: 1.35rem; font-weight: 700; letter-spacing: .3px; }
+    .nf-brand-sub { font-size: .8rem; color: var(--nf-muted); }
+    .nf-stats { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; justify-content: center; }
+    .nf-stat {
+        display: flex; align-items: center; gap: 8px; background: var(--nf-paper);
+        border: 2px solid var(--nf-wood-edge); border-radius: 12px; padding: 4px 12px 4px 8px; min-width: 112px;
+    }
+    .nf-stat-icon { font-size: 1.4rem; }
+    .nf-stat-value { font-weight: 700; font-size: 1.05rem; line-height: 1.1; }
+    .nf-stat-label { font-size: .7rem; color: var(--nf-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .nf-controls { display: flex; align-items: center; gap: 8px; }
+    .nf-xp { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+    .nf-xp .nf-bar { width: 90px; }
+
+    /* Buttons */
+    .nf-btn {
+        border: 2px solid var(--nf-wood-edge); background: #fff; color: var(--nf-ink);
+        border-radius: 12px; padding: 7px 14px; font-weight: 600; font-size: .92rem;
+        box-shadow: 0 3px 0 var(--nf-wood-edge); transition: transform .08s; white-space: nowrap;
+    }
+    .nf-btn:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 var(--nf-wood-edge); }
+    .nf-btn-primary { background: var(--nf-primary); border-color: var(--nf-primary-dark); color: #fff; box-shadow: 0 3px 0 var(--nf-primary-dark); }
+    .nf-btn-primary:active:not(:disabled) { box-shadow: 0 1px 0 var(--nf-primary-dark); }
+    .nf-btn-ghost { background: transparent; }
+    .nf-btn-sm { padding: 4px 10px; font-size: .8rem; }
+    .nf-danger { color: var(--nf-red); }
+    .nf-link { background: none; border: none; color: var(--nf-primary-dark); font-weight: 700; text-decoration: underline; padding: 0; display: inline; }
+
+    /* Layout */
+    .nf-main { display: grid; grid-template-columns: 200px minmax(0, 1fr) 340px; gap: 16px; margin-top: 18px; align-items: start; }
+    @@media (max-width: 1100px) {
+        .nf-main { grid-template-columns: 1fr; }
+        .nf-stats { order: 3; flex-basis: 100%; }
+        .nf-controls { margin-left: auto; }
+        .nf-toolbar { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+        .nf-toolbar .nf-panel-title, .nf-toolbar .nf-inv { grid-column: 1 / -1; }
+    }
+    .nf-panel, .nf-toolbar, .nf-tabs {
+        background: var(--nf-wood); border: 3px solid var(--nf-wood-edge); border-radius: var(--nf-radius);
+        box-shadow: 0 5px 0 var(--nf-wood-edge);
+    }
+    .nf-toolbar { padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+    .nf-panel { padding: 14px; }
+    .nf-panel-title { font-weight: 700; font-size: .85rem; text-transform: uppercase; letter-spacing: .8px; color: var(--nf-muted); margin: 4px 2px; }
+    .nf-panel-sub { font-weight: 700; margin: 12px 0 6px; }
+
+    .nf-tool {
+        display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 6px;
+        background: var(--nf-paper); border: 2px solid transparent; border-radius: 10px; padding: 6px 8px; text-align: left;
+    }
+    .nf-tool:hover:not(:disabled) { border-color: var(--nf-wood-edge); }
+    .nf-tool.nf-active { border-color: var(--nf-primary); background: var(--nf-paper-on); }
+    .nf-tool-icon { font-size: 1.3rem; }
+    .nf-tool-name { font-weight: 600; font-size: .88rem; }
+    .nf-tool-cost { font-size: .75rem; font-weight: 700; color: var(--nf-primary-dark); }
+    .nf-tool-cost::after { content: " NDX"; font-weight: 500; }
+
+    .nf-inv { display: flex; flex-direction: column; gap: 3px; font-size: .86rem; background: var(--nf-paper); border-radius: 10px; padding: 8px 10px; }
+    .nf-inv div { display: flex; justify-content: space-between; }
+
+    /* Farm board */
+    .nf-board-wrap { position: relative; }
+    .nf-board {
+        display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px;
+        padding: 14px; border-radius: 22px; aspect-ratio: 1;
+        background: radial-gradient(circle at 30% 20%, #8fd352, var(--nf-grass) 60%, var(--nf-grass-dark));
+        border: 4px solid var(--nf-grass-dark);
+        box-shadow: inset 0 0 0 4px rgba(255,255,255,.18), 0 8px 0 #4a8022, 0 16px 30px rgba(0,0,0,.18);
+    }
+    .nf-tile {
+        position: relative; border: none; border-radius: 12px; padding: 0; min-width: 0;
+        display: grid; place-items: center; overflow: hidden;
+        background: rgba(255,255,255,.12); box-shadow: inset 0 -4px 0 rgba(0,0,0,.12);
+        transition: transform .12s, box-shadow .12s;
+    }
+    .nf-tile:hover { transform: translateY(-3px); box-shadow: inset 0 -4px 0 rgba(0,0,0,.12), 0 6px 10px rgba(0,0,0,.18); }
+    .nf-tile.nf-selected { outline: 4px solid #fff; outline-offset: -2px; box-shadow: 0 0 0 4px var(--nf-primary); z-index: 2; }
+    .nf-tile.nf-buildable { background: rgba(255,255,255,.35); animation: nf-pulse 1.4s ease-in-out infinite; }
+    .nf-glyph { font-size: clamp(1rem, 3.2vw, 2.2rem); line-height: 1; filter: drop-shadow(0 2px 1px rgba(0,0,0,.25)); word-break: break-all; text-align: center; }
+    .nf-k-kraal .nf-glyph { font-size: clamp(.7rem, 1.6vw, 1.25rem); }
+    .nf-lvl { position: absolute; left: 4px; bottom: 2px; font-size: .62rem; color: var(--nf-gold); text-shadow: 0 1px 1px rgba(0,0,0,.5); }
+    .nf-badge {
+        position: absolute; top: 3px; right: 3px; font-size: .78rem; background: #fff; border-radius: 999px;
+        width: 22px; height: 22px; display: grid; place-items: center; box-shadow: 0 2px 4px rgba(0,0,0,.25);
+        animation: nf-bob 1.6s ease-in-out infinite;
+    }
+    .nf-k-empty { background: rgba(255,255,255,.08); }
+    .nf-k-pasture { background: repeating-linear-gradient(45deg, #9ad35a 0 8px, #8ccb4b 8px 16px); }
+    .nf-k-kraal { background: repeating-linear-gradient(90deg, #c49a6c 0 6px, #b5895a 6px 12px); }
+    .nf-k-compostpit { background: radial-gradient(circle, #7a4b22, var(--nf-soil-dark)); }
+    .nf-k-urinetank { background: linear-gradient(180deg, #e9d9a8, #d1b873); }
+    .nf-k-regenfield { background: repeating-linear-gradient(0deg, var(--nf-soil) 0 7px, var(--nf-soil-dark) 7px 10px); }
+    .nf-k-nodeboss { background: linear-gradient(135deg, #2b4a7a, #1b2f52); box-shadow: inset 0 0 0 2px #7fb3ff, inset 0 -4px 0 rgba(0,0,0,.3); }
+    .nf-build-hint {
+        margin-top: 12px; text-align: center; background: var(--nf-paper); border: 2px dashed var(--nf-wood-edge);
+        border-radius: 12px; padding: 8px;
+    }
+
+    /* Inspector */
+    .nf-insp-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+    .nf-insp-icon { font-size: 2.2rem; }
+    .nf-insp-title { font-weight: 700; font-size: 1.15rem; }
+    .nf-kv { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed var(--nf-wood-edge); }
+    .nf-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .nf-actions.nf-foot { border-top: 2px solid var(--nf-wood-edge); padding-top: 10px; margin-top: 14px; justify-content: space-between; }
+    .nf-howto { padding-left: 18px; line-height: 1.7; margin: 6px 0; }
+
+    .nf-meter { margin: 8px 0; }
+    .nf-meter-top { display: flex; justify-content: space-between; font-size: .82rem; margin-bottom: 3px; }
+    .nf-bar { height: 10px; background: rgba(0,0,0,.1); border-radius: 999px; overflow: hidden; }
+    .nf-bar.nf-mini { height: 7px; width: 70px; }
+    .nf-fill { height: 100%; background: var(--nf-primary); border-radius: 999px; transition: width .4s; }
+    .nf-fill.nf-green { background: var(--nf-green); }
+    .nf-fill.nf-brown { background: var(--nf-soil); }
+    .nf-fill.nf-amber { background: var(--nf-amber); }
+    .nf-fill.nf-gold { background: linear-gradient(90deg, var(--nf-gold), var(--nf-primary)); }
+
+    .nf-herd-strip { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+    .nf-herd-chip { background: #fff; border-radius: 999px; padding: 2px 8px; font-size: .8rem; border: 2px solid transparent; }
+    .nf-herd-chip.nf-s-pending { border-color: var(--nf-amber); }
+    .nf-herd-chip.nf-s-verified { border-color: var(--nf-green); }
+    .nf-herd-chip.nf-s-rejected { border-color: var(--nf-red); opacity: .6; }
+
+    .nf-practice { display: flex; align-items: center; gap: 8px; padding: 6px; border-radius: 10px; background: var(--nf-paper); margin-bottom: 6px; }
+    .nf-practice.nf-on { background: #e5f6dc; }
+    .nf-p-icon { font-size: 1.4rem; }
+    .nf-p-body { flex: 1; min-width: 0; }
+    .nf-p-name { font-weight: 600; font-size: .9rem; }
+
+    .nf-chip { display: inline-block; background: var(--nf-paper); border: 1.5px solid var(--nf-wood-edge); border-radius: 999px; padding: 1px 9px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+    .nf-chip-green { background: #e5f6dc; border-color: var(--nf-green); color: #1d6b34; }
+    .nf-chip-amber { background: #fff3cc; border-color: var(--nf-amber); }
+    .nf-chip-red { background: #fde3e3; border-color: var(--nf-red); }
+
+    /* Bottom tabs */
+    .nf-tabs { margin-top: 18px; overflow: hidden; }
+    .nf-tabs nav { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 8px 0; border-bottom: 3px solid var(--nf-wood-edge); background: #efd8a6; }
+    .nf-tab { border: none; background: transparent; padding: 8px 14px; border-radius: 10px 10px 0 0; font-weight: 600; color: var(--nf-muted); }
+    .nf-tab.nf-on { background: var(--nf-wood); color: var(--nf-ink); }
+    .nf-tab.nf-subtle { font-size: .82rem; }
+    .nf-tab.nf-armed { color: var(--nf-red); }
+    .nf-spacer { flex: 1; }
+    .nf-tab-body { padding: 14px; max-height: 420px; overflow: auto; }
+
+    .nf-summary { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+    .nf-table-wrap { overflow-x: auto; }
+    .nf-table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+    .nf-table th { text-align: left; font-size: .72rem; text-transform: uppercase; color: var(--nf-muted); padding: 6px; border-bottom: 2px solid var(--nf-wood-edge); }
+    .nf-table td { padding: 6px; border-bottom: 1px dashed var(--nf-wood-edge); white-space: nowrap; }
+    .nf-status { padding: 2px 8px; border-radius: 999px; font-size: .75rem; font-weight: 700; }
+    .nf-status.nf-s-pending { background: #fff3cc; }
+    .nf-status.nf-s-verified { background: #e5f6dc; color: #1d6b34; }
+    .nf-status.nf-s-rejected { background: #fde3e3; color: var(--nf-red); }
+
+    .nf-market { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+    .nf-card { background: var(--nf-paper); border-radius: 12px; padding: 12px; border: 2px solid var(--nf-wood-edge); }
+    .nf-card h4 { margin: 0 0 6px; }
+    .nf-big { font-size: 1.6rem; font-weight: 700; }
+    .nf-big small { font-size: .8rem; color: var(--nf-muted); font-weight: 500; }
+    .nf-row { display: flex; gap: 6px; margin-top: 10px; }
+    .nf-row input, .nf-modal input {
+        flex: 1; min-width: 0; border: 2px solid var(--nf-wood-edge); border-radius: 10px; padding: 6px 10px; font-size: .95rem; background: #fff; width: 100%;
+    }
+
+    .nf-block { display: flex; gap: 10px; padding: 8px; border-radius: 10px; background: var(--nf-paper); margin-bottom: 6px; }
+    .nf-b-height { font-weight: 700; color: var(--nf-primary-dark); min-width: 44px; }
+    .nf-b-body { min-width: 0; }
+    .nf-b-payload { font-size: .86rem; word-break: break-word; margin: 2px 0; }
+    .nf-hash { color: var(--nf-muted); }
+
+    .nf-mission { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; background: var(--nf-paper); margin-bottom: 8px; border: 2px solid transparent; }
+    .nf-mission.nf-done { border-color: var(--nf-primary); background: var(--nf-paper-on); }
+    .nf-mission.nf-claimed { opacity: .65; }
+    .nf-m-body { flex: 1; }
+    .nf-m-title { font-weight: 700; }
+    .nf-m-reward { font-size: .8rem; font-weight: 600; color: var(--nf-primary-dark); white-space: nowrap; }
+
+    .nf-log { list-style: none; padding: 0; margin: 0; }
+    .nf-log li { padding: 5px 0; border-bottom: 1px dashed var(--nf-wood-edge); font-size: .9rem; }
+
+    /* Modal and toast */
+    .nf-modal-backdrop { position: fixed; inset: 0; background: rgba(40, 30, 10, .45); display: grid; place-items: center; z-index: 50; padding: 16px; }
+    .nf-modal {
+        width: min(440px, 100%); background: var(--nf-wood); border: 3px solid var(--nf-wood-edge); border-radius: 20px; color: var(--nf-ink);
+        padding: 18px; box-shadow: 0 8px 0 var(--nf-wood-edge), 0 24px 50px rgba(0,0,0,.3); max-height: calc(100vh - 32px); overflow: auto;
+    }
+    .nf-modal h3 { margin: 0 0 4px; }
+    .nf-modal label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; font-size: .88rem; margin-top: 10px; }
+    .nf-species-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    .nf-pick { display: block; border: 3px solid var(--nf-wood-edge); background: var(--nf-paper); border-radius: 14px; padding: 10px; font-size: 1.05rem; font-weight: 600; }
+    .nf-pick small { display: block; font-size: .75rem; color: var(--nf-muted); }
+    .nf-pick.nf-on { border-color: var(--nf-primary); background: var(--nf-paper-on); }
+    .nf-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .nf-error { margin-top: 10px; color: var(--nf-red); font-weight: 600; font-size: .88rem; }
+
+    .nf-toast {
+        position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px); text-align: center;
+        padding: 10px 18px; border-radius: 999px; font-weight: 600; color: #fff; z-index: 60; pointer-events: none;
+        box-shadow: 0 6px 18px rgba(0,0,0,.25); animation: nf-toast 3.2s ease forwards;
+    }
+    @@media (max-width: 760px) { .nf-toast { bottom: calc(var(--tabs-height, 64px) + 24px); } .nf-game { padding: 10px 10px 24px; } }
+    .nf-toast.nf-ok { background: var(--nf-green); }
+    .nf-toast.nf-err { background: var(--nf-red); }
+
+    @@keyframes nf-pulse { 0%, 100% { box-shadow: inset 0 0 0 2px rgba(255,255,255,.4); } 50% { box-shadow: inset 0 0 0 4px #fff; } }
+    @@keyframes nf-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+    @@keyframes nf-toast {
+        0% { opacity: 0; transform: translate(-50%, 12px); }
+        10%, 80% { opacity: 1; transform: translate(-50%, 0); }
+        100% { opacity: 0; transform: translate(-50%, 0); }
+    }
+    @@media (prefers-reduced-motion: reduce) { .nf-badge, .nf-tile.nf-buildable { animation: none; } }
+</style>
+
+<div class="nf">
+@if (game is not { Initialized: true })
+{
+    <div class="nf-boot">🐄 Opening the kraal gates…</div>
+}
+else
+{
+    <CascadingValue Value="game" IsFixed="true">
+    <div class="nf-game">
+        <header class="nf-hud">
+            <div class="nf-brand">
+                <button class="nf-back" title="Back to your apps" @onclick="Context.NavigateToLauncher">‹</button>
+                <span class="nf-logo">🔆</span>
+                <div>
+                    <div class="nf-brand-title">Ndeipi.City</div>
+                    <div class="nf-brand-sub">@S.FarmName · NodeBoss Farm</div>
+                </div>
+            </div>
+
+            <div class="nf-stats">
+                <Stat Icon="@Rules.WeatherIcon(S.Weather)" Label="@($"Day · {S.Weather}")" Value="@S.Day.ToString()" />
+                <Stat Icon="🪙" Label="NDX" Value="@S.Ndx.ToString("0.00")" Hint="In-game NDX: play money, not your wallet" />
+                <Stat Icon="🔒" Label="Staked" Value="@S.StakedNdx.ToString("0.00")" Hint="NDX staked in NodeBoss" />
+                <Stat Icon="🌍" Label="Pending tCO₂e" Value="@S.PendingCarbonT.ToString("0.000")" Hint="Unverified carbon — mint at a NodeBoss node" />
+                <Stat Icon="🏅" Label="Credits" Value="@S.CarbonCredits.ToString("0.000")" Hint="Minted carbon credits" />
+                <Stat Icon="⚡" Label="kWh" Value="@S.SolarKwh.ToString("0")" Hint="Solar energy generated by your nodes" />
+            </div>
+
+            <div class="nf-controls">
+                <div class="nf-xp" title="@S.Xp XP">
+                    <span>Lv @S.Level</span>
+                    <div class="nf-bar"><div class="nf-fill nf-gold" style="width:@(Pct(S.Xp % 250, 250))%"></div></div>
+                </div>
+                <button class="nf-btn" @onclick="Game.ToggleAutoPlay">@(Game.AutoPlay ? "⏸ Pause" : "▶ Play")</button>
+                <button class="nf-btn nf-btn-primary" disabled="@Game.Busy" @onclick="Game.AdvanceDayAsync">Next day ⏭</button>
+            </div>
+        </header>
+
+        <div class="nf-main">
+            <aside class="nf-toolbar">
+                <div class="nf-panel-title">Build</div>
+                <button class="nf-tool @(buildTool is null ? "nf-active" : "")" @onclick="() => buildTool = null">
+                    <span class="nf-tool-icon">👆</span><span class="nf-tool-name">Inspect</span>
+                </button>
+                @foreach (var kind in Buildable)
+                {
+                    var k = kind;
+                    <button class="nf-tool @(buildTool == k ? "nf-active" : "")" disabled="@(S.Ndx < Rules.BuildCost[k])" @onclick="() => buildTool = k">
+                        <span class="nf-tool-icon">@Rules.Icon(k)</span>
+                        <span class="nf-tool-name">@Rules.Label(k)</span>
+                        <span class="nf-tool-cost">@Rules.BuildCost[k].ToString("0")</span>
+                    </button>
+                }
+
+                <div class="nf-panel-title">Barn</div>
+                <div class="nf-inv">
+                    <div><span>🌾 Forage</span><b>@S.Inventory.ForageKg.ToString("0") kg</b></div>
+                    <div><span>💩 Manure</span><b>@S.Inventory.ManureKg.ToString("0") kg</b></div>
+                    <div><span>💧 Urine</span><b>@S.Inventory.UrineL.ToString("0") L</b></div>
+                    <div><span>🍂 Compost</span><b>@S.Inventory.CompostKg.ToString("0") kg</b></div>
+                    <div><span>🧪 Bio-fert</span><b>@S.Inventory.BioFertL.ToString("0") L</b></div>
+                    <div><span>🌽 Produce</span><b>@S.Inventory.ProduceKg.ToString("0") kg</b></div>
+                </div>
+            </aside>
+
+            <section class="nf-board-wrap">
+                <div class="nf-board">
+                    @foreach (var t in S.Tiles)
+                    {
+                        <button class="nf-tile @($"nf-k-{t.Kind.ToString().ToLowerInvariant()}") @(selected == t.Index ? "nf-selected" : "") @(buildTool is not null && t.Kind == TileKind.Empty ? "nf-buildable" : "")"
+                                title="@Rules.Label(t.Kind) · plot @(t.Index + 1)"
+                                @onclick="() => OnTileClick(t.Index)">
+                            <span class="nf-glyph">@Glyph(t)</span>
+                            @if (t.Level > 1)
+                            {
+                                <span class="nf-lvl">@(new string('★', t.Level - 1))</span>
+                            }
+                            @if (Badge(t) is { } badge)
+                            {
+                                <span class="nf-badge">@badge</span>
+                            }
+                        </button>
+                    }
+                </div>
+                @if (buildTool is TileKind tool)
+                {
+                    <div class="nf-build-hint">
+                        Tap an empty plot to build a <b>@Rules.Label(tool)</b> (@Rules.BuildCost[tool].ToString("0") NDX) ·
+                        <button class="nf-link" @onclick="() => buildTool = null">done</button>
+                    </div>
+                }
+            </section>
+
+            <aside>
+                <TileInspector SelectedIndex="selected" OnRegister="OpenRegister" />
+            </aside>
+        </div>
+
+        <section class="nf-tabs">
+            <nav>
+                @foreach (var (id, label) in Tabs)
+                {
+                    var tabId = id;
+                    <button class="nf-tab @(tab == tabId ? "nf-on" : "")" @onclick="() => tab = tabId">@label</button>
+                }
+                <span class="nf-spacer"></span>
+                <button class="nf-tab nf-subtle @(resetArmed ? "nf-armed" : "")" @onclick="Reset">@(resetArmed ? "Tap again to start over" : "↺ New farm")</button>
+            </nav>
+            <div class="nf-tab-body">
+                @switch (tab)
+                {
+                    case "herd":
+                        <HerdRegistry />
+                        break;
+                    case "missions":
+                        <MissionsPanel />
+                        break;
+                    case "market":
+                        <MarketPanel />
+                        break;
+                    case "ledger":
+                        <LedgerPanel />
+                        break;
+                    default:
+                        <ul class="nf-log">
+                            @foreach (var e in S.Log)
+                            {
+                                <li><span class="nf-muted nf-small">D@e.Day</span> @e.Icon @e.Text</li>
+                            }
+                        </ul>
+                        break;
+                }
+            </div>
+        </section>
+    </div>
+
+    @if (registerKraal is int kraal)
+    {
+        <RegisterAnimalDialog KraalIndex="kraal" OnClose="() => registerKraal = null" />
+    }
+
+    @if (Game.Toast is { } toast)
+    {
+        <div class="nf-toast @(toast.Ok ? "nf-ok" : "nf-err")" role="status" @key="Game.ToastId">@toast.Message</div>
+    }
+    </CascadingValue>
+}
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    private FarmGameService? game;
+    private int? selected;
+    private TileKind? buildTool;
+    private int? registerKraal;
+    private string tab = "herd";
+    private bool resetArmed;
+
+    private FarmGameService Game => game!;
+    private FarmState S => Game.State;
+
+    private static readonly TileKind[] Buildable =
+    {
+        TileKind.Pasture, TileKind.Kraal, TileKind.CompostPit, TileKind.UrineTank, TileKind.RegenField, TileKind.NodeBoss,
+    };
+
+    private static readonly (string Id, string Label)[] Tabs =
+    {
+        ("herd", "🐄 Herd registry"),
+        ("missions", "🎯 Missions"),
+        ("market", "💱 Market & staking"),
+        ("ledger", "⛓️ Ledger"),
+        ("log", "📜 Farm log"),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Swap SimulatedNodeBossClient for new HttpNodeBossClient(Context.Api) once the NodeBoss
+        // endpoints exist on the API (see Services/NodeBossClient.cs).
+        game = new FarmGameService(new SimulatedNodeBossClient(), new FarmStorage(Context.Device));
+        game.Changed += OnGameChanged;
+        await game.InitAsync();
+    }
+
+    private void OnGameChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        if (game is null) return;
+        game.Changed -= OnGameChanged;
+        game.Dispose();
+    }
+
+    private void OnTileClick(int index)
+    {
+        if (buildTool is TileKind kind && Game.GetTile(index).Kind == TileKind.Empty)
+        {
+            var result = Game.Build(index, kind);
+            if (result.Ok) selected = index;
+            if (S.Ndx < Rules.BuildCost[kind]) buildTool = null;
+            return;
+        }
+        selected = index;
+    }
+
+    private void OpenRegister(int kraalIndex) => registerKraal = kraalIndex;
+
+    private async Task Reset()
+    {
+        // Starting over wipes the saved farm, so it takes a second tap.
+        if (!resetArmed)
+        {
+            resetArmed = true;
+            return;
+        }
+        resetArmed = false;
+        selected = null;
+        buildTool = null;
+        await Game.ResetAsync();
+    }
+
+    private static string Pct(double value, double max) =>
+        (max <= 0 ? 0 : Math.Clamp(value / max * 100, 0, 100)).ToString("0.#", CultureInfo.InvariantCulture);
+
+    private string Glyph(Tile t) => t.Kind switch
+    {
+        TileKind.Kraal => Game.AnimalsIn(t.Index).Any()
+            ? string.Concat(Game.AnimalsIn(t.Index).Take(4).Select(a => a.Icon))
+            : "🛖",
+        TileKind.RegenField => t.Crop switch
+        {
+            CropStage.Planted => "🌱",
+            CropStage.Growing => "🌿",
+            CropStage.Ready => "🌽",
+            _ => "🟫",
+        },
+        TileKind.Empty => "",
+        _ => Rules.Icon(t.Kind),
+    };
+
+    private string? Badge(Tile t) => t.Kind switch
+    {
+        TileKind.Kraal when Game.AnimalsIn(t.Index).Any(a => a.Status == VerificationStatus.Pending) => "⏳",
+        TileKind.Kraal when t.Forage <= 0 && Game.AnimalsIn(t.Index).Any() => "🍽️",
+        TileKind.Kraal when t.ManureKg >= 20 => "💩",
+        TileKind.Pasture when t.Forage >= Rules.PastureCap * t.Level * 0.8 => "✂️",
+        TileKind.CompostPit when t.CompostKg >= 1 => "✅",
+        TileKind.UrineTank when t.BioFertL >= 1 => "✅",
+        TileKind.RegenField when t.Crop == CropStage.Ready => "❗",
+        TileKind.NodeBoss when S.PendingCarbonT >= Rules.MinMintT => "🪙",
+        _ => null,
+    };
+}

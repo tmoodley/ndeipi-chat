@@ -1,0 +1,48 @@
+@inherits GameComponent
+
+<div class="nf-market">
+    <div class="nf-card">
+        <h4>🪙 Carbon credits</h4>
+        <div class="nf-big">@S.CarbonCredits.ToString("0.000") <small>tCO₂e</small></div>
+        <div class="nf-muted nf-small">Spot price @S.CreditPrice.ToString("0.00") NDX · lifetime minted @S.LifetimeCreditsMinted.ToString("0.000")</div>
+        <div class="nf-row">
+            <input type="number" step="0.1" min="0" @bind="sellCredits" />
+            <button class="nf-btn nf-btn-ghost nf-btn-sm" @onclick="() => sellCredits = Math.Floor(S.CarbonCredits * 1000) / 1000">Max</button>
+            <button class="nf-btn nf-btn-primary" @onclick="() => Game.SellCredits(sellCredits)">Sell</button>
+        </div>
+    </div>
+
+    <div class="nf-card">
+        <h4>🧺 Produce</h4>
+        <div class="nf-big">@S.Inventory.ProduceKg.ToString("0") <small>kg</small></div>
+        <div class="nf-muted nf-small">Off-taker price @Rules.ProducePrice.ToString("0.00") NDX/kg</div>
+        <div class="nf-row">
+            <button class="nf-btn nf-btn-primary" @onclick="() => Game.SellProduce()">Sell all</button>
+        </div>
+    </div>
+
+    <div class="nf-card">
+        <h4>🔒 NodeBoss staking</h4>
+        <div class="nf-big">@S.StakedNdx.ToString("0.00") <small>NDX staked</small></div>
+        <div class="nf-muted nf-small">
+            @if (Game.NodeCount == 0)
+            {
+                <span>Build a NodeBoss node to start earning.</span>
+            }
+            else
+            {
+                <span>@Game.NodeCount node(s) online · @S.SolarKwh.ToString("0") kWh generated</span>
+            }
+        </div>
+        <div class="nf-row">
+            <input type="number" step="10" min="0" @bind="stakeAmount" />
+            <button class="nf-btn nf-btn-primary" @onclick="() => Game.Stake(stakeAmount)">Stake</button>
+            <button class="nf-btn nf-btn-ghost" @onclick="() => Game.Unstake(stakeAmount)">Unstake</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private double sellCredits;
+    private double stakeAmount = 100;
+}

@@ -1,0 +1,32 @@
+@inherits GameComponent
+
+<div>
+    <div class="nf-summary">
+        @if (SousveillanceLedger.Validate(S.Ledger))
+        {
+            <span class="nf-chip nf-chip-green">✅ Chain valid</span>
+        }
+        else
+        {
+            <span class="nf-chip nf-chip-red">❌ Chain broken</span>
+        }
+        <span class="nf-chip">⛓️ @S.Ledger.Count blocks</span>
+        <span class="nf-muted nf-small">Showing the latest 40. Each block commits to the previous block's SHA-256.</span>
+    </div>
+
+    @foreach (var b in S.Ledger.AsEnumerable().Reverse().Take(40))
+    {
+        <div class="nf-block">
+            <div class="nf-b-height">#@b.Height</div>
+            <div class="nf-b-body">
+                <div><span class="nf-chip">@b.Type</span> <span class="nf-muted nf-small">Day @b.Day</span></div>
+                <div class="nf-b-payload">@b.Payload</div>
+                <div class="nf-hash">@Short(b.Hash) ← @Short(b.PrevHash)</div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static string Short(string hash) => hash.Length > 16 ? $"{hash[..8]}…{hash[^6..]}" : hash;
+}

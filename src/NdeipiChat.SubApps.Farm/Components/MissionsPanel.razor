@@ -1,0 +1,25 @@
+@inherits GameComponent
+
+<div>
+    @foreach (var m in MissionBook.All)
+    {
+        var mission = m;
+        var claimed = S.ClaimedMissions.Contains(m.Id);
+        var done = m.IsComplete(S);
+        <div class="nf-mission @(claimed ? "nf-claimed" : done ? "nf-done" : "")">
+            <div class="nf-m-body">
+                <div class="nf-m-title">@m.Title</div>
+                <div class="nf-muted nf-small">@m.Description</div>
+            </div>
+            <div class="nf-m-reward">+@m.RewardNdx.ToString("0") NDX · +@m.RewardXp XP</div>
+            @if (claimed)
+            {
+                <span class="nf-chip nf-chip-green">Claimed</span>
+            }
+            else
+            {
+                <button class="nf-btn nf-btn-sm nf-btn-primary" disabled="@(!done)" @onclick="() => Game.ClaimMission(mission)">Claim</button>
+            }
+        </div>
+    }
+</div>
