@@ -36,8 +36,9 @@ public sealed class ChatHub(CurrentUserService users, MessageService messages, C
     static (string Prefix, string Key) Split(string? topic)
     {
         var parts = topic?.Split(':', 2);
-        return parts is [var prefix, var key] && prefix.Length is > 0 and <= 32 && key.Length is > 0 and <= 64
-            && prefix.All(c => char.IsAsciiLetterLower(c) || c == '-') && key.All(c => char.IsAsciiLetterOrDigit(c) || c == '-')
+        // A key may have parts of its own, e.g. "cyberwars:{matchId}:{userId}"; its policy splits them.
+        return parts is [var prefix, var key] && prefix.Length is > 0 and <= 32 && key.Length is > 0 and <= 80
+            && prefix.All(c => char.IsAsciiLetterLower(c) || c == '-') && key.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or ':')
             ? (prefix, key)
             : throw new HubException("That isn't a topic.");
     }

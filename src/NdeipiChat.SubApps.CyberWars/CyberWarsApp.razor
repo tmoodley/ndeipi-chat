@@ -1,0 +1,898 @@
+@* CyberWars: GN Mining, Phase 01: a solo skirmish on one province map. The server runs the match
+   (NFR-2); this component sends orders over HTTP and draws the deltas the match pushes on the
+   player's topic every tick. Units glide between hexes with CSS transitions (NFR-1b). *@
+@attribute [SubAppRoot(CyberWarsContract.AppId)]
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<style>
+    .content.embedded .cw-back { display: none; }
+    .cw {
+        --cw-panel: var(--glass-strong, rgba(255,255,255,.85)); --cw-text: var(--text, #16181d); --cw-muted: var(--muted, #7b8294);
+        --cw-line: var(--divider, rgba(0,0,0,.08)); --cw-brand: var(--brand, #3d7bf7);
+        --cw-ok: #1fa971; --cw-warn: #e8a317; --cw-bad: #e5484d; --cw-gold: #f5c542; --cw-copper: #e07a3a;
+        position: relative; display: flex; flex-direction: column; color: var(--cw-text);
+        height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; background: #05070a;
+    }
+    @@media (max-width: 760px) {
+        .cw { height: calc(100dvh - var(--tabs-height, 64px) - 34px - env(safe-area-inset-bottom)); }
+        .content.embedded .cw { height: 100dvh; }
+    }
+    .cw * { box-sizing: border-box; }
+    .cw-btn {
+        min-height: 44px; min-width: 44px; padding: 0 14px; border-radius: 12px; border: 1px solid var(--cw-line);
+        background: var(--cw-panel); color: var(--cw-text); font-weight: 600; font-size: .9rem; box-shadow: none; cursor: pointer;
+    }
+    .cw-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .cw-btn-primary { background: var(--cw-brand); border-color: var(--cw-brand); color: #fff; }
+    .cw-muted { color: var(--cw-muted); }
+
+    /* Lobby */
+    .cw-lobby { margin: auto; width: min(560px, 100%); padding: 24px 16px; overflow: auto; max-height: 100%; }
+    .cw-card { background: var(--cw-panel); border: 1px solid var(--cw-line); border-radius: 20px; padding: 20px; }
+    .cw-card h1 { margin: 0 0 4px; font-size: 1.5rem; }
+    .cw-card p { margin: 6px 0 14px; }
+    .cw-provinces { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; margin: 12px 0 16px; }
+    .cw-province { min-height: 44px; border-radius: 12px; border: 2px solid var(--cw-line); background: transparent; color: var(--cw-text); font-weight: 600; cursor: pointer; }
+    .cw-province.cw-on { border-color: var(--cw-brand); background: rgba(61,123,247,.14); }
+    .cw-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+    /* HUD */
+    .cw-hud {
+        display: flex; align-items: center; gap: 10px; padding: 6px 10px; flex-wrap: wrap;
+        background: var(--cw-panel); border-bottom: 1px solid var(--cw-line); z-index: 5;
+    }
+    .cw-back { background: none; border: 0; color: var(--cw-text); font-size: 1.8rem; line-height: 1; padding: 0 6px; min-width: 44px; min-height: 44px; box-shadow: none; }
+    .cw-title { font-weight: 700; line-height: 1.1; }
+    .cw-title small { display: block; font-weight: 500; color: var(--cw-muted); font-size: .75rem; }
+    .cw-end { margin-left: auto; }
+    .cw-stats { display: flex; gap: 6px; flex: 1; justify-content: flex-end; flex-wrap: wrap; }
+    .cw-stat { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 10px; background: var(--secondary, rgba(0,0,0,.05)); font-variant-numeric: tabular-nums; font-weight: 700; font-size: .9rem; }
+    .cw-stat span { font-weight: 500; color: var(--cw-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; }
+    .cw-goal { width: 70px; height: 6px; border-radius: 3px; background: rgba(0,0,0,.15); overflow: hidden; }
+    .cw-goal i { display: block; height: 100%; background: var(--cw-gold); }
+
+    /* Battlefield */
+    .cw-main { position: relative; flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(220px, 20vw, 320px); }
+    .cw-viewport { position: relative; overflow: auto; overscroll-behavior: contain; background: #05070a; -webkit-overflow-scrolling: touch; }
+    .cw-board { position: relative; }
+    .cw-ground { position: absolute; left: 0; top: 0; pointer-events: none; }
+    .cw-ground polygon { stroke: rgba(0,0,0,.35); stroke-width: 1; }
+    .cw-soil { fill: #9b5a33; } .cw-soil2 { fill: #a6633a; } .cw-rock { fill: #4a4440; }
+    .cw-dark { fill: #05070a; stroke: #05070a; }
+    .cw-dim { fill-opacity: .38; }
+    .cw-place { fill: rgba(62,224,143,.28); stroke: #3ee08f; stroke-width: 2; animation: cw-pulse 1.2s ease-in-out infinite; }
+    .cw-hit { position: absolute; inset: 0; cursor: crosshair; }
+    .cw-ent {
+        position: absolute; left: 0; top: 0; display: grid; place-items: center; pointer-events: auto; cursor: pointer;
+        width: 44px; height: 44px; margin: -30px 0 0 -22px; border-radius: 50%; font-size: 26px; line-height: 1;
+        filter: drop-shadow(0 3px 2px rgba(0,0,0,.55)); user-select: none; -webkit-user-select: none;
+    }
+    .cw-ent.cw-struct { font-size: 32px; width: 52px; height: 52px; margin: -36px 0 0 -26px; }
+    .cw-ent.cw-mine::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -2px; height: 7px; border-radius: 50%; background: rgba(62,224,143,.55); z-index: -1; }
+    .cw-ent.cw-sel { outline: 3px solid #3ee08f; outline-offset: -2px; background: rgba(62,224,143,.18); }
+    .cw-ent.cw-ghost { opacity: .4; filter: grayscale(.8); }
+    .cw-vein { width: 30px; height: 30px; margin: -15px 0 0 -15px; font-size: 0; }
+    .cw-vein::before { content: ""; width: 16px; height: 16px; background: var(--cw-copper); clip-path: polygon(50% 0, 100% 100%, 0 100%); box-shadow: 0 0 10px var(--cw-copper); }
+    .cw-vein.cw-gold::before { background: var(--cw-gold); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+    .cw-load { position: absolute; left: 6px; right: 6px; bottom: 2px; height: 4px; border-radius: 2px; background: rgba(0,0,0,.6); overflow: hidden; }
+    .cw-load i { display: block; height: 100%; background: var(--cw-gold); }
+    .cw-marker { position: absolute; left: 0; top: 0; width: 34px; height: 20px; margin: -10px 0 0 -17px; border: 2px solid #3ee08f; border-radius: 50%; pointer-events: none; animation: cw-ping .9s ease-out forwards; }
+    .cw-cue {
+        position: absolute; left: 12px; bottom: 12px; max-width: min(420px, calc(100% - 24px)); z-index: 4; pointer-events: none;
+        padding: 6px 12px; border-radius: 12px; background: rgba(5,7,10,.78); color: #c9f7dc; font-size: .85rem; border: 1px solid rgba(62,224,143,.35);
+    }
+    .cw-cue b { color: #3ee08f; }
+    .cw-banner {
+        position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 4; display: flex; gap: 8px; align-items: center;
+        padding: 6px 6px 6px 14px; border-radius: 14px; background: rgba(5,7,10,.85); color: #fff; font-size: .88rem; max-width: calc(100% - 24px);
+    }
+
+    /* Sidebar (UI-3) */
+    .cw-side { display: flex; flex-direction: column; min-height: 0; background: var(--cw-panel); -webkit-backdrop-filter: var(--glass-blur, blur(20px)); backdrop-filter: var(--glass-blur, blur(20px)); border-left: 1px solid var(--cw-line); z-index: 6; }
+    .cw-handle { display: none; }
+    .cw-side-body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+    .cw-side-body > * { flex-shrink: 0; }
+    .cw-mini-wrap { aspect-ratio: 1; width: 100%; border-radius: 10px; overflow: hidden; border: 1px solid var(--cw-line); cursor: pointer; }
+    .cw-mini { width: 100%; height: 100%; display: block; }
+    .cw-mini * { pointer-events: none; }
+    .cw-mini-lit { fill: #a6633a; } .cw-mini-dim { fill: #4b2e1d; } .cw-mini-rock { fill: #3a3532; }
+    .cw-power { display: grid; gap: 4px; font-size: .8rem; }
+    .cw-power-bar { height: 10px; border-radius: 5px; background: rgba(0,0,0,.15); overflow: hidden; }
+    .cw-power-bar i { display: block; height: 100%; }
+    .cw-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .cw-tab { min-height: 44px; border-radius: 10px; border: 1px solid var(--cw-line); background: transparent; color: var(--cw-text); font-size: 1.2rem; box-shadow: none; padding: 0; cursor: pointer; }
+    .cw-tab.cw-on { background: var(--cw-brand); color: #fff; border-color: var(--cw-brand); }
+    .cw-tab-name { font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--cw-muted); margin-top: -4px; }
+    .cw-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .cw-item {
+        position: relative; overflow: hidden; min-height: 76px; border-radius: 12px; border: 1px solid var(--cw-line);
+        background: var(--secondary, rgba(0,0,0,.04)); color: var(--cw-text); padding: 6px; text-align: center; box-shadow: none; cursor: pointer;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    }
+    .cw-item-icon { font-size: 1.5rem; line-height: 1; }
+    .cw-item-name { font-size: .72rem; font-weight: 600; line-height: 1.15; }
+    .cw-item-cost { font-size: .72rem; font-weight: 700; color: var(--cw-muted); font-variant-numeric: tabular-nums; }
+    .cw-item.cw-locked { cursor: not-allowed; }
+    .cw-item.cw-locked > :not(.cw-why) { opacity: .35; }
+    .cw-why { font-size: .66rem; color: var(--cw-muted); line-height: 1.15; }
+    .cw-sweep { position: absolute; inset: 0; pointer-events: none; }
+    .cw-badge { position: absolute; top: 4px; right: 4px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--cw-brand); color: #fff; font-size: .7rem; font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
+    .cw-ready { position: absolute; left: 4px; right: 4px; bottom: 4px; border-radius: 8px; background: var(--cw-ok); color: #fff; font-size: .7rem; font-weight: 800; letter-spacing: .5px; padding: 2px 0; animation: cw-pulse 1.2s ease-in-out infinite; }
+    .cw-queue { display: grid; gap: 4px; font-size: .8rem; }
+    .cw-job { display: flex; align-items: center; gap: 8px; }
+    .cw-job span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cw-x { min-width: 44px; min-height: 36px; border-radius: 10px; border: 1px solid var(--cw-line); background: transparent; color: var(--cw-text); box-shadow: none; cursor: pointer; }
+    .cw-sel-panel { font-size: .82rem; display: grid; gap: 6px; padding: 8px; border-radius: 12px; border: 1px solid var(--cw-line); }
+
+    /* Ending and toast */
+    .cw-over { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(5,7,10,.6); z-index: 20; padding: 16px; }
+    .cw-toast {
+        position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 30; max-width: calc(100% - 32px); text-align: center;
+        padding: 10px 16px; border-radius: 999px; background: var(--cw-bad); color: #fff; font-weight: 600; font-size: .88rem; pointer-events: none;
+    }
+
+    /* Phone (UI-1a): the viewport fills the screen and the sidebar is a bottom drawer. */
+    @@media (max-width: 767px) {
+        .cw-main { grid-template-columns: minmax(0, 1fr); }
+        .cw-side { position: absolute; left: 0; right: 0; bottom: 0; max-height: 64%; border-left: 0; border-top: 1px solid var(--cw-line); border-radius: 18px 18px 0 0; box-shadow: 0 -10px 30px rgba(0,0,0,.35); }
+        .cw-side:not(.cw-open) .cw-side-body { display: none; }
+        .cw-handle {
+            display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 0 16px; width: 100%;
+            background: none; border: 0; color: var(--cw-text); font-weight: 700; box-shadow: none; cursor: pointer;
+        }
+        .cw-handle .cw-grow { flex: 1; text-align: left; }
+        .cw-mini-wrap { width: 58%; margin: 0 auto; }
+        .cw-cue { bottom: 64px; }
+        .cw-toast { bottom: 120px; }
+        .cw-stat span { display: none; }
+        .cw-stat { padding: 4px 7px; font-size: .8rem; gap: 4px; }
+        .cw-goal { width: 36px; }
+        .cw-hud { gap: 6px; padding: 4px 6px; }
+        .cw-hud .cw-title small { display: none; }
+        .cw-stats { justify-content: space-between; order: 3; flex-basis: 100%; flex-wrap: nowrap; }
+    }
+    @@keyframes cw-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+    @@keyframes cw-ping { from { transform: scale(.4); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+    @@media (prefers-reduced-motion: reduce) { .cw-place, .cw-ready, .cw-marker { animation: none; } .cw-ent { transition: none !important; } }
+</style>
+
+<div class="cw" tabindex="0" @onkeydown="OnKey">
+@if (_error is { } error)
+{
+    <div class="cw-lobby"><div class="cw-card">
+        <h1>CyberWars</h1>
+        <p>@error</p>
+        <div class="cw-row">
+            <button class="cw-btn cw-btn-primary" @onclick="LoadAsync">Try again</button>
+            <button class="cw-btn cw-back-btn" @onclick="Context.NavigateToLauncher">Back to apps</button>
+        </div>
+    </div></div>
+}
+else if (_me is null)
+{
+    <div class="cw-lobby cw-muted">Deploying the NodeBoss Command Center…</div>
+}
+else if (_view is null)
+{
+    <header class="cw-hud">
+        <button class="cw-back" title="Back to your apps" @onclick="Context.NavigateToLauncher">‹</button>
+        <div class="cw-title">CyberWars: GN Mining<small>Genesis Mining · solo skirmish</small></div>
+    </header>
+    <div class="cw-lobby">
+        <div class="cw-card">
+            <h1>⛏️ Genesis Mining</h1>
+            <p class="cw-muted">
+                Deploy a NodeBoss Command Center in a Zambian province, power it, build an Ore Bonded Warehouse and
+                send harvesters to the gold and copper veins. Refine @CyberWarsRules.SkirmishGoal.ToString("N0") ore credits to win.
+                Ore credits are play credits: no cash value, and nothing real is ever at stake.
+            </p>
+            <div class="cw-muted">@RankLine</div>
+            <div class="cw-provinces" role="radiogroup" aria-label="Province">
+                @foreach (var province in Enum.GetValues<ZambianProvince>())
+                {
+                    var p = province;
+                    <button class="cw-province @(p == _province ? "cw-on" : "")" role="radio" aria-checked="@(p == _province)" @onclick="() => _province = p">@ProvinceName(p)</button>
+                }
+            </div>
+            <div class="cw-row">
+                <button class="cw-btn cw-btn-primary" disabled="@_busy" @onclick="StartAsync">Start skirmish in @ProvinceName(_province)</button>
+                @if (_me.ActiveMatchId is { } active)
+                {
+                    <button class="cw-btn" disabled="@_busy" @onclick="() => OpenAsync(active)">Resume your skirmish</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    var view = _view;
+    var (supply, demand) = view.Power;
+    <header class="cw-hud">
+        <button class="cw-back" title="Back to your apps" @onclick="LeaveAsync">‹</button>
+        <div class="cw-title">CyberWars<small>@ProvinceName(view.Map.Province) · tick @view.Tick</small></div>
+        <div class="cw-stats">
+            <div class="cw-stat" title="Ore credits: play credits for this match">💰 @view.Last.OreCredits.ToString("N0") <span>credits</span></div>
+            <div class="cw-stat" title="Refined toward the goal">
+                🏦 @view.Last.OreRefined.ToString("N0")
+                <div class="cw-goal"><i style="width:@Pct((double)view.Last.OreRefined, (double)CyberWarsRules.SkirmishGoal)%"></i></div>
+            </div>
+            <div class="cw-stat" title="Power supply / demand">⚡ @supply/@demand</div>
+            <div class="cw-stat" title="Match time">⏱ @Clock(view.Tick)</div>
+        </div>
+        <button class="cw-btn cw-end" @onclick="EndAsync">End</button>
+    </header>
+
+    <div class="cw-main">
+        <div class="cw-viewport" @ref="_viewport">
+            <div class="cw-board" style="width:@Px(_layout!.PixelWidth)px;height:@Px(_layout.PixelHeight)px">
+                <HexLayer View="view" Layout="_layout" Placing="_placeCells" />
+                <div class="cw-hit" @onclick="OnGround" @oncontextmenu="OnGroundRight" @oncontextmenu:preventDefault="true"></div>
+                @foreach (var e in view.Ghosts.Values)
+                {
+                    <div class="@Classes(e, ghost: true)" style="@Where(e.At)" title="Last seen here"></div>
+                }
+                @foreach (var e in view.Entities.Values.OrderBy(e => e.At.R))
+                {
+                    var entity = e;
+                    <div @key="entity.Id" class="@Classes(entity, ghost: false)" style="@(Where(entity.At) + Glide(entity))" title="@Describe(entity)"
+                         @onclick="() => OnEntity(entity, false)" @onclick:stopPropagation="true"
+                         @oncontextmenu="() => OnEntity(entity, true)" @oncontextmenu:preventDefault="true" @oncontextmenu:stopPropagation="true">
+                        @if (!entity.Kind.StartsWith("vein."))
+                        {
+                            @(CyberWarsRules.Item(entity.Kind)?.Icon ?? "❔")
+                        }
+                        @if (LoadOf(entity) is { } load)
+                        {
+                            <div class="cw-load"><i style="width:@Pct(load, 1)%"></i></div>
+                        }
+                    </div>
+                }
+                @if (_marker is { } marker)
+                {
+                    <div class="cw-marker" @key="_markerId" style="@Where(marker)"></div>
+                }
+            </div>
+        </div>
+
+        @if (_placing is { } placing)
+        {
+            <div class="cw-banner">Tap a lit hex to place the @CyberWarsRules.Item(placing)?.Name <button class="cw-btn" @onclick="() => SetPlacing(null)">Cancel</button></div>
+        }
+        @if (_cue is { } cue)
+        {
+            <div class="cw-cue" role="status" aria-live="polite"><b>Genie:</b> @cue</div>
+        }
+
+        <aside class="cw-side @(_drawer ? "cw-open" : "")">
+            <button class="cw-handle" aria-expanded="@_drawer" @onclick="() => _drawer = !_drawer">
+                <span class="cw-grow">@(_drawer ? "▼" : "▲") Build</span>
+                <span>💰 @view.Last.OreCredits.ToString("N0")</span>
+                <span style="color:@PowerColour(supply, demand)">⚡ @supply/@demand</span>
+            </button>
+            <div class="cw-side-body">
+                <div class="cw-mini-wrap" @ref="_minimap" title="Tap to look there"><Minimap View="view" Layout="_layout" /></div>
+
+                <div class="cw-power" title="Below demand, building runs at half speed">
+                    <div class="cw-row" style="justify-content:space-between"><span>Power</span><b>@supply supply · @demand demand</b></div>
+                    <div class="cw-power-bar"><i style="width:@PowerFill(supply, demand)%;background:@PowerColour(supply, demand)"></i></div>
+                </div>
+
+                @if (SelectedEntities.ToList() is { Count: > 0 } selected)
+                {
+                    <div class="cw-sel-panel">
+                        @foreach (var group in selected.GroupBy(s => s.Kind))
+                        {
+                            <div>@(CyberWarsRules.Item(group.Key)?.Icon) <b>@group.Count() × @Name(group.Key)</b> @(group.Count() == 1 ? Describe(group.First()).Split(" · ").Skip(1).FirstOrDefault() : null)</div>
+                        }
+                        @if (selected.Any(s => CyberWarsRules.Item(s.Kind) is { IsStructure: false }))
+                        {
+                            <div class="cw-muted">Tap the ground to move; tap a vein or rig to harvest.</div>
+                            <div class="cw-row"><button class="cw-btn" @onclick="StopAsync">Stop (S)</button><button class="cw-btn" @onclick="() => _selected.Clear()">Deselect</button></div>
+                        }
+                    </div>
+                }
+
+                <div class="cw-tabs" role="tablist">
+                    @foreach (var (tab, icon) in TabIcons)
+                    {
+                        var t = tab;
+                        <button class="cw-tab @(_tab == t ? "cw-on" : "")" role="tab" aria-selected="@(_tab == t)" title="@t" @onclick="() => _tab = t">@icon</button>
+                    }
+                </div>
+                <div class="cw-tab-name">@_tab</div>
+
+                <div class="cw-grid">
+                    @foreach (var item in CyberWarsRules.Catalogue.Where(i => i.Tab == _tab && i.Key != CyberWarsRules.CommandCenter))
+                    {
+                        var it = item;
+                        var locked = CyberWarsRules.Locked(it, view.Start.Rank, view.Owned);
+                        var jobs = view.Last.Queue.Where(j => j.ItemKey == it.Key).ToList();
+                        var head = jobs.FirstOrDefault(j => j.Started || j.Ready);
+                        <button class="cw-item @(locked is null ? "" : "cw-locked")" title="@(locked ?? it.Name)" @onclick="() => OnItemAsync(it, locked)">
+                            @if (head is { Started: true, Ready: false })
+                            {
+                                <div class="cw-sweep" style="background:conic-gradient(transparent 0 @Turn(head.Progress)turn, rgba(0,0,0,.5) @Turn(head.Progress)turn 1turn)"></div>
+                            }
+                            <span class="cw-item-icon">@it.Icon</span>
+                            <span class="cw-item-name">@it.Name</span>
+                            @if (locked is not null)
+                            {
+                                <span class="cw-why">🔒 @locked</span>
+                            }
+                            else if (it.Cost > 0)
+                            {
+                                <span class="cw-item-cost">💰 @it.Cost.ToString("N0")</span>
+                            }
+                            @if (jobs.Count > 0)
+                            {
+                                <span class="cw-badge">@jobs.Count</span>
+                            }
+                            @if (jobs.Any(j => j.Ready))
+                            {
+                                <span class="cw-ready">READY · PLACE</span>
+                            }
+                        </button>
+                    }
+                </div>
+
+                @if (view.Last.Queue.Count > 0)
+                {
+                    <div class="cw-queue">
+                        <div class="cw-tab-name">Build queue</div>
+                        @foreach (var job in view.Last.Queue)
+                        {
+                            var j = job;
+                            <div class="cw-job">
+                                <span>@(CyberWarsRules.Item(j.ItemKey)?.Icon) @Name(j.ItemKey) · @(j.Ready ? "ready" : j.Started ? $"{j.Progress * 100:0}%" : "waiting")</span>
+                                <button class="cw-x" title="@(j.Started ? "Cancel: full refund" : "Cancel: nothing was charged")" @onclick="() => CancelAsync(j)">✕</button>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </aside>
+
+        @if (view.IsOver)
+        {
+            <div class="cw-over">
+                <div class="cw-card" style="max-width:420px">
+                    <h1>@(view.Last.Status == MatchStatuses.Won ? "🏆 Skirmish won" : "Skirmish over")</h1>
+                    <p>@view.Last.EndReason</p>
+                    <p class="cw-muted">Refined @view.Last.OreRefined.ToString("N0") ore credits in @Clock(view.Tick).</p>
+                    <div class="cw-row">
+                        <button class="cw-btn cw-btn-primary" @onclick="NewSkirmishAsync">New skirmish</button>
+                        <button class="cw-btn" @onclick="Context.NavigateToLauncher">Back to apps</button>
+                    </div>
+                </div>
+            </div>
+        }
+        @if (_toast is { } toast)
+        {
+            <div class="cw-toast" role="alert" @key="_toastId">@toast</div>
+        }
+    </div>
+}
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    const string Base = CyberWarsContract.BasePath;
+
+    static readonly (string Tab, string Icon)[] TabIcons =
+    [
+        (CyberWarsRules.Tabs.Structures, "🏗️"), (CyberWarsRules.Tabs.Rigs, "⛏️"), (CyberWarsRules.Tabs.Forces, "🛸"), (CyberWarsRules.Tabs.Stratagems, "🌀"),
+    ];
+
+    CyberWarsMeDto? _me;
+    GameView? _view;
+    HexLayout? _layout;
+    string? _error;
+    bool _busy;
+    ZambianProvince _province = ZambianProvince.Copperbelt;
+    string _tab = CyberWarsRules.Tabs.Structures;
+    bool _drawer;
+    readonly HashSet<Guid> _selected = [];
+    string? _placing;
+    HashSet<HexCell>? _placeCells;
+    int _placeFog = -1;
+    HexCell? _marker;
+    int _markerId;
+    string? _cue;
+    string? _toast;
+    int _toastId;
+    bool _centre;
+    bool _resyncing;
+
+    ElementReference _viewport;
+    ElementReference _minimap;
+    IJSObjectReference? _js;
+    IAsyncDisposable? _subscription;
+    CancellationTokenSource? _life;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            _me = await Context.Api.GetFromJsonAsync<CyberWarsMeDto>($"{Base}/me", ContractJson.Options);
+            if (_me?.HomeProvince is { } home)
+                _province = home;
+        }
+        catch (Exception ex)
+        {
+            _error = $"CyberWars couldn't reach the server. {ex.Message}";
+        }
+    }
+
+    string RankLine => _me!.Rank == PlayerRank.None
+        ? $"No rank pack: you play with {CyberWarsRules.RigSlots(PlayerRank.None)} NodeBoss rig."
+        : $"{_me.Rank} rank: {CyberWarsRules.RigSlots(_me.Rank)} rig slots.";
+
+    async Task StartAsync()
+    {
+        _busy = true;
+        try
+        {
+            using var response = await Context.Api.PostAsJsonAsync($"{Base}/matches", new StartMatchRequest(_province), ContractJson.Options);
+            if (!response.IsSuccessStatusCode)
+            {
+                Toast(await ProblemAsync(response));
+                return;
+            }
+            await ShowAsync((await response.Content.ReadFromJsonAsync<MatchStateDto>(ContractJson.Options))!);
+        }
+        catch (Exception ex)
+        {
+            Toast($"Couldn't start the skirmish. {ex.Message}");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task OpenAsync(Guid matchId)
+    {
+        _busy = true;
+        try
+        {
+            if (await FetchAsync(matchId) is { } state)
+                await ShowAsync(state);
+            else
+                Toast("That skirmish is no longer there.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task<MatchStateDto?> FetchAsync(Guid matchId)
+    {
+        using var response = await Context.Api.GetAsync($"{Base}/matches/{matchId}");
+        return response.IsSuccessStatusCode ? await response.Content.ReadFromJsonAsync<MatchStateDto>(ContractJson.Options) : null;
+    }
+
+    async Task ShowAsync(MatchStateDto state)
+    {
+        await StopFollowingAsync();
+        _view = new GameView(state, Context.UserId);
+        _layout = new HexLayout(state.Map.Radius);
+        _selected.Clear();
+        SetPlacing(null);
+        _centre = true;
+        _life = new CancellationTokenSource();
+        if (Context.Realtime is { } live)
+        {
+            try
+            {
+                _subscription = await live.SubscribeAsync(state.Topic, OnDeltaAsync);
+            }
+            catch
+            {
+                _subscription = null;
+            }
+        }
+        _ = KeepAliveAsync(state.MatchId, _subscription is null, _life.Token);
+        // A delta may have gone by between the state and the subscription: start from fresh state.
+        if (_subscription is not null)
+            await ResyncAsync();
+    }
+
+    /// <summary>Tells the server the match is still open; without realtime, also polls for state.</summary>
+    async Task KeepAliveAsync(Guid matchId, bool poll, CancellationToken ct)
+    {
+        var lastPresence = DateTime.UtcNow;
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(poll ? 250 : 20_000, ct);
+                if (poll)
+                {
+                    if (await FetchAsync(matchId) is { } state && _view is { } v && state.MatchId == v.Start.MatchId)
+                        await InvokeAsync(() => { Replace(state); StateHasChanged(); });
+                }
+                if (DateTime.UtcNow - lastPresence >= TimeSpan.FromSeconds(20))
+                {
+                    lastPresence = DateTime.UtcNow;
+                    using var _ = await Context.Api.PostAsync($"{Base}/matches/{matchId}/presence", null, ct);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            // The next open of the match picks it up again.
+        }
+    }
+
+    Task OnDeltaAsync(System.Text.Json.JsonElement payload) => InvokeAsync(async () =>
+    {
+        if (_view is not { } view || ContractJson.Read<MatchDeltaDto>(payload) is not { } delta || delta.MatchId != view.Start.MatchId)
+            return;
+        if (!view.Apply(delta))
+        {
+            await ResyncAsync();
+            return;
+        }
+        AfterDelta(delta);
+        StateHasChanged();
+    });
+
+    void AfterDelta(MatchDeltaDto delta)
+    {
+        if (delta.Cues.Count > 0)
+            _cue = delta.Cues[^1];
+        _selected.RemoveWhere(id => !_view!.Entities.ContainsKey(id));
+        if (_placing is { } key)
+        {
+            if (!_view!.Last.Queue.Any(j => j.ItemKey == key && j.Ready))
+                SetPlacing(null);
+            else if (_placeFog != _view.FogVersion)
+                SetPlacing(key);
+        }
+    }
+
+    async Task ResyncAsync()
+    {
+        if (_resyncing || _view is not { } view)
+            return;
+        _resyncing = true;
+        try
+        {
+            if (await FetchAsync(view.Start.MatchId) is { } state && _view?.Start.MatchId == state.MatchId)
+                Replace(state);
+        }
+        finally
+        {
+            _resyncing = false;
+        }
+        StateHasChanged();
+    }
+
+    void Replace(MatchStateDto state)
+    {
+        if (state.State.Tick < _view!.Tick)
+            return;
+        var ghosts = _view.Ghosts;
+        _view = new GameView(state, Context.UserId);
+        foreach (var (id, ghost) in ghosts)
+            if (!_view.Entities.ContainsKey(id) && !_view.Visible.Contains(ghost.At))
+                _view.Ghosts[id] = ghost;
+        AfterDelta(state.State);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_view is null || _layout is null)
+            return;
+        _js ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/NdeipiChat.SubApps.CyberWars/cyberwars.js");
+        await _js.InvokeVoidAsync("bindMinimap", _minimap, _viewport);
+        if (_centre)
+        {
+            _centre = false;
+            var home = _view.Mine.FirstOrDefault(e => e.Kind == CyberWarsRules.CommandCenter) ?? _view.Mine.FirstOrDefault();
+            if (home is not null)
+            {
+                var (x, y) = _layout.Centre(home.At);
+                await _js.InvokeVoidAsync("centre", _viewport, x, y);
+            }
+        }
+    }
+
+    // ---- Orders ----
+
+    async Task SendAsync(RtsOrder order)
+    {
+        if (_view is not { } view)
+            return;
+        try
+        {
+            using var response = await Context.Api.PostAsJsonAsync($"{Base}/matches/{view.Start.MatchId}/orders", new OrderBatchRequest([order]), ContractJson.Options);
+            if (!response.IsSuccessStatusCode)
+            {
+                Toast(await ProblemAsync(response));
+                return;
+            }
+            var results = await response.Content.ReadFromJsonAsync<List<OrderResultDto>>(ContractJson.Options);
+            if (results?.FirstOrDefault(r => !r.Accepted) is { } refused)
+            {
+                _marker = null;
+                Toast(refused.Reason ?? "The server refused that order.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast($"The order didn't reach the server. {ex.Message}");
+        }
+    }
+
+    RtsOrder Order(OrderKind kind, IReadOnlyList<Guid>? units = null, HexCell? target = null, Guid? entity = null, string? item = null) =>
+        new(Guid.NewGuid(), _view!.Tick, kind, units ?? [], target, entity, item);
+
+    List<Guid> SelectedUnits => _selected.Where(id => _view!.Entities.TryGetValue(id, out var e) && CyberWarsRules.Item(e.Kind) is { IsStructure: false }).ToList();
+
+    IEnumerable<EntityDto> SelectedEntities => _selected.Select(id => _view!.Entities.GetValueOrDefault(id)).OfType<EntityDto>();
+
+    Task OnGround(MouseEventArgs e) => GroundAsync(_layout!.CellAt(e.OffsetX, e.OffsetY));
+
+    Task OnGroundRight(MouseEventArgs e)
+    {
+        if (_placing is not null)
+        {
+            SetPlacing(null);
+            return Task.CompletedTask;
+        }
+        return GroundAsync(_layout!.CellAt(e.OffsetX, e.OffsetY));
+    }
+
+    async Task GroundAsync(HexCell cell)
+    {
+        var view = _view!;
+        if (!view.Cells.Contains(cell))
+            return;
+        if (_placing is { } key)
+        {
+            var order = Order(OrderKind.Place, target: cell, item: key);
+            Mark(cell);
+            SetPlacing(null);
+            await SendAsync(order);
+            return;
+        }
+        var units = SelectedUnits;
+        if (units.Count == 0)
+        {
+            _selected.Clear();
+            return;
+        }
+        Mark(cell);
+        var harvesters = units.Where(id => view.Entities[id].Kind == CyberWarsRules.Harvester).ToList();
+        if (harvesters.Count > 0 && view.VeinAt(cell) is { } vein)
+            await SendAsync(Order(OrderKind.Harvest, harvesters, entity: vein.Id));
+        else
+            await SendAsync(Order(OrderKind.Move, units, cell));
+    }
+
+    async Task OnEntity(EntityDto e, bool right)
+    {
+        var view = _view!;
+        if (_placing is not null)
+        {
+            await GroundAsync(e.At);
+            return;
+        }
+        var harvesters = SelectedUnits.Where(id => view.Entities[id].Kind == CyberWarsRules.Harvester).ToList();
+        var mine = e.OwnerId == view.Me;
+        var harvestable = e.Kind.StartsWith("vein.") || (mine && e.Kind.StartsWith("rig."));
+        if (harvesters.Count > 0 && harvestable)
+        {
+            Mark(e.At);
+            await SendAsync(Order(OrderKind.Harvest, harvesters, entity: e.Id));
+            return;
+        }
+        if (!mine)
+        {
+            if (SelectedUnits is { Count: > 0 } units)
+            {
+                Mark(e.At);
+                await SendAsync(Order(OrderKind.Move, units, e.At));
+            }
+            return;
+        }
+        if (right && SelectedUnits is { Count: > 0 } movers)
+        {
+            Mark(e.At);
+            await SendAsync(Order(OrderKind.Move, movers, e.At));
+            return;
+        }
+        var unit = CyberWarsRules.Item(e.Kind) is { IsStructure: false };
+        if (!unit || !_selected.All(id => view.Entities.TryGetValue(id, out var s) && CyberWarsRules.Item(s.Kind) is { IsStructure: false }))
+            _selected.Clear();
+        if (!_selected.Remove(e.Id))
+            _selected.Add(e.Id);
+    }
+
+    async Task OnItemAsync(BuildItem item, string? locked)
+    {
+        if (locked is not null)
+        {
+            Toast(locked);
+            return;
+        }
+        if (_view!.Last.Queue.Any(j => j.ItemKey == item.Key && j.Ready))
+        {
+            SetPlacing(item.Key);
+            _drawer = false;
+            return;
+        }
+        await SendAsync(Order(OrderKind.Build, item: item.Key));
+    }
+
+    Task CancelAsync(BuildJobDto job) => SendAsync(Order(OrderKind.Cancel, entity: job.JobId, item: job.ItemKey));
+
+    Task StopAsync() => SelectedUnits is { Count: > 0 } units ? SendAsync(Order(OrderKind.Stop, units)) : Task.CompletedTask;
+
+    async Task OnKey(KeyboardEventArgs e)
+    {
+        if (_view is null)
+            return;
+        if (e.Key == "Escape")
+        {
+            SetPlacing(null);
+            _selected.Clear();
+        }
+        else if (e.Key is "s" or "S")
+            await StopAsync();
+    }
+
+    void SetPlacing(string? key)
+    {
+        _placing = key;
+        _placeCells = key is null || _view is null ? null : _view.PlacementCells(key);
+        _placeFog = _view?.FogVersion ?? -1;
+    }
+
+    async Task EndAsync()
+    {
+        if (_view is { } view && !view.IsOver)
+        {
+            using var _ = await Context.Api.PostAsync($"{Base}/matches/{view.Start.MatchId}/end", null);
+        }
+    }
+
+    async Task NewSkirmishAsync()
+    {
+        await StopFollowingAsync();
+        _view = null;
+        await LoadAsync();
+    }
+
+    async Task LeaveAsync()
+    {
+        await StopFollowingAsync();
+        await Context.NavigateToLauncher();
+    }
+
+    async Task StopFollowingAsync()
+    {
+        _life?.Cancel();
+        _life = null;
+        if (_subscription is { } sub)
+        {
+            _subscription = null;
+            try { await sub.DisposeAsync(); } catch { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopFollowingAsync();
+        if (_js is not null)
+            try { await _js.DisposeAsync(); } catch (JSDisconnectedException) { }
+    }
+
+    // ---- Drawing ----
+
+    void Mark(HexCell cell)
+    {
+        _marker = cell;
+        _markerId++;
+    }
+
+    void Toast(string message)
+    {
+        _toast = message;
+        var id = ++_toastId;
+        _ = HideAsync();
+
+        async Task HideAsync()
+        {
+            await Task.Delay(3200);
+            await InvokeAsync(() =>
+            {
+                if (_toastId == id)
+                {
+                    _toast = null;
+                    StateHasChanged();
+                }
+            });
+        }
+    }
+
+    static async Task<string> ProblemAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            var problem = await response.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+            if (problem.TryGetProperty("title", out var title) && title.GetString() is { Length: > 0 } text)
+                return text;
+        }
+        catch
+        {
+        }
+        return $"The server said {(int)response.StatusCode}.";
+    }
+
+    string Classes(EntityDto e, bool ghost)
+    {
+        var item = CyberWarsRules.Item(e.Kind);
+        var kind = e.Kind.StartsWith("vein.") ? $"cw-vein {(e.Kind == "vein.gold" ? "cw-gold" : "")}" : item is { IsStructure: true } ? "cw-struct" : "cw-unit";
+        return $"cw-ent {kind} {(ghost ? "cw-ghost" : "")} {(e.OwnerId == _view!.Me ? "cw-mine" : "")} {(_selected.Contains(e.Id) ? "cw-sel" : "")}";
+    }
+
+    string Where(HexCell cell)
+    {
+        var (x, y) = _layout!.Centre(cell);
+        return FormattableString.Invariant($"transform:translate({x:0.#}px,{y:0.#}px);");
+    }
+
+    /// <summary>Units glide over the time a hex takes, so they move smoothly between ticks (NFR-1b).</summary>
+    static string Glide(EntityDto e) => CyberWarsRules.Item(e.Kind) is { IsStructure: false }
+        ? $"transition:transform {CyberWarsRules.TicksPerHex(e.Kind) * CyberWarsContract.TickMilliseconds}ms linear;"
+        : "";
+
+    static double? LoadOf(EntityDto e)
+    {
+        // "loading 40/100", "stock 120/300"
+        if (e.State?.Split(' ').LastOrDefault()?.Split('/') is [var have, var cap] && double.TryParse(have, out var h) && double.TryParse(cap, out var c) && c > 0)
+            return h / c;
+        return null;
+    }
+
+    static string Name(string key) => CyberWarsRules.Item(key)?.Name ?? (key == "vein.gold" ? "Gold vein" : key == "vein.copper" ? "Copper vein" : key);
+
+    string Describe(EntityDto e)
+    {
+        if (e.Kind.StartsWith("vein."))
+            return $"{Name(e.Kind)} · {e.Health:N0} ore";
+        return e.State is { } state ? $"{Name(e.Kind)} · {state}" : Name(e.Kind);
+    }
+
+    static string ProvinceName(ZambianProvince p) => p == ZambianProvince.NorthWestern ? "North-Western" : p.ToString();
+
+    static string Pct(double value, double of) => (of <= 0 ? 0 : Math.Clamp(value / of * 100, 0, 100)).ToString("0.#", CultureInfo.InvariantCulture);
+
+    static string Turn(double progress) => Math.Clamp(progress, 0, 1).ToString("0.###", CultureInfo.InvariantCulture);
+
+    static string Px(double v) => v.ToString("0", CultureInfo.InvariantCulture);
+
+    static string Clock(long tick)
+    {
+        var seconds = tick / CyberWarsContract.TicksPerSecond;
+        return $"{seconds / 60}:{seconds % 60:00}";
+    }
+
+    static string PowerFill(int supply, int demand) =>
+        (supply == 0 && demand == 0 ? 0 : Math.Clamp(supply / (double)Math.Max(1, Math.Max(supply, demand)) * 100, 0, 100)).ToString("0", CultureInfo.InvariantCulture);
+
+    static string PowerColour(int supply, int demand) =>
+        demand == 0 || supply >= demand * 1.25 ? "#1fa971" : supply >= demand ? "#e8a317" : "#e5484d";
+}
