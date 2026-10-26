@@ -17,6 +17,10 @@ public static class CyberWarsModule
         services.AddHostedService<CyberWarsLoop>();
         services.AddScoped<CyberWarsService>();
         services.AddScoped<ITopicPolicy, CyberWarsTopicPolicy>();
+        services.AddScoped<CyberWarsWorldService>();
+        services.AddScoped<CyberWarsCards>();
+        services.AddScoped<IChatCommandListener, CyberWarsWarRoom>();
+        services.AddMessageKind<CyberWarsCardHandler>();
         return services;
     }
 
@@ -58,6 +62,51 @@ public static class CyberWarsModule
         {
             var me = await users.GetAsync(http.User, http.RequestAborted);
             return await game.EndAsync(me, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound();
+        });
+
+        // ---- Phase 02: the world map, alliances and raids ----
+
+        api.MapGet("/map", async (HttpContext http, CyberWarsWorldService world) =>
+            Results.Ok(await world.MapAsync(http.RequestAborted)));
+
+        api.MapPost("/home", async (ClaimHomeRequest request, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await world.ClaimHomeAsync(me, request, http.RequestAborted));
+        });
+
+        api.MapPost("/raids", async (StartRaidRequest request, HttpContext http, CurrentUserService users, CyberWarsService game) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await game.RaidAsync(me, request, http.RequestAborted));
+        });
+
+        api.MapGet("/alliances", async (ZambianProvince? province, HttpContext http, CyberWarsWorldService world) =>
+            Results.Ok(await world.AlliancesAsync(province, http.RequestAborted)));
+
+        api.MapPost("/alliances", async (CreateAllianceRequest request, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await world.CreateAllianceAsync(me, request, http.RequestAborted));
+        });
+
+        api.MapPost("/alliances/{id:guid}/join", async (Guid id, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await world.JoinAsync(me, id, http.RequestAborted) is { } alliance ? Results.Ok(alliance) : Results.NotFound();
+        });
+
+        api.MapPost("/alliances/{id:guid}/leave", async (Guid id, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return await world.LeaveAsync(me, id, http.RequestAborted) ? Results.NoContent() : Results.NotFound();
+        });
+
+        api.MapPost("/pings", async (AlliancePingRequest request, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            await world.PingAsync(me, request, http.RequestAborted);
+            return Results.NoContent();
         });
     }
 }

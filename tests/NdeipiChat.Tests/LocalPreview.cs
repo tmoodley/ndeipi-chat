@@ -258,6 +258,13 @@ public sealed class LocalPreview
         var stayHold = await me.PostAsync<TravelHoldDto>("api/travel/holds", new TravelHoldRequest(TravelItemTypes.Stay, chalet.Id, checkIn, checkIn.AddDays(3), 1, 2));
         await me.PostAsync<TravelBookingDto>($"api/travel/holds/{stayHold.Id}/checkout", new TravelCheckoutRequest("Ty Preview", "+263 77 000 0000", null, "Anniversary trip!"));
 
+        // CyberWars: Ty and Rudo share an alliance in Lusaka; Tendai's base is next door, ready to raid.
+        await me.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-1, 0)));
+        await tendai.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(1, 0)));
+        await rudo.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-1, 1)));
+        var lions = await me.PostAsync<AllianceDto>("api/cyberwars/alliances", new CreateAllianceRequest("Lusaka Lions"));
+        await rudo.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });
+
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };
         foreach (var (user, file) in new[] { (me, tokensFile), (tendai, tokensFile + ".tendai") })

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- A CyberWars card (cyberwars.card): a map ping, raid alert or war-room command's answer. Tap opens
+     the game at the sector, or the chat's transfer screen filled in for /send-coop. -->
+<views:MessageRow xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                  xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                  xmlns:views="clr-namespace:NdeipiChat.App.Views"
+                  xmlns:ext="clr-namespace:NdeipiChat.Client.Extensions;assembly=NdeipiChat.Client.Core"
+                  x:Class="NdeipiChat.App.Views.CyberWarsCardMessageView"
+                  x:DataType="ext:CyberWarsCardMessageViewModel">
+    <views:MessageRow.Bubble>
+        <Border StrokeThickness="1"
+                Stroke="{AppThemeBinding Light={StaticResource GlassBorderLight}, Dark={StaticResource GlassBorderDark}}"
+                StrokeShape="RoundRectangle 18"
+                Padding="14,12"
+                WidthRequest="270"
+                BackgroundColor="{AppThemeBinding Light={StaticResource GlassStrongLight}, Dark={StaticResource GlassStrongDark}}"
+                Shadow="{StaticResource SoftShadow}">
+            <Border.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnOpen" />
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="6">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                    <Label Text="{Binding Icon}" FontSize="22" VerticalOptions="Center" />
+                    <Label Grid.Column="1" Text="{Binding Title}" FontSize="15" FontAttributes="Bold" LineBreakMode="WordWrap" VerticalOptions="Center"
+                           TextColor="{AppThemeBinding Light={StaticResource TextLight}, Dark={StaticResource TextDark}}" />
+                </Grid>
+                <Label Text="{Binding Text}" FontSize="13" LineBreakMode="WordWrap"
+                       TextColor="{AppThemeBinding Light={StaticResource MutedLight}, Dark={StaticResource MutedDark}}" />
+                <Label Text="{Binding Action}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource Brand}" />
+            </VerticalStackLayout>
+        </Border>
+    </views:MessageRow.Bubble>
+</views:MessageRow>

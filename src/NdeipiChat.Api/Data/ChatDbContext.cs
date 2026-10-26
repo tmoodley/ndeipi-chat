@@ -59,6 +59,12 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<CyberWars.CyberWarsMatchPlayer> CyberWarsMatchPlayers => Set<CyberWars.CyberWarsMatchPlayer>();
     public DbSet<CyberWars.CyberWarsSnapshot> CyberWarsSnapshots => Set<CyberWars.CyberWarsSnapshot>();
     public DbSet<CyberWars.CyberWarsOrderLog> CyberWarsOrderLogs => Set<CyberWars.CyberWarsOrderLog>();
+    public DbSet<CyberWars.CyberWarsBase> CyberWarsBases => Set<CyberWars.CyberWarsBase>();
+    public DbSet<CyberWars.CyberWarsSectorControl> CyberWarsSectorControls => Set<CyberWars.CyberWarsSectorControl>();
+    public DbSet<CyberWars.CyberWarsAlliance> CyberWarsAlliances => Set<CyberWars.CyberWarsAlliance>();
+    public DbSet<CyberWars.CyberWarsAllianceMember> CyberWarsAllianceMembers => Set<CyberWars.CyberWarsAllianceMember>();
+    public DbSet<CyberWars.CyberWarsStrike> CyberWarsStrikes => Set<CyberWars.CyberWarsStrike>();
+    public DbSet<CyberWars.CyberWarsStrikeBallot> CyberWarsStrikeBallots => Set<CyberWars.CyberWarsStrikeBallot>();
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<CreatorTier> CreatorTiers => Set<CreatorTier>();
     public DbSet<CreatorPost> CreatorPosts => Set<CreatorPost>();

@@ -52,6 +52,7 @@ public static class ClientServiceCollectionExtensions
             .AddMessageRenderer<MediaMessageRenderer>()
             .AddMessageRenderer<ListingMessageRenderer>()
             .AddMessageRenderer<OfferMessageRenderer>()
+            .AddMessageRenderer<CyberWarsCardRenderer>()
             .AddComposerAction<SendTokenAction>()
             .AddComposerAction<SendMoneyAction>()
             .AddComposerAction<SellLivestockAction>()

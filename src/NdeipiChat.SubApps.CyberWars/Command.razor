@@ -1,0 +1,385 @@
+@* The command screen outside a match: start a skirmish, the 10-province world map with home
+   sectors, owners and raids (FR-2.1), the alliance and its war room (FR-2.2), and the matches the
+   player can resume or defend. The province's map topic keeps sector owners live (FR-2.1a). *@
+@implements IAsyncDisposable
+
+<div class="cw-lobby">
+    <div class="cw-tabsbar" role="tablist">
+        @foreach (var (id, label) in Tabs)
+        {
+            var t = id;
+            <button class="cw-tab @(_tab == t ? "cw-on" : "")" role="tab" aria-selected="@(_tab == t)" @onclick="() => _tab = t">@label</button>
+        }
+    </div>
+
+    @if (Me.Matches is { Count: > 0 } running)
+    {
+        <div class="cw-card cw-active">
+            @foreach (var m in running)
+            {
+                var match = m;
+                <div class="cw-active-row">
+                    <span>@MatchLabel(match)</span>
+                    <button class="cw-btn @(match.Side == MatchSides.Defender ? "cw-btn-danger" : "cw-btn-primary")" disabled="@Busy" @onclick="() => OnResume.InvokeAsync(match.MatchId)">
+                        @(match.Side == MatchSides.Defender ? "Defend" : "Resume")
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
+    @switch (_tab)
+    {
+        case "map":
+            <div class="cw-card">
+                <h1>🗺️ Zambia</h1>
+                <p class="cw-muted">
+                    @if (Me.HomeSector is { } home && Me.HomeProvince is { } hp)
+                    {
+                        <span>Your base: <b>@CyberWarsWorld.SectorName(hp, home)</b>. Raid rivals in @CyberWarsWorld.ProvinceName(hp).</span>
+                    }
+                    else
+                    {
+                        <span>Pick a home sector: one base per sector.</span>
+                    }
+                    @if (Me.ProtectedUntil is { } until)
+                    {
+                        <span> 🛡️ Protected until @until.ToLocalTime().ToString("ddd HH:mm", CultureInfo.CurrentCulture).</span>
+                    }
+                </p>
+                <select class="cw-select" aria-label="Province" value="@_province" @onchange="ChooseProvinceAsync">
+                    @foreach (var p in Enum.GetValues<ZambianProvince>())
+                    {
+                        <option value="@p">@CyberWarsWorld.ProvinceName(p)</option>
+                    }
+                </select>
+                <svg class="cw-world" viewBox="-150 -142 300 284" role="img" aria-label="Sectors of @CyberWarsWorld.ProvinceName(_province)">
+                    @foreach (var s in Sectors)
+                    {
+                        var sector = s;
+                        var (x, y) = SectorCentre(sector.Sector);
+                        <g class="cw-sector @SectorClass(sector) @(_selected == sector.Sector ? "cw-picked" : "")" @onclick="() => _selected = sector.Sector">
+                            <polygon points="@SectorPoints(x, y)" />
+                            <text x="@Num(x)" y="@Num(y + 6)" text-anchor="middle">@SectorGlyph(sector)</text>
+                        </g>
+                    }
+                </svg>
+                <div class="cw-legend cw-muted">
+                    <span><i class="cw-dot cw-mine"></i> You</span><span><i class="cw-dot cw-ally"></i> Alliance</span>
+                    <span><i class="cw-dot cw-rival"></i> Rival</span><span>🛡️ Protected</span><span>⚔️ Raid on</span>
+                </div>
+
+                @if (SelectedSector is { } picked)
+                {
+                    <div class="cw-sector-card">
+                        <b>@CyberWarsWorld.SectorName(picked.Province, picked.Sector)</b>
+                        <div class="cw-muted">
+                            @if (picked.HolderId is null)
+                            {
+                                <span>No base here yet.</span>
+                            }
+                            else
+                            {
+                                <span>@picked.HolderName's base</span>
+                                @if (picked.ControllerId != picked.HolderId)
+                                {
+                                    <span> · held by @picked.ControllerName</span>
+                                }
+                                @if (picked.AllianceName is { } a)
+                                {
+                                    <span> · @a</span>
+                                }
+                                @if (picked.ProtectedUntil is { } pu)
+                                {
+                                    <span> · 🛡️ until @pu.ToLocalTime().ToString("ddd HH:mm", CultureInfo.CurrentCulture)</span>
+                                }
+                            }
+                        </div>
+                        <div class="cw-row">
+                            @if (picked.HolderId is null)
+                            {
+                                <button class="cw-btn" disabled="@Busy" @onclick="() => ClaimAsync(picked)">Make this my home</button>
+                            }
+                            else if (picked.HolderId != Me.UserId && picked.RaidMatchId is null)
+                            {
+                                <button class="cw-btn cw-btn-danger" disabled="@Busy" @onclick="() => RaidAsync(picked)">⚔️ Raid this base</button>
+                            }
+                            @if (Me.Alliance is not null)
+                            {
+                                <input class="cw-input" placeholder="Ping message" maxlength="140" @bind="_pingText" />
+                                <button class="cw-btn" disabled="@Busy" @onclick="() => PingAsync(picked)">📍 Ping war room</button>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+            break;
+
+        case "alliance":
+            <div class="cw-card">
+                @if (Me.Alliance is { } alliance)
+                {
+                    <h1>🤝 @alliance.Name</h1>
+                    <p class="cw-muted">@CyberWarsWorld.ProvinceName(alliance.Province) · @alliance.Members.Count member@(alliance.Members.Count == 1 ? "" : "s")</p>
+                    <ul class="cw-members">
+                        @foreach (var m in alliance.Members)
+                        {
+                            <li>@m.Name @(m.Leader ? "👑" : "")</li>
+                        }
+                    </ul>
+                    @if (alliance.Strike is { } strike)
+                    {
+                        <p>🎯 Strike on <b>@CyberWarsWorld.SectorName(strike.Province, strike.Sector)</b>:
+                            @(strike.ApprovedUntil is { } au ? $"approved until {au.ToLocalTime():HH:mm}" : $"{strike.Votes} of {strike.Needed} votes")</p>
+                    }
+                    <p class="cw-muted">In the war room: <code>/reinforce @@name</code>, <code>/vote-strike Lusaka 1,-1</code>, <code>/send-coop 50 @@name</code> (opens your wallet to confirm; nothing moves from chat).</p>
+                    <div class="cw-row">
+                        <a class="cw-btn cw-btn-primary cw-link" href="chat/@alliance.ConversationId">💬 Open the war room</a>
+                        <button class="cw-btn" disabled="@Busy" @onclick="() => LeaveAsync(alliance)">Leave</button>
+                    </div>
+                }
+                else
+                {
+                    <h1>🤝 Alliances</h1>
+                    <p class="cw-muted">An alliance shares a war room in Ndeipi Chat and votes on strikes.</p>
+                    <div class="cw-row">
+                        <input class="cw-input" placeholder="Alliance name" maxlength="40" @bind="_allianceName" />
+                        <button class="cw-btn cw-btn-primary" disabled="@Busy" @onclick="CreateAllianceAsync">Found alliance</button>
+                    </div>
+                    @foreach (var a in _alliances)
+                    {
+                        var other = a;
+                        <div class="cw-active-row">
+                            <span><b>@other.Name</b> · @CyberWarsWorld.ProvinceName(other.Province) · @other.Members.Count</span>
+                            <button class="cw-btn" disabled="@Busy" @onclick="() => JoinAsync(other)">Join</button>
+                        </div>
+                    }
+                }
+            </div>
+            break;
+
+        default:
+            <div class="cw-card">
+                <h1>⛏️ Genesis Mining</h1>
+                <p class="cw-muted">
+                    Deploy a NodeBoss Command Center, power it, build an Ore Bonded Warehouse and send harvesters to the gold and copper veins.
+                    Refine @CyberWarsRules.SkirmishGoal.ToString("N0") ore credits to win. Your skirmish base is your home base: it's what raiders find.
+                    Ore credits and GN Tokens are play credits: no cash value, and nothing real is ever at stake.
+                </p>
+                <div class="cw-muted">@RankLine · 🪙 @Me.GnTokens.ToString("N0") GN Tokens</div>
+                <div class="cw-provinces" role="radiogroup" aria-label="Province">
+                    @foreach (var province in Enum.GetValues<ZambianProvince>())
+                    {
+                        var p = province;
+                        <button class="cw-province @(p == _province ? "cw-on" : "")" role="radio" aria-checked="@(p == _province)" @onclick="() => _province = p">@CyberWarsWorld.ProvinceName(p)</button>
+                    }
+                </div>
+                <button class="cw-btn cw-btn-primary" disabled="@Busy" @onclick="() => OnStart.InvokeAsync(_province)">Start skirmish in @CyberWarsWorld.ProvinceName(_province)</button>
+            </div>
+            break;
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SubAppContext Context { get; set; } = null!;
+    [Parameter, EditorRequired] public CyberWarsMeDto Me { get; set; } = null!;
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<ZambianProvince> OnStart { get; set; }
+    [Parameter] public EventCallback<Guid> OnResume { get; set; }
+    [Parameter] public EventCallback<MatchStateDto> OnRaid { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public EventCallback<string> OnToast { get; set; }
+
+    /// <summary>A sector to open the map at, e.g. from a ping card ("sector=Lusaka:1:-1").</summary>
+    [Parameter] public string? FocusSector { get; set; }
+
+    const string Base = CyberWarsContract.BasePath;
+
+    static readonly (string Id, string Label)[] Tabs = [("skirmish", "⛏️ Skirmish"), ("map", "🗺️ World"), ("alliance", "🤝 Alliance")];
+
+    string _tab = "skirmish";
+    ZambianProvince _province = ZambianProvince.Copperbelt;
+    HexCell? _selected;
+    WorldMapDto? _world;
+    List<AllianceDto> _alliances = [];
+    string _allianceName = "";
+    string _pingText = "";
+    IAsyncDisposable? _mapTopic;
+    ZambianProvince? _following;
+    string? _focused;
+
+    IEnumerable<SectorDto> Sectors => _world?.Provinces.FirstOrDefault(p => p.Province == _province)?.Sectors ?? [];
+    SectorDto? SelectedSector => _selected is { } s ? Sectors.FirstOrDefault(x => x.Sector == s) : null;
+
+    string RankLine => Me.Rank == PlayerRank.None
+        ? $"No rank pack: {CyberWarsRules.RigSlots(PlayerRank.None)} NodeBoss rig"
+        : $"{Me.Rank} rank: {CyberWarsRules.RigSlots(Me.Rank)} rig slots";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_world is null)
+        {
+            if (Me.HomeProvince is { } home)
+                _province = home;
+            await RefreshAsync();
+        }
+        if (FocusSector != _focused && CyberWarsWorld.TryParseSector(FocusSector, out var province, out var sector))
+        {
+            _focused = FocusSector;
+            (_tab, _province, _selected) = ("map", province, sector);
+        }
+        await FollowAsync();
+    }
+
+    async Task RefreshAsync()
+    {
+        try
+        {
+            _world = await Context.Api.GetFromJsonAsync<WorldMapDto>($"{Base}/map", ContractJson.Options);
+            _alliances = await Context.Api.GetFromJsonAsync<List<AllianceDto>>($"{Base}/alliances", ContractJson.Options) ?? [];
+        }
+        catch (Exception ex)
+        {
+            await OnToast.InvokeAsync($"Couldn't load the map. {ex.Message}");
+        }
+    }
+
+    /// <summary>Follows the shown province's map topic, so owners, raids and pings arrive live (FR-2.1a).</summary>
+    async Task FollowAsync()
+    {
+        if (_following == _province || Context.Realtime is not { } live)
+            return;
+        if (_mapTopic is { } old)
+            await old.DisposeAsync();
+        _following = _province;
+        try
+        {
+            _mapTopic = await live.SubscribeAsync(CyberWarsContract.MapTopic(_province), OnMapEventAsync);
+        }
+        catch
+        {
+            _mapTopic = null;
+        }
+    }
+
+    Task OnMapEventAsync(System.Text.Json.JsonElement payload) => InvokeAsync(async () =>
+    {
+        if (ContractJson.Read<MapEventDto>(payload) is not { } e || _world is null)
+            return;
+        if (e.Sector is { } changed)
+            _world = new WorldMapDto(_world.Provinces.Select(p => p.Province != changed.Province ? p
+                : new ProvinceMapDto(p.Province, p.Sectors.Select(s => s.Sector == changed.Sector ? changed : s).ToList())).ToList());
+        if (e.Kind == MapEventKinds.Ping && e.Text is { } text)
+            await OnToast.InvokeAsync($"📍 {text}");
+        StateHasChanged();
+    });
+
+    async Task ChooseProvinceAsync(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<ZambianProvince>(e.Value?.ToString(), out var p))
+        {
+            (_province, _selected) = (p, null);
+            await FollowAsync();
+        }
+    }
+
+    async Task<bool> PostAsync(string path, object? body)
+    {
+        using var response = body is null ? await Context.Api.PostAsync(path, null) : await Context.Api.PostAsJsonAsync(path, body, ContractJson.Options);
+        if (response.IsSuccessStatusCode)
+            return true;
+        await OnToast.InvokeAsync(await CyberWarsApp.ProblemAsync(response));
+        return false;
+    }
+
+    async Task ClaimAsync(SectorDto sector)
+    {
+        if (await PostAsync($"{Base}/home", new ClaimHomeRequest(sector.Province, sector.Sector)))
+        {
+            await RefreshAsync();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    async Task RaidAsync(SectorDto sector)
+    {
+        using var response = await Context.Api.PostAsJsonAsync($"{Base}/raids", new StartRaidRequest(sector.Province, sector.Sector), ContractJson.Options);
+        if (!response.IsSuccessStatusCode)
+        {
+            await OnToast.InvokeAsync(await CyberWarsApp.ProblemAsync(response));
+            return;
+        }
+        await OnRaid.InvokeAsync((await response.Content.ReadFromJsonAsync<MatchStateDto>(ContractJson.Options))!);
+    }
+
+    async Task PingAsync(SectorDto sector)
+    {
+        if (await PostAsync($"{Base}/pings", new AlliancePingRequest(sector.Sector, _pingText, sector.Province)))
+        {
+            _pingText = "";
+            await OnToast.InvokeAsync("Pinged to the war room.");
+        }
+    }
+
+    async Task CreateAllianceAsync()
+    {
+        if (await PostAsync($"{Base}/alliances", new CreateAllianceRequest(_allianceName)))
+        {
+            _allianceName = "";
+            await RefreshAsync();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    async Task JoinAsync(AllianceDto alliance)
+    {
+        if (await PostAsync($"{Base}/alliances/{alliance.Id}/join", null))
+            await OnChanged.InvokeAsync();
+    }
+
+    async Task LeaveAsync(AllianceDto alliance)
+    {
+        if (await PostAsync($"{Base}/alliances/{alliance.Id}/leave", null))
+        {
+            await RefreshAsync();
+            await OnChanged.InvokeAsync();
+        }
+    }
+
+    string MatchLabel(ActiveMatchDto m) => m.Mode == MatchModes.Skirmish
+        ? $"⛏️ Your skirmish in {CyberWarsWorld.ProvinceName(m.Province)}"
+        : m.Side == MatchSides.Defender
+            ? $"🚨 {m.Opponent} is raiding your base"
+            : $"⚔️ Your raid on {m.Opponent}" + (m.Sector is { } s ? $" ({CyberWarsWorld.SectorName(m.Province, s)})" : "");
+
+    string SectorClass(SectorDto s)
+    {
+        if (s.HolderId is null)
+            return "cw-empty";
+        if (s.ControllerId == Me.UserId)
+            return "cw-mine";
+        if (Me.Alliance is { } a && s.AllianceId == a.Id)
+            return "cw-ally";
+        return "cw-rival";
+    }
+
+    static string SectorGlyph(SectorDto s) => s.RaidMatchId is not null ? "⚔️" : s.ProtectedUntil is not null ? "🛡️" : s.HolderId is not null ? "🏛️" : "";
+
+    const double Size = 34;
+
+    static (double X, double Y) SectorCentre(HexCell c) => (Size * Math.Sqrt(3) * (c.Q + c.R / 2.0), Size * 1.5 * c.R);
+
+    static string SectorPoints(double x, double y) => string.Join(' ', Enumerable.Range(0, 6).Select(i =>
+    {
+        var a = Math.PI / 180 * (60 * i - 30);
+        return FormattableString.Invariant($"{x + (Size - 2) * Math.Cos(a):0.#},{y + (Size - 2) * Math.Sin(a):0.#}");
+    }));
+
+    static string Num(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_mapTopic is { } topic)
+            try { await topic.DisposeAsync(); } catch { }
+    }
+}

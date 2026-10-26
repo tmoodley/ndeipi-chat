@@ -73,7 +73,16 @@ public static class MessagePayload
     }
 }
 
-public sealed class TextMessageHandler : IMessageKindHandler
+/// <summary>
+/// Told about a "/command" typed in a chat, once the message is stored and delivered. Each listener
+/// decides whether the chat and the command are its own (CyberWars answers in its war rooms).
+/// </summary>
+public interface IChatCommandListener
+{
+    Task OnCommandAsync(MessageContext context, string command, string arguments, CancellationToken ct);
+}
+
+public sealed class TextMessageHandler(IEnumerable<IChatCommandListener> commands) : IMessageKindHandler
 {
     public const int MaxLength = 4000;
 
@@ -89,5 +98,15 @@ public sealed class TextMessageHandler : IMessageKindHandler
             throw new ChatRejectedException($"Messages are limited to {MaxLength} characters.");
 
         return Task.FromResult(new PreparedMessage(ContractJson.ToElement(new TextPayload(text, sent.Forwarded))));
+    }
+
+    public async Task AfterSendAsync(MessageContext context, ChatMessage message, CancellationToken ct)
+    {
+        if (ContractJson.Read<TextPayload>(message.PayloadJson) is not { Text: ['/', _, ..] text, Forwarded: false })
+            return;
+        var parts = text.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries);
+        var command = parts[0].ToLowerInvariant();
+        foreach (var listener in commands)
+            await listener.OnCommandAsync(context, command, parts.Length > 1 ? parts[1].Trim() : "", ct);
     }
 }
