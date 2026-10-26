@@ -1,0 +1,49 @@
+@* The square minimap at the top of the sidebar (UI-3). Blips pair colour with shape for
+   colour-blind players (NFR-5): own = green square, gold = yellow diamond, copper = orange triangle. *@
+
+<svg class="cw-mini" viewBox="@ViewBox" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Minimap">
+    <rect x="@Num(-Layout.PixelWidth)" y="@Num(-Layout.PixelHeight)" width="@Num(Layout.PixelWidth * 3)" height="@Num(Layout.PixelHeight * 3)" fill="#05070a" />
+    @foreach (var cell in View.Explored)
+    {
+        var (x, y) = Layout.Centre(cell);
+        <circle cx="@Num(x)" cy="@Num(y)" r="27" class="@(View.Rock.Contains(cell) ? "cw-mini-rock" : View.Visible.Contains(cell) ? "cw-mini-lit" : "cw-mini-dim")" />
+    }
+    @foreach (var e in View.Entities.Values.Concat(View.Ghosts.Values))
+    {
+        var (x, y) = Layout.Centre(e.At);
+        if (e.Kind == "vein.gold")
+        {
+            <rect x="@Num(x - 16)" y="@Num(y - 16)" width="32" height="32" transform="rotate(45 @Num(x) @Num(y))" fill="#f5c542" />
+        }
+        else if (e.Kind == "vein.copper")
+        {
+            <polygon points="@Num(x),@Num(y - 20) @Num(x + 20),@Num(y + 16) @Num(x - 20),@Num(y + 16)" fill="#e07a3a" />
+        }
+        else if (e.OwnerId == View.Me)
+        {
+            <rect x="@Num(x - 22)" y="@Num(y - 22)" width="44" height="44" fill="#3ee08f" stroke="#04150c" stroke-width="6" />
+        }
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public GameView View { get; set; } = null!;
+    [Parameter, EditorRequired] public HexLayout Layout { get; set; } = null!;
+
+    int _drawnFog = -1;
+    int _drawnCount = -1;
+
+    protected override bool ShouldRender()
+    {
+        var count = View.Entities.Count + View.Ghosts.Count * 1000;
+        if (_drawnFog == View.FogVersion && _drawnCount == count && View.Tick % 10 != 0)
+            return false;
+        (_drawnFog, _drawnCount) = (View.FogVersion, count);
+        return true;
+    }
+
+    double Side => Math.Max(Layout.PixelWidth, Layout.PixelHeight);
+    string ViewBox => FormattableString.Invariant($"{(Layout.PixelWidth - Side) / 2:0} {(Layout.PixelHeight - Side) / 2:0} {Side:0} {Side:0}");
+
+    static string Num(double v) => v.ToString("0", CultureInfo.InvariantCulture);
+}

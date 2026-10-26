@@ -1,0 +1,37 @@
+@* The ground and the fog: black where never seen, dimmed where seen but out of sight (UI-2a).
+   Redrawn only when the fog or the placement highlight changes, not every tick. *@
+
+<svg class="cw-ground" width="@Px(Layout.PixelWidth)" height="@Px(Layout.PixelHeight)" aria-hidden="true">
+    @foreach (var cell in View.Cells)
+    {
+        var fog = View.Visible.Contains(cell) ? "cw-lit" : View.Explored.Contains(cell) ? "cw-dim" : "cw-dark";
+        <polygon class="@(View.Rock.Contains(cell) ? "cw-rock" : (cell.Q + cell.R) % 2 == 0 ? "cw-soil" : "cw-soil2") @fog" points="@Layout.Points(cell)" />
+    }
+    @if (Placing is { } cells)
+    {
+        @foreach (var cell in cells)
+        {
+            <polygon class="cw-place" points="@Layout.Points(cell)" />
+        }
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired] public GameView View { get; set; } = null!;
+    [Parameter, EditorRequired] public HexLayout Layout { get; set; } = null!;
+    [Parameter] public HashSet<HexCell>? Placing { get; set; }
+
+    int _drawnFog = -1;
+    HashSet<HexCell>? _drawnPlacing;
+    GameView? _drawnView;
+
+    protected override bool ShouldRender()
+    {
+        if (_drawnFog == View.FogVersion && ReferenceEquals(_drawnPlacing, Placing) && ReferenceEquals(_drawnView, View))
+            return false;
+        (_drawnFog, _drawnPlacing, _drawnView) = (View.FogVersion, Placing, View);
+        return true;
+    }
+
+    static string Px(double v) => v.ToString("0", CultureInfo.InvariantCulture);
+}
