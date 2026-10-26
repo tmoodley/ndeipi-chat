@@ -1,0 +1,14 @@
+<div class="nf-stat" title="@Hint">
+    <span class="nf-stat-icon">@Icon</span>
+    <div>
+        <div class="nf-stat-value">@Value</div>
+        <div class="nf-stat-label">@Label</div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string? Hint { get; set; }
+}

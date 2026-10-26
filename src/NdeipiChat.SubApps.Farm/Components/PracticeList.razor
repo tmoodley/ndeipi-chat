@@ -1,0 +1,38 @@
+@inherits GameComponent
+
+<div>
+    <div class="nf-panel-sub">Regenerative practices</div>
+    @foreach (var info in Rules.Practices.Values.Where(p => p.AppliesTo == Tile.Kind))
+    {
+        var p = info;
+        var active = Tile.Practices.TryGetValue(p.Practice, out var days);
+        <div class="nf-practice @(active ? "nf-on" : "")">
+            <span class="nf-p-icon">@p.Icon</span>
+            <div class="nf-p-body">
+                <div class="nf-p-name">@p.Label <span class="nf-muted nf-small">+@p.CarbonPerDay.ToString("0.000") t/day</span></div>
+                <div class="nf-muted nf-small">@p.Blurb</div>
+            </div>
+            @if (active)
+            {
+                <span class="nf-chip nf-chip-green">@(days < 0 ? "Active" : $"{days}d left")</span>
+            }
+            else
+            {
+                <button class="nf-btn nf-btn-sm" @onclick="() => Game.ApplyPractice(Tile.Index, p.Practice)">@CostLabel(p)</button>
+            }
+        </div>
+    }
+    @if (Tile.SoilCarbonT > 0)
+    {
+        <div class="nf-muted nf-small">Soil carbon built on this plot: <b>@Tile.SoilCarbonT.ToString("0.000") tCO₂e</b></div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Tile Tile { get; set; } = default!;
+
+    private static string CostLabel(PracticeInfo p) =>
+        p.CompostKg > 0 ? $"{p.CompostKg:0} kg 🍂"
+        : p.BioFertL > 0 ? $"{p.BioFertL:0} L 💧"
+        : $"{p.NdxCost:0} NDX";
+}

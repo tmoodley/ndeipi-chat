@@ -12,6 +12,7 @@
     <Project Path="src/NdeipiChat.SubApps.Market/NdeipiChat.SubApps.Market.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Creators/NdeipiChat.SubApps.Creators.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Travel/NdeipiChat.SubApps.Travel.csproj" />
+    <Project Path="src/NdeipiChat.SubApps.Farm/NdeipiChat.SubApps.Farm.csproj" />
     <Project Path="src/NdeipiChat.SubApps.CyberWars/NdeipiChat.SubApps.CyberWars.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Events/NdeipiChat.SubApps.Events.csproj" />
     <Project Path="src/NdeipiChat.SubApps.Gigs/NdeipiChat.SubApps.Gigs.csproj" />

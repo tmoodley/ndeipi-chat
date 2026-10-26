@@ -1,0 +1,18 @@
+<div class="nf-meter">
+    <div class="nf-meter-top">
+        <span>@Label</span>
+        <span>@Value.ToString("0.#") / @Max.ToString("0") @Unit</span>
+    </div>
+    <div class="nf-bar"><div class="nf-fill @(Tone == "" ? "" : $"nf-{Tone}")" style="width:@Width%"></div></div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public double Value { get; set; }
+    [Parameter] public double Max { get; set; } = 1;
+    [Parameter] public string Unit { get; set; } = "";
+    [Parameter] public string Tone { get; set; } = "";
+
+    private string Width => (Max <= 0 ? 0 : Math.Clamp(Value / Max * 100, 0, 100))
+        .ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+}

@@ -29,6 +29,7 @@
     <ProjectReference Include="..\NdeipiChat.SubApps.Market\NdeipiChat.SubApps.Market.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.Creators\NdeipiChat.SubApps.Creators.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.Travel\NdeipiChat.SubApps.Travel.csproj" />
+    <ProjectReference Include="..\NdeipiChat.SubApps.Farm\NdeipiChat.SubApps.Farm.csproj" />
     <ProjectReference Include="..\NdeipiChat.SubApps.CyberWars\NdeipiChat.SubApps.CyberWars.csproj" />
   </ItemGroup>
 
@@ -54,6 +55,8 @@
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.Creators" />
     <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.Travel.wasm" />
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.Travel" />
+    <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.Farm.wasm" />
+    <TrimmerRootAssembly Include="NdeipiChat.SubApps.Farm" />
     <BlazorWebAssemblyLazyLoad Include="NdeipiChat.SubApps.CyberWars.wasm" />
     <TrimmerRootAssembly Include="NdeipiChat.SubApps.CyberWars" />
   </ItemGroup>

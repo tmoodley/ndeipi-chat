@@ -1,0 +1,78 @@
+@inherits GameComponent
+
+<div class="nf-modal-backdrop" @onclick="Close">
+    <div class="nf-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+        <h3>Register animal → Kraal @(KraalIndex + 1)</h3>
+        <p class="nf-muted nf-small">
+            The record is written to the Sousveillance ledger and attested by NodeBoss at the next day tick.
+            Verified cattle receive a Cattle Bond reference, the instrument KandondoCoin wraps.
+        </p>
+
+        <div class="nf-species-pick">
+            <button class="nf-pick @(form.Species == Species.Cattle ? "nf-on" : "")" @onclick="() => SetSpecies(Species.Cattle)">
+                🐄 Cattle <small>@Rules.RegistrationFee(Species.Cattle).ToString("0") NDX</small>
+            </button>
+            <button class="nf-pick @(form.Species == Species.Goat ? "nf-on" : "")" @onclick="() => SetSpecies(Species.Goat)">
+                🐐 Goat <small>@Rules.RegistrationFee(Species.Goat).ToString("0") NDX</small>
+            </button>
+        </div>
+
+        <label>Name
+            <input @bind="form.Name" placeholder="@(form.Species == Species.Cattle ? "e.g. Kandondo" : "e.g. Mbuzi")" />
+        </label>
+        <label>Ear-tag number
+            <input @bind="form.TagNumber" placeholder="e.g. ZM-NAM-00123" />
+        </label>
+        <label>Breed
+            <input @bind="form.Breed" list="nf-breed-options" placeholder="Choose or type" />
+        </label>
+        <datalist id="nf-breed-options">
+            @foreach (var b in Breeds)
+            {
+                <option value="@b"></option>
+            }
+        </datalist>
+        <label>Live weight (kg)
+            <input type="number" min="1" @bind="form.WeightKg" />
+        </label>
+
+        @if (error is not null)
+        {
+            <div class="nf-error">@error</div>
+        }
+
+        <div class="nf-modal-actions">
+            <button class="nf-btn nf-btn-ghost" @onclick="Close">Cancel</button>
+            <button class="nf-btn nf-btn-primary" @onclick="Submit">Register</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int KraalIndex { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private static readonly string[] CattleBreeds = { "Tonga (Ila)", "Angoni", "Barotse", "Boran", "Brahman cross", "Nguni" };
+    private static readonly string[] GoatBreeds = { "Gwembe", "Small East African", "Boer", "Boer cross", "Kalahari Red" };
+
+    private readonly AnimalRegistration form = new();
+    private string? error;
+
+    private string[] Breeds => form.Species == Species.Cattle ? CattleBreeds : GoatBreeds;
+
+    private void SetSpecies(Species species)
+    {
+        form.Species = species;
+        form.WeightKg = species == Species.Cattle ? 350 : 35;
+        form.Breed = "";
+    }
+
+    private async Task Submit()
+    {
+        var result = Game.RegisterAnimal(KraalIndex, form);
+        if (result.Ok) await OnClose.InvokeAsync();
+        else error = result.Message;
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}
