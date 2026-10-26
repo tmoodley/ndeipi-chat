@@ -5,6 +5,7 @@ using NdeipiChat.Api.Auth;
 using NdeipiChat.Api.Banking;
 using NdeipiChat.Api.Chat;
 using NdeipiChat.Api.Creators;
+using NdeipiChat.Api.CyberWars;
 using NdeipiChat.Api.Data;
 using NdeipiChat.Api.Events;
 using NdeipiChat.Api.Gigs;
@@ -53,6 +54,7 @@ builder.Services.AddLivestock(builder.Configuration);
 builder.Services.AddMarket(builder.Configuration);
 builder.Services.AddCreators(builder.Configuration);
 builder.Services.AddTravel(builder.Configuration);
+builder.Services.AddCyberWars();
 
 var app = builder.Build();
 
@@ -90,6 +92,7 @@ app.MapLivestock();
 app.MapMarket();
 app.MapCreators();
 app.MapTravel();
+app.MapCyberWars();
 
 // The web app (NdeipiChat.Web): Blazor WebAssembly, served from the same origin as the API.
 // MapStaticAssets, not UseStaticFiles: it fills index.html's fingerprinted file names
