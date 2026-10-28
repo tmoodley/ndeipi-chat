@@ -1,0 +1,256 @@
+@* Ndeipi RWA (RWA & Time-Stripping SRS 1.0), phase 1: the Green Island villa pre-sale. Browse the
+   villas, buy a week, month or year into a 7-day cooling-off escrow, and follow its value in the
+   portfolio. Everything is simulated until a legal review passes. Opened at a villa with "asset={code}". *@
+@attribute [SubAppRoot(RwaContract.AppId)]
+
+<style>
+    .content.embedded header.rw-bar { display: none; }
+    .rw { --rw-solid: #fff; --rw-sea: #0E7490; --rw-sea-2: #0891B2; --rw-sand: #F6EBD3; --rw-peak: #E76F51; --rw-shoulder: #E9B949; --rw-off: #2A9D8F; --rw-taken: #CBD2DC; }
+    :root[data-theme="dark"] .rw { --rw-solid: #1C2134; --rw-sand: #3A3324; --rw-taken: #3B4252; }
+    @@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .rw { --rw-solid: #1C2134; --rw-sand: #3A3324; --rw-taken: #3B4252; } }
+    .rw .page { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; padding-bottom: 40px; }
+    .rw h2 { font-size: 22px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .rw h3 { font-size: 16px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .rw .muted { color: var(--muted); }
+    .rw .small { font-size: 13px; }
+    .rw .num { font-variant-numeric: tabular-nums; }
+    .rw .card { background: var(--rw-solid); border: 1px solid var(--divider); border-radius: 16px; padding: 16px; box-shadow: 0 1px 2px rgba(16, 24, 40, .05); }
+    .rw .err { background: #FEE4E2; color: #912018; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+    .rw .ok { background: #D1FADF; color: #05603A; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+
+    /* The gate, on every screen. */
+    .rw-sim { display: flex; gap: 10px; align-items: flex-start; border-radius: 12px; padding: 10px 14px; background: #FEF0C7; color: #7A2E0E; font-size: 13.5px; line-height: 1.4; border: 1px solid #FEC84B; }
+    .rw-sim b { font-weight: 800; }
+    .rw-sim .tag { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; background: #7A2E0E; color: #FEF0C7; border-radius: 6px; padding: 3px 7px; margin-top: 1px; }
+
+    .rw-nav { display: flex; align-items: center; gap: 18px; padding: 4px 2px 6px; border-bottom: 1px solid var(--divider); }
+    .rw-nav .brand { font-size: 19px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px; margin-right: auto; }
+    .rw-nav .brand i { width: 30px; height: 30px; border-radius: 9px; background: linear-gradient(135deg, var(--rw-sea), #22C55E); color: #fff; display: grid; place-items: center; font-style: normal; font-size: 16px; }
+    .rw-nav nav { display: flex; gap: 4px; }
+    .rw-nav nav button { background: none; box-shadow: none; border-radius: 0; padding: 10px; font-size: 15px; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+    .rw-nav nav button.on { color: var(--text); font-weight: 700; border-bottom-color: var(--rw-sea); }
+
+    .rw-hero { position: relative; border-radius: 22px; overflow: hidden; color: #fff; min-height: 220px; display: flex; align-items: flex-end; background: linear-gradient(180deg, #38BDF8 0%, #0EA5E9 45%, #0E7490 100%); }
+    .rw-hero svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+    .rw-hero .inner { position: relative; padding: 24px; display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+    .rw-hero h1 { margin: 0; font-size: clamp(26px, 4.4vw, 42px); font-weight: 800; letter-spacing: -.02em; line-height: 1.08; text-shadow: 0 2px 14px rgba(0, 0, 0, .25); }
+    .rw-hero p { margin: 0; font-size: 15px; opacity: .95; text-shadow: 0 1px 8px rgba(0, 0, 0, .25); }
+
+    .rw-steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .rw-steps div { display: flex; gap: 10px; align-items: flex-start; }
+    .rw-steps b { flex: none; width: 26px; height: 26px; border-radius: 50%; background: var(--rw-sand); color: var(--text); display: grid; place-items: center; font-size: 13px; }
+
+    .rw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    .rw-asset { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; text-align: left; cursor: pointer; padding: 0; overflow: hidden; color: var(--text); font-weight: 400; }
+    .rw-asset:hover { border-color: var(--rw-sea); }
+    .rw-asset .pic { height: 120px; background: linear-gradient(160deg, #7DD3FC, #0E7490); position: relative; }
+    .rw-asset .pic span { position: absolute; left: 12px; bottom: 10px; background: rgba(0, 0, 0, .45); color: #fff; font-size: 12px; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
+    .rw-asset .body { padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+    .rw-kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .rw-kv div { background: var(--secondary); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .rw-kv span { font-size: 11.5px; color: var(--muted); }
+    .rw-kv b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rw-bar-sold { height: 6px; border-radius: 3px; background: var(--secondary); overflow: hidden; }
+    .rw-bar-sold div { height: 100%; background: var(--rw-sea); }
+
+    .rw-later { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+    .rw-later div { border: 1px dashed var(--divider); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+    .rw-later b { font-size: 14px; }
+    .rw-later .phase { font-size: 11px; font-weight: 800; letter-spacing: .05em; color: var(--rw-sea); text-transform: uppercase; }
+
+    /* The villa page. */
+    .rw-villa { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .rw-left { display: flex; flex-direction: column; gap: 14px; }
+    .rw-pick { display: flex; flex-direction: column; gap: 12px; }
+    .rw-tabs { display: flex; gap: 8px; }
+    .rw-tabs button { flex: 1; border-radius: 10px; padding: 9px 8px; font-size: 14px; font-weight: 600; background: var(--secondary); color: var(--text); box-shadow: none; }
+    .rw-tabs button.on { background: var(--rw-sea); color: #fff; }
+    .rw-legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+    .rw-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+    .rw-weeks { display: grid; grid-template-columns: repeat(13, 1fr); gap: 5px; }
+    .rw-weeks button { padding: 0; aspect-ratio: 1; min-width: 0; border-radius: 8px; font-size: 12px; font-weight: 700; color: #fff; box-shadow: none; border: 2px solid transparent; }
+    .rw-weeks button.PEAK { background: var(--rw-peak); }
+    .rw-weeks button.SHOULDER { background: var(--rw-shoulder); color: #4A3600; }
+    .rw-weeks button.OFF_PEAK { background: var(--rw-off); }
+    .rw-weeks button.taken { background: var(--rw-taken); color: var(--muted); cursor: not-allowed; text-decoration: line-through; }
+    .rw-weeks button.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--rw-solid) inset; }
+    .rw-months { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .rw-months button { border-radius: 10px; padding: 10px 6px; display: flex; flex-direction: column; gap: 2px; align-items: center; background: var(--secondary); color: var(--text); box-shadow: none; border: 2px solid transparent; font-weight: 400; }
+    .rw-months button b { font-size: 14px; }
+    .rw-months button span { font-size: 11.5px; color: var(--muted); }
+    .rw-months button.on { border-color: var(--rw-sea); }
+    .rw-months button:disabled { opacity: .45; text-decoration: line-through; }
+    .rw-buy { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 12px; }
+    .rw-buy .price { font-size: 30px; font-weight: 800; letter-spacing: -.01em; }
+    .rw-row { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+    .rw-row span:first-child { color: var(--muted); }
+    .rw .primary { background: var(--rw-sea); color: #fff; border-radius: 12px; padding: 12px 16px; font-size: 15px; font-weight: 700; }
+    .rw .primary:disabled { opacity: .5; }
+    .rw .ghost { background: var(--secondary); color: var(--text); border-radius: 12px; padding: 10px 14px; font-weight: 600; box-shadow: none; }
+    .rw-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--muted); }
+    .rw-check input { margin-top: 2px; }
+    .rw ul.hl { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+
+    /* The portfolio. */
+    .rw-totals { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .rw-totals div { display: flex; flex-direction: column; gap: 2px; }
+    .rw-totals span { font-size: 12px; color: var(--muted); }
+    .rw-totals b { font-size: 20px; font-weight: 800; }
+    .rw-holding { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; }
+    .rw-holding.hl { border-color: var(--rw-sea); box-shadow: 0 0 0 2px var(--rw-sea) inset; }
+    .rw-holding .badge { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; font-weight: 800; font-size: 13px; color: #fff; background: var(--rw-sea); }
+    .rw-holding .badge.PEAK { background: var(--rw-peak); }
+    .rw-holding .badge.SHOULDER { background: var(--rw-shoulder); color: #4A3600; }
+    .rw-holding .badge.OFF_PEAK { background: var(--rw-off); }
+    .rw-holding .what { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .rw-holding .value { text-align: right; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; }
+    .rw-status { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; }
+    .rw-status.cooling_off { background: #FEF0C7; color: #93370D; }
+    .rw-status.vested { background: #D1FADF; color: #05603A; }
+    .rw-status.cancelled { background: var(--secondary); color: var(--muted); }
+    .rw-empty { text-align: center; padding: 34px 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+
+    @@media (max-width: 820px) {
+        /* One column, with the price and Buy straight after the picker. */
+        .rw-villa { display: flex; flex-direction: column; }
+        .rw-left { display: contents; }
+        .rw-left > * { order: 3; }
+        .rw-left > .rw-pick { order: 1; }
+        .rw-buy { position: static; order: 2; }
+        .rw-totals { grid-template-columns: repeat(2, 1fr); }
+    }
+    @@media (max-width: 560px) {
+        .rw-steps { grid-template-columns: 1fr; }
+        .rw-hero .isle { display: none; }
+        .rw-weeks { grid-template-columns: repeat(7, 1fr); }
+        .rw-months { grid-template-columns: repeat(3, 1fr); }
+        .rw-nav .brand span { display: none; }
+        .rw-holding { grid-template-columns: auto 1fr; }
+        .rw-holding .value { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; text-align: left; }
+        .rw-kv b { font-size: 14px; }
+    }
+</style>
+
+<div class="rw">
+    <header class="bar rw-bar">
+        <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+        <h1>Ndeipi RWA</h1>
+    </header>
+
+    <div class="page">
+        <div class="rw-nav">
+            <span class="brand"><i aria-hidden="true">🏝</i><span>Ndeipi RWA</span></span>
+            <nav aria-label="Ndeipi RWA">
+                <button class="@(View is RwaView.Catalogue or RwaView.Villa ? "on" : "")" @onclick="() => Go(new RwaView.Catalogue())">Villas</button>
+                <button class="@(View is RwaView.Portfolio ? "on" : "")" @onclick="() => Go(new RwaView.Portfolio())">Portfolio</button>
+            </nav>
+        </div>
+
+        <div class="rw-sim" role="note">
+            <span class="tag">@(Me?.Mode == RwaModes.Simulated ? "SIMULATED" : "PAUSED")</span>
+            <span>
+                @if (Me?.Mode == RwaModes.Off)
+                {
+                    <b>The pre-sale is switched off.</b> <text> You can look around, but nothing can be bought.</text>
+                }
+                else
+                {
+                    <b>Preview only.</b> <text> Not an offer of securities or timeshare. Purchases use a test balance, no real money moves, and nothing is minted on Polygon.</text>
+                }
+            </span>
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="err">@_error</div>
+        }
+
+        @if (Me is not null)
+        {
+            <CascadingValue Value="this" IsFixed="true">
+                @switch (View)
+                {
+                    case RwaView.Catalogue: <Catalogue /> break;
+                    case RwaView.Villa v: <VillaPage @key="v" Code="@v.Code" /> break;
+                    case RwaView.Portfolio p: <Portfolio @key="p" Highlight="p.Highlight" /> break;
+                }
+            </CascadingValue>
+        }
+        else if (_error is null)
+        {
+            <p class="muted">Loading…</p>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    public RwaApi Api { get; private set; } = null!;
+    public RwaMeDto? Me { get; private set; }
+    public RwaView View { get; private set; } = new RwaView.Catalogue();
+
+    readonly Stack<RwaView> _back = new();
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new RwaApi(Context.Api);
+        var asset = Context.Query is { Length: > 0 } q
+            ? q.TrimStart('?').Split('&').Select(p => p.Split('=', 2)).FirstOrDefault(p => p[0] == "asset" && p.Length == 2)?[1]
+            : null;
+        if (asset is not null)
+            View = new RwaView.Villa(Uri.UnescapeDataString(asset));
+        await RefreshMeAsync();
+    }
+
+    public async Task RefreshMeAsync()
+    {
+        try
+        {
+            Me = await Api.MeAsync();
+            _error = null;
+        }
+        catch (RwaException e)
+        {
+            _error = e.Message;
+        }
+        StateHasChanged();
+    }
+
+    public void Go(RwaView view)
+    {
+        if (view == View)
+            return;
+        if (view is RwaView.Catalogue or RwaView.Portfolio)
+            _back.Clear();
+        else
+            _back.Push(View);
+        View = view;
+        StateHasChanged();
+    }
+
+    /// <summary>After a purchase: the portfolio, with the new holding picked out.</summary>
+    public void ShowPortfolio(Guid highlight)
+    {
+        _back.Clear();
+        View = new RwaView.Portfolio(highlight);
+        StateHasChanged();
+    }
+
+    Task BackAsync()
+    {
+        if (_back.TryPop(out var previous))
+        {
+            View = previous;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }
+        if (View is not RwaView.Catalogue)
+        {
+            Go(new RwaView.Catalogue());
+            return Task.CompletedTask;
+        }
+        return Context.NavigateToLauncher();
+    }
+}

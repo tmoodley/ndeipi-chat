@@ -65,6 +65,11 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<CyberWars.CyberWarsAllianceMember> CyberWarsAllianceMembers => Set<CyberWars.CyberWarsAllianceMember>();
     public DbSet<CyberWars.CyberWarsStrike> CyberWarsStrikes => Set<CyberWars.CyberWarsStrike>();
     public DbSet<CyberWars.CyberWarsStrikeBallot> CyberWarsStrikeBallots => Set<CyberWars.CyberWarsStrikeBallot>();
+    public DbSet<Rwa.RwaAsset> RwaAssets => Set<Rwa.RwaAsset>();
+    public DbSet<Rwa.RwaHolding> RwaHoldings => Set<Rwa.RwaHolding>();
+    public DbSet<Rwa.RwaWeekSlot> RwaWeekSlots => Set<Rwa.RwaWeekSlot>();
+    public DbSet<Rwa.RwaSimAccount> RwaSimAccounts => Set<Rwa.RwaSimAccount>();
+    public DbSet<Rwa.RwaAuditEvent> RwaAuditEvents => Set<Rwa.RwaAuditEvent>();
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<CreatorTier> CreatorTiers => Set<CreatorTier>();
     public DbSet<CreatorPost> CreatorPosts => Set<CreatorPost>();
@@ -294,6 +299,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         NdeipiChat.Api.Creators.CreatorsModel.Configure(model);
         NdeipiChat.Api.Travel.TravelModel.Configure(model);
         NdeipiChat.Api.CyberWars.CyberWarsModel.Configure(model);
+        NdeipiChat.Api.Rwa.RwaModel.Configure(model);
         NdeipiChat.Api.Market.MarketModel.Configure(model);
         NdeipiChat.Api.Finance.FinanceModel.Configure(model);
         NdeipiChat.Api.Trust.TrustModel.Configure(model);
