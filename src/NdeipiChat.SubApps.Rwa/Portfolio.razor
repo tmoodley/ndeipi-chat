@@ -1,0 +1,153 @@
+@* What the person holds: each villa share, its cooling-off (with cancel) or its vault value, and totals. *@
+
+<h2>Portfolio</h2>
+
+@if (_portfolio is null)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading your portfolio…")</p>
+}
+else
+{
+    <div class="card rw-totals">
+        <div><span>Value now</span><b class="num">@RwaContract.Money(_portfolio.ValueUsd)</b></div>
+        <div><span>Invested</span><b class="num">@RwaContract.Money(_portfolio.InvestedUsd)</b></div>
+        <div><span>In cooling-off</span><b class="num">@RwaContract.Money(_portfolio.InCoolingOffUsd)</b></div>
+        <div><span>Test balance</span><b class="num">@RwaContract.Money(_portfolio.SimBalanceUsd)</b></div>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="err">@_error</div>
+    }
+
+    @if (_portfolio.Holdings.Count == 0)
+    {
+        <div class="card rw-empty">
+            <h3>No villa shares yet</h3>
+            <span class="muted small">Pick a week, month or year of a Green Island villa to start.</span>
+            <button class="primary" @onclick="() => App.Go(new RwaView.Catalogue())">See the villas</button>
+        </div>
+    }
+    else
+    {
+        @foreach (var h in _portfolio.Holdings)
+        {
+            <div class="card rw-holding @(h.Id == Highlight ? "hl" : "")">
+                <div class="badge @h.Season">@Badge(h)</div>
+                <div class="what">
+                    <b>@h.AssetName · @h.IntervalLabel</b>
+                    <span class="muted small">@h.Fraction share · token #@h.TokenId@(h.Simulated ? " (simulated)" : "") · bought @h.PurchasedAt.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture)</span>
+                    @if (h.Status == RwaHoldingStatus.CoolingOff)
+                    {
+                        <span class="small">In escrow until <strong>@h.CoolingOffEndsAt.ToLocalTime().ToString("d MMM yyyy, HH:mm", CultureInfo.InvariantCulture)</strong> (@Left(h.CoolingOffEndsAt)). Cancel before then for a full refund.</span>
+                    }
+                    else if (h.Status == RwaHoldingStatus.Vested)
+                    {
+                        <span class="small muted">In the Year 1 vault since @h.VestedAt!.Value.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture): @h.VaultShares.ToString("#,0.####", CultureInfo.InvariantCulture) shares.</span>
+                    }
+                    else
+                    {
+                        <span class="small muted">Cancelled in the cooling-off and refunded.</span>
+                    }
+                </div>
+                <div class="value">
+                    <span class="rw-status @h.Status">@StatusLabel(h.Status)</span>
+                    <b class="num">@RwaContract.Money(h.Status == RwaHoldingStatus.Cancelled ? h.PrincipalUsd : h.ValueUsd)</b>
+                    @if (h.Status == RwaHoldingStatus.Vested && h.ValueUsd != h.PrincipalUsd)
+                    {
+                        <span class="small @(h.ValueUsd > h.PrincipalUsd ? "" : "muted")">@Change(h)</span>
+                    }
+                    @if (h.Status == RwaHoldingStatus.CoolingOff)
+                    {
+                        @if (_confirm == h.Id)
+                        {
+                            <span style="display:flex;gap:6px">
+                                <button class="ghost" disabled="@_busy" @onclick="() => _confirm = null">Keep</button>
+                                <button class="primary" disabled="@_busy" @onclick="() => CancelAsync(h.Id)">Cancel and refund</button>
+                            </span>
+                        }
+                        else
+                        {
+                            <button class="ghost" @onclick="() => _confirm = h.Id">Cancel</button>
+                        }
+                    }
+                </div>
+            </div>
+        }
+    }
+}
+
+@code {
+    [CascadingParameter] public RwaApp App { get; set; } = null!;
+    [Parameter] public Guid? Highlight { get; set; }
+
+    RwaPortfolioDto? _portfolio;
+    string? _error;
+    Guid? _confirm;
+    bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _portfolio = await App.Api.PortfolioAsync();
+            _error = null;
+        }
+        catch (RwaException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task CancelAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            await App.Api.CancelAsync(id);
+            _confirm = null;
+            await LoadAsync();
+            await App.RefreshMeAsync();
+        }
+        catch (RwaException e)
+        {
+            _error = e.Message;
+            await LoadAsync();
+            _error ??= e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    static string Badge(RwaHoldingDto h) => h.IntervalType switch
+    {
+        RwaIntervals.Week => "W" + h.IntervalIndex,
+        RwaIntervals.Month => "M" + h.IntervalIndex,
+        _ => "YR"
+    };
+
+    static string StatusLabel(string status) => status switch
+    {
+        RwaHoldingStatus.CoolingOff => "Cooling-off",
+        RwaHoldingStatus.Vested => "In vault",
+        _ => "Cancelled"
+    };
+
+    static string Change(RwaHoldingDto h)
+    {
+        var pct = (h.ValueUsd - h.PrincipalUsd) / h.PrincipalUsd * 100m;
+        return (pct >= 0 ? "+" : "") + pct.ToString("0.##", CultureInfo.InvariantCulture) + "% NAV";
+    }
+
+    static string Left(DateTimeOffset until)
+    {
+        var left = until - DateTimeOffset.UtcNow;
+        var days = (int)Math.Ceiling(left.TotalDays);
+        return left.TotalDays > 1 ? $"{days} days left"
+            : left.TotalHours >= 1 ? $"{(int)left.TotalHours} h left" : "less than an hour left";
+    }
+}

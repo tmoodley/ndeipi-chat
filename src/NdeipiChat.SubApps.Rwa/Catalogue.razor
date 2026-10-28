@@ -1,0 +1,87 @@
+@* The villas on the Green Island pre-sale, how it works, and what comes in later phases. *@
+
+<section class="rw-hero">
+    <svg viewBox="0 0 800 260" preserveAspectRatio="xMaxYMid slice" aria-hidden="true">
+        <path d="M0 170 Q 200 150 400 168 T 800 160 V260 H0 Z" fill="#0E7490" opacity=".55" />
+        <path d="M0 196 Q 220 178 420 194 T 800 188 V260 H0 Z" fill="#155E75" opacity=".7" />
+        <g class="isle">
+        <circle cx="690" cy="62" r="30" fill="#FDE68A" opacity=".9" />
+        <path d="M600 186 Q 680 154 790 182 Z" fill="#F6EBD3" />
+        <path d="M700 180 C 698 140 704 118 718 100" stroke="#78350F" stroke-width="5" fill="none" />
+        <path d="M718 100 q -30 -6 -46 10 M718 100 q 28 -10 44 4 M718 100 q -12 -22 -34 -24 M718 100 q 14 -20 36 -18" stroke="#15803D" stroke-width="7" fill="none" stroke-linecap="round" />
+        </g>
+    </svg>
+    <div class="inner">
+        <h1>Own a week in Negril</h1>
+        <p>Buy a week, a month or a whole year of a Green Island villa. Your Year 1 money is invested, not spent, and its returns pay for the build.</p>
+    </div>
+</section>
+
+<div class="card rw-steps">
+    <div><b>1</b><span class="small"><strong>Pick a tranche.</strong><br /><span class="muted">A week (1/52, priced by season), a month (1/12) or the full year.</span></span></div>
+    <div><b>2</b><span class="small"><strong>@App.Me!.CoolingOffDays-day cooling-off.</strong><br /><span class="muted">Your money waits in escrow. Cancel inside it for a full refund.</span></span></div>
+    <div><b>3</b><span class="small"><strong>Into the Year 1 vault.</strong><br /><span class="muted">Then your share grows with the vault's NAV, not cash payouts.</span></span></div>
+</div>
+
+@if (!App.Me!.KycVerified)
+{
+    <div class="card small">Before you can buy, <strong>verify your identity</strong> in your Wallet. You can still look around.</div>
+}
+
+<h2>Villas on pre-sale</h2>
+@if (_assets is null)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading villas…")</p>
+}
+else
+{
+    <div class="rw-grid">
+        @foreach (var a in _assets)
+        {
+            <button class="card rw-asset" @onclick="() => App.Go(new RwaView.Villa(a.Code))">
+                <div class="pic"><span>@a.Code</span></div>
+                <div class="body">
+                    <h3>@a.Name</h3>
+                    <span class="muted small">@a.Location · @a.Bedrooms bed · @RwaPhases.Label(a.ConstructionPhase)</span>
+                    <div class="rw-kv">
+                        <div><span>Weeks from</span><b class="num">@RwaContract.Money(RwaPricing.Price(a.UnitPriceUsd, RwaIntervals.Week, 30))</b></div>
+                        <div><span>Full year</span><b class="num">@Short(a.UnitPriceUsd)</b></div>
+                        <div><span>NAV / share</span><b class="num">@a.AssetsPerShare.ToString("0.0000", CultureInfo.InvariantCulture)</b></div>
+                    </div>
+                    <div class="rw-bar-sold" title="@a.WeeksSold of 52 weeks sold"><div style="width:@((a.WeeksSold * 100 / 52).ToString(CultureInfo.InvariantCulture))%"></div></div>
+                    <span class="muted small">@a.WeeksSold of 52 weeks sold</span>
+                </div>
+            </button>
+        }
+    </div>
+}
+
+<h2>Coming in later phases</h2>
+<div class="rw-later">
+    <div><span class="phase">Phase 2</span><b>Time-rights stripping</b><span class="muted small">Sell or stake a future week while keeping your deed share, on a P2P market.</span></div>
+    <div><span class="phase">Phase 2</span><b>Stay or rent</b><span class="muted small">By 60 days out, pick a QR pass for your stay or the resort rental pool.</span></div>
+    <div><span class="phase">Phase 3</span><b>Cattle bond pool</b><span class="muted small">Gold-settled coupons, Moo Table proof-of-reserve, credit against your share.</span></div>
+    <div><span class="phase">Phase 4</span><b>Mining tranches</b><span class="muted small">Route gold yield into audited mining RWA tranches.</span></div>
+</div>
+<p class="muted small">Each later phase needs its partners and a legal review before it opens.</p>
+
+@code {
+    [CascadingParameter] public RwaApp App { get; set; } = null!;
+
+    List<RwaAssetDto>? _assets;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _assets = await App.Api.AssetsAsync();
+        }
+        catch (RwaException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    static string Short(decimal usd) => usd >= 1000 ? "$" + (usd / 1000m).ToString("#,0.#", CultureInfo.InvariantCulture) + "k" : RwaContract.Money(usd);
+}

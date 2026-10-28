@@ -1,0 +1,232 @@
+@* One villa: its calendar of 52 weeks coloured by season, its months and full year, and buying one
+   tranche into the cooling-off escrow (FR-2.1, FR-1.3). *@
+
+@if (_detail is null)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading the villa…")</p>
+}
+else
+{
+    var a = _detail.Asset;
+    <div>
+        <h2>@a.Name</h2>
+        <span class="muted small">@a.Code · @a.Location · @a.Bedrooms bed · @RwaPhases.Label(a.ConstructionPhase)</span>
+    </div>
+
+    <div class="rw-villa">
+        <div class="rw-left">
+            <div class="card rw-pick">
+                <div class="rw-tabs" role="tablist">
+                    <button role="tab" class="@(_type == RwaIntervals.Week ? "on" : "")" @onclick="() => Pick(RwaIntervals.Week, 0)">Week · 1/52</button>
+                    <button role="tab" class="@(_type == RwaIntervals.Month ? "on" : "")" @onclick="() => Pick(RwaIntervals.Month, 0)">Month · 1/12</button>
+                    <button role="tab" class="@(_type == RwaIntervals.FullYear ? "on" : "")" @onclick="() => Pick(RwaIntervals.FullYear, _detail.FullYearAvailable ? 1 : 0)">Year · 1/1</button>
+                </div>
+
+                @if (_type == RwaIntervals.Week)
+                {
+                    <div class="rw-legend">
+                        <span><i style="background:var(--rw-peak)"></i>Peak ×@RwaSeasons.Weight(RwaSeasons.Peak)</span>
+                        <span><i style="background:var(--rw-shoulder)"></i>Shoulder ×@RwaSeasons.Weight(RwaSeasons.Shoulder)</span>
+                        <span><i style="background:var(--rw-off)"></i>Off-peak ×@RwaSeasons.Weight(RwaSeasons.OffPeak)</span>
+                        <span><i style="background:var(--rw-taken)"></i>Sold</span>
+                    </div>
+                    <div class="rw-weeks">
+                        @foreach (var w in _detail.Weeks)
+                        {
+                            <button class="@w.Season @(w.Taken ? "taken" : "") @(_index == w.Week ? "on" : "")" disabled="@w.Taken"
+                                    title="@WeekLabel(w)" aria-label="@WeekLabel(w)"
+                                    @onclick="() => Pick(RwaIntervals.Week, w.Week)">@w.Week</button>
+                        }
+                    </div>
+                    <span class="muted small">Weeks run January to December. Peak is mid-December to mid-April; off-peak is the hurricane season.</span>
+                }
+                else if (_type == RwaIntervals.Month)
+                {
+                    <div class="rw-months">
+                        @foreach (var m in _detail.Months)
+                        {
+                            <button class="@(_index == m.Month ? "on" : "")" disabled="@(!m.Available)" @onclick="() => Pick(RwaIntervals.Month, m.Month)">
+                                <b>@CultureInfo.InvariantCulture.DateTimeFormat.GetAbbreviatedMonthName(m.Month)</b>
+                                <span>wk @m.FirstWeek-@m.LastWeek</span>
+                                <span class="num">@(m.Available ? RwaContract.Money(m.PriceUsd) : "sold")</span>
+                            </button>
+                        }
+                    </div>
+                    <span class="muted small">A month is 4 or 5 weeks on a 4-4-5 calendar. Months are priced at 1/12 of the year, not by season.</span>
+                }
+                else
+                {
+                    <p class="small" style="margin:0">
+                        @if (_detail.FullYearAvailable)
+                        {
+                            <text>The whole villa, all 52 weeks, every year.</text>
+                        }
+                        else
+                        {
+                            <text>Weeks of this villa are already sold, so the full year isn't available.</text>
+                        }
+                    </p>
+                }
+            </div>
+
+            <div class="card" style="display:flex;flex-direction:column;gap:10px">
+                <h3>About this villa</h3>
+                <p class="small" style="margin:0">@a.Summary</p>
+                <ul class="hl">
+                    @foreach (var h in _detail.Highlights)
+                    {
+                        <li>@h</li>
+                    }
+                </ul>
+                <div class="rw-kv">
+                    <div><span>Base NAV</span><b class="num">@a.BaseNavUsd.ToString("0.0000", CultureInfo.InvariantCulture)</b></div>
+                    <div><span>Current NAV</span><b class="num">@a.CurrentNavUsd.ToString("0.0000", CultureInfo.InvariantCulture)</b></div>
+                    <div><span>Weeks sold</span><b class="num">@a.WeeksSold / 52</b></div>
+                </div>
+                <span class="muted small">NAV last set @a.NavUpdatedAt.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture). It changes only when the oracle posts an audited value.</span>
+            </div>
+
+            @if (App.Me!.IsOracle)
+            {
+                <div class="card" style="display:flex;flex-direction:column;gap:8px">
+                    <h3>Post a NAV (oracle)</h3>
+                    <span class="muted small">At most a 10% move per update, with the valuation or audit it's based on.</span>
+                    <input type="number" step="0.0001" min="0" @bind="_nav" aria-label="New NAV" />
+                    <input placeholder="Attestation, e.g. QS certificate 2026-Q4" @bind="_attestation" aria-label="Attestation" />
+                    <button class="ghost" disabled="@_busy" @onclick="PostNavAsync">Post NAV</button>
+                    @if (_navMessage is not null)
+                    {
+                        <div class="@(_navOk ? "ok" : "err")">@_navMessage</div>
+                    }
+                </div>
+            }
+        </div>
+
+        <aside class="card rw-buy" aria-label="Buy">
+            @if (_index == 0)
+            {
+                <h3>Pick a @(_type == RwaIntervals.Week ? "week" : _type == RwaIntervals.Month ? "month" : "tranche")</h3>
+                <span class="muted small">Choose one on the left to see its price.</span>
+            }
+            else
+            {
+                <span class="muted small">@a.Code · @RwaContract.IntervalLabel(_type, _index)@(_type == RwaIntervals.Week ? " · " + RwaSeasons.Label(RwaSeasons.Of(_index)) : "")</span>
+                <span class="price num">@RwaContract.Money(Price)</span>
+                <div class="rw-row"><span>Share</span><span>@RwaContract.Fraction(_type) of the villa</span></div>
+                <div class="rw-row"><span>Cooling-off</span><span>@App.Me!.CoolingOffDays days, full refund</span></div>
+                <div class="rw-row"><span>Then</span><span>Year 1 vault at NAV @a.AssetsPerShare.ToString("0.0000", CultureInfo.InvariantCulture)</span></div>
+                <div class="rw-row"><span>Pay with</span><span>Simulated balance</span></div>
+                <div class="rw-row"><span>Your test balance</span><span class="num">@RwaContract.Money(App.Me!.SimBalanceUsd)</span></div>
+                <label class="rw-check">
+                    <input type="checkbox" @bind="_agreed" />
+                    <span>I understand this is a simulated preview, not an offer, and that I can cancel within @App.Me!.CoolingOffDays days.</span>
+                </label>
+                <button class="primary" disabled="@(!CanBuy)" @onclick="BuyAsync">@(_busy ? "Buying…" : "Buy " + RwaContract.Money(Price))</button>
+                @if (!App.Me!.KycVerified)
+                {
+                    <span class="small muted">Verify your identity in your Wallet to buy.</span>
+                }
+                else if (App.Me!.Mode != RwaModes.Simulated)
+                {
+                    <span class="small muted">The pre-sale is switched off.</span>
+                }
+                else if (App.Me!.SimBalanceUsd < Price)
+                {
+                    <span class="small muted">Your test balance doesn't cover this.</span>
+                }
+            }
+            @if (_error is not null)
+            {
+                <div class="err">@_error</div>
+            }
+        </aside>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public RwaApp App { get; set; } = null!;
+    [Parameter] public string Code { get; set; } = "";
+
+    RwaAssetDetailDto? _detail;
+    string _type = RwaIntervals.Week;
+    int _index;
+    bool _agreed, _busy;
+    string? _error;
+    Guid _requestId = Guid.NewGuid();
+
+    decimal _nav;
+    string _attestation = "";
+    string? _navMessage;
+    bool _navOk;
+
+    decimal Price => _detail is null || _index == 0 ? 0 : RwaPricing.Price(_detail.Asset.UnitPriceUsd, _type, _index);
+
+    bool CanBuy => _index > 0 && _agreed && !_busy && App.Me!.KycVerified && App.Me.Mode == RwaModes.Simulated && App.Me.SimBalanceUsd >= Price;
+
+    static string WeekLabel(RwaWeekDto w) =>
+        $"Week {w.Week}, {RwaSeasons.Label(w.Season)}, {RwaContract.Money(w.PriceUsd)}{(w.Taken ? ", sold" : "")}";
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _detail = await App.Api.AssetAsync(Code);
+            _nav = _detail.Asset.CurrentNavUsd;
+        }
+        catch (RwaException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    void Pick(string type, int index)
+    {
+        if (type != _type || index != _index)
+            _requestId = Guid.NewGuid();
+        (_type, _index, _error) = (type, index, null);
+    }
+
+    async Task BuyAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var holding = await App.Api.MintAsync(new RwaMintRequest(Code, _type, _index, RwaPaymentMethods.Simulated, _requestId));
+            await App.RefreshMeAsync();
+            App.ShowPortfolio(holding.Id);
+        }
+        catch (RwaException e)
+        {
+            // The same request id on a retry: a refused purchase saved nothing, and one that went
+            // through before the connection dropped comes back instead of buying twice.
+            _error = e.Message;
+            await LoadAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    async Task PostNavAsync()
+    {
+        _busy = true;
+        try
+        {
+            var asset = await App.Api.PostNavAsync(new RwaNavUpdateRequest(Code, _nav, _attestation));
+            (_navOk, _navMessage) = (true, $"NAV is now {asset.CurrentNavUsd.ToString("0.0000", CultureInfo.InvariantCulture)}.");
+            await LoadAsync();
+        }
+        catch (RwaException e)
+        {
+            (_navOk, _navMessage) = (false, e.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

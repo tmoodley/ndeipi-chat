@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using NdeipiChat.Client;
 using NdeipiChat.Client.Auth;
 using NdeipiChat.Contracts;
@@ -264,6 +265,15 @@ public sealed class LocalPreview
         await rudo.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-1, 1)));
         var lions = await me.PostAsync<AllianceDto>("api/cyberwars/alliances", new CreateAllianceRequest("Lusaka Lions"));
         await rudo.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });
+
+        // Ndeipi RWA (simulated): Ty holds a peak week still in its cooling-off, and a condo month
+        // already in the Year 1 vault, whose NAV the oracle (Ty, an admin) has since raised 4%.
+        await me.PostAsync<RwaHoldingDto>($"{RwaContract.BasePath}/presale/mint", new RwaMintRequest("GI-VILLA-01", RwaIntervals.Week, 3, RwaPaymentMethods.Simulated, Guid.NewGuid()));
+        var condoMonth = await me.PostAsync<RwaHoldingDto>($"{RwaContract.BasePath}/presale/mint", new RwaMintRequest("GI-CONDO-01", RwaIntervals.Month, 9, RwaPaymentMethods.Simulated, Guid.NewGuid()));
+        await app.DbAsync(db => db.RwaHoldings.Where(h => h.Id == condoMonth.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(h => h.CoolingOffEndsAt, DateTimeOffset.UtcNow.AddDays(-30)).SetProperty(h => h.PurchasedAt, DateTimeOffset.UtcNow.AddDays(-37))));
+        await me.GetAsync<RwaPortfolioDto>($"{RwaContract.BasePath}/portfolio");
+        await me.PostAsync<RwaAssetDto>($"{RwaContract.BasePath}/admin/nav", new RwaNavUpdateRequest("GI-CONDO-01", 1.04m, "Preview valuation"));
 
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };
