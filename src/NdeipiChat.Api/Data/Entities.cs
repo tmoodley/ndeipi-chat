@@ -20,6 +20,9 @@ public sealed class User
 
     public string? AvatarUrl { get; set; }
 
+    /// <summary>When their last connection to the chat hub closed; null until it first does.</summary>
+    public DateTimeOffset? LastSeenAt { get; set; }
+
     /// <summary>Roles from Clerk's public metadata, comma-separated (e.g. "farmer,trader"); they decide which sub-apps the user gets.</summary>
     public string Roles { get; set; } = "";
 
@@ -83,6 +86,32 @@ public sealed class ConversationMember
 
     /// <summary><see cref="ChatMessage.Seq"/> of the last message this member has read.</summary>
     public long? LastReadSeq { get; set; }
+
+    /// <summary>In a group, a <see cref="ChatRoles"/> value; in a direct chat always Member.</summary>
+    public string Role { get; set; } = ChatRoles.Member;
+
+    /// <summary>An admin muted them: they can read but not post until then.</summary>
+    public DateTimeOffset? MutedUntil { get; set; }
+}
+
+/// <summary>
+/// A group chat's community profile: its icon and description, and the app that owns it (a
+/// CyberWars war room is owned by its alliance). One row per group conversation.
+/// </summary>
+public sealed class ChatGroup
+{
+    public Guid ConversationId { get; set; }
+    public string Kind { get; set; } = GroupKinds.General;
+    public string Icon { get; set; } = GroupContract.DefaultIcon;
+    public string? Description { get; set; }
+
+    /// <summary>The app that owns the group and decides who's in it; null for a group its members run.</summary>
+    public string? AppId { get; set; }
+
+    /// <summary>The app's own id for the group (an alliance id).</summary>
+    public Guid? AppRef { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 public sealed class ChatMessage

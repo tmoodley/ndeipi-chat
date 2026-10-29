@@ -14,7 +14,7 @@ namespace NdeipiChat.Api.CyberWars;
 /// </summary>
 public sealed class CyberWarsWorldService(
     ChatDbContext db, CyberWarsMatches matches, ChatNotifier notifier, ConversationService conversations,
-    CyberWarsCards cards, TimeProvider clock)
+    CyberWarsCards cards, MessageStateService states, TimeProvider clock)
 {
     // ---- The map (FR-2.1, FR-2.1a) ----
 
@@ -159,8 +159,9 @@ public sealed class CyberWarsWorldService(
         if (await db.CyberWarsAlliances.AnyAsync(a => a.Name == name, ct))
             throw new ChatRejectedException("An alliance already has that name.");
 
-        var room = await conversations.CreateGroupForAsync(user, $"⚔️ {name} war room", ct);
-        var alliance = new CyberWarsAlliance { Id = Guid.NewGuid(), Name = name, Province = province, ConversationId = room, LeaderId = user.Id, CreatedAt = clock.GetUtcNow() };
+        var allianceId = Guid.NewGuid();
+        var room = await conversations.CreateGroupForAsync(user, $"{name} war room", GroupKinds.Alliance, "⚔️", CyberWarsContract.AppId, allianceId, ct);
+        var alliance = new CyberWarsAlliance { Id = allianceId, Name = name, Province = province, ConversationId = room, LeaderId = user.Id, CreatedAt = clock.GetUtcNow() };
         db.CyberWarsAlliances.Add(alliance);
         db.CyberWarsAllianceMembers.Add(new CyberWarsAllianceMember { UserId = user.Id, AllianceId = alliance.Id, JoinedAt = alliance.CreatedAt });
         await db.SaveChangesAsync(ct);
@@ -207,6 +208,8 @@ public sealed class CyberWarsWorldService(
         {
             alliance.LeaderId = next.UserId;
             await db.SaveChangesAsync(ct);
+            // The leader owns the war room.
+            await conversations.SetRoleAsync(alliance.ConversationId, next.UserId, ChatRoles.Owner, ct);
         }
         await conversations.RemoveMemberAsync(alliance.ConversationId, user, ct);
         await PublishHomeAsync(user.Id, ct);
@@ -236,9 +239,127 @@ public sealed class CyberWarsWorldService(
         var alliance = await AllianceOfAsync(user.Id, ct) ?? throw new ChatRejectedException("Join an alliance to ping its war room.");
         var place = CyberWarsWorld.SectorName(request.Province, request.At);
         await cards.PostAsync(user, alliance.ConversationId, new CyberWarsCardPayload("📍", $"{user.DisplayName} pinged {place}",
-            text.Length > 0 ? text : "Look here.", CyberWarsWorld.SectorRoute(request.Province, request.At), "Open the map"), ct);
+            text.Length > 0 ? text : "Look here.", CyberWarsWorld.SectorRoute(request.Province, request.At), "Open in CyberWars",
+            CyberWarsCardKinds.Ping, request.Province, request.At, alliance.Id), ct);
         await PublishAsync(new MapEventDto(MapEventKinds.Ping, request.Province, request.At, null, $"{user.DisplayName}: {text}", null));
         return true;
+    }
+
+    // ---- Strike votes (FR-2.2b) ----
+
+    /// <summary>The alliance, if the user is in it; strike votes and the war room are for its members only.</summary>
+    public async Task<CyberWarsAlliance> MemberAllianceAsync(User user, Guid allianceId, CancellationToken ct)
+    {
+        var alliance = await db.CyberWarsAlliances.FirstOrDefaultAsync(a => a.Id == allianceId, ct)
+            ?? throw new ChatRejectedException("That alliance has disbanded.");
+        if (!await db.CyberWarsAllianceMembers.AnyAsync(m => m.AllianceId == allianceId && m.UserId == user.Id, ct))
+            throw new ChatRejectedException("Only the alliance's members can do that.");
+        return alliance;
+    }
+
+    /// <summary>
+    /// Opens a strike vote on a sector with the opener's vote, replacing any open one. The vote is a
+    /// card in the war room that members vote on with a tap, and that updates in place for everyone.
+    /// </summary>
+    public async Task<StrikeDto> OpenStrikeAsync(User user, CyberWarsAlliance alliance, ZambianProvince province, HexCell sector, CancellationToken ct)
+    {
+        if (await db.CyberWarsStrikes.FirstOrDefaultAsync(s => s.AllianceId == alliance.Id, ct) is { } old)
+        {
+            await db.CyberWarsStrikeBallots.Where(b => b.AllianceId == alliance.Id).ExecuteDeleteAsync(ct);
+            db.CyberWarsStrikes.Remove(old);
+            await db.SaveChangesAsync(ct);
+            if (old.CardMessageId is { } oldCard)
+                await states.SetAsync(oldCard, new StrikeCardState(0, 0, [], [], null, true), ct);
+        }
+
+        var strike = new CyberWarsStrike { AllianceId = alliance.Id, Province = province, SectorQ = sector.Q, SectorR = sector.R, StartedAt = clock.GetUtcNow() };
+        db.CyberWarsStrikes.Add(strike);
+        await db.SaveChangesAsync(ct);
+        var card = await cards.PostAsync(user, alliance.ConversationId, new CyberWarsCardPayload("🗳️", $"Strike on {CyberWarsWorld.SectorName(province, sector)}",
+            $"Once more than half the alliance votes, raids there land with {CyberWarsWarRoom.StrikeSquads} extra squads and {CyberWarsWarRoom.StrikeOre:N0} ore credits for an hour.",
+            CyberWarsWorld.SectorRoute(province, sector), "Open the map", CyberWarsCardKinds.Strike, province, sector, alliance.Id), ct);
+        strike.CardMessageId = card.Id;
+        await db.SaveChangesAsync(ct);
+        return await VoteStrikeAsync(user, alliance, ct);
+    }
+
+    /// <summary>Adds the user's vote to the open strike (once) and updates its card; a majority approves it for an hour.</summary>
+    public async Task<StrikeDto> VoteStrikeAsync(User user, CyberWarsAlliance alliance, CancellationToken ct)
+    {
+        var strike = await db.CyberWarsStrikes.FirstOrDefaultAsync(s => s.AllianceId == alliance.Id, ct)
+            ?? throw new ChatRejectedException("No strike vote is open. Open one with /vote-strike Lusaka 1,-1.");
+        if (!await db.CyberWarsStrikeBallots.AnyAsync(b => b.AllianceId == alliance.Id && b.UserId == user.Id, ct))
+        {
+            db.CyberWarsStrikeBallots.Add(new CyberWarsStrikeBallot { AllianceId = alliance.Id, UserId = user.Id });
+            try
+            {
+                await db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // A second tap raced the first; one vote counts.
+                db.ChangeTracker.Clear();
+                strike = await db.CyberWarsStrikes.FirstAsync(s => s.AllianceId == alliance.Id, ct);
+            }
+        }
+
+        var members = await db.CyberWarsAllianceMembers.CountAsync(m => m.AllianceId == alliance.Id, ct);
+        var ballots = await db.CyberWarsStrikeBallots.Where(b => b.AllianceId == alliance.Id)
+            .Join(db.Users, b => b.UserId, u => u.Id, (b, u) => new { u.Id, u.DisplayName }).OrderBy(v => v.DisplayName).ToListAsync(ct);
+        var voters = ballots.Select(b => b.DisplayName).ToList();
+        var needed = members / 2 + 1;
+        var now = clock.GetUtcNow();
+        var approvedNow = voters.Count >= needed && strike.ApprovedUntil is null;
+        if (approvedNow)
+        {
+            strike.ApprovedUntil = now + CyberWarsWarRoom.StrikeLasts;
+            await db.SaveChangesAsync(ct);
+        }
+        var approved = strike.ApprovedUntil > now ? strike.ApprovedUntil : null;
+        if (strike.CardMessageId is { } cardId)
+            await states.SetAsync(cardId, new StrikeCardState(voters.Count, needed, voters, ballots.Select(b => b.Id).ToList(), approved, false), ct);
+
+        var sector = new HexCell(strike.SectorQ, strike.SectorR);
+        if (approvedNow)
+            await cards.PostAsync(user, alliance.ConversationId, new CyberWarsCardPayload("🎯", $"Strike approved on {CyberWarsWorld.SectorName(strike.Province, sector)}",
+                $"{voters.Count} of {members} voted. For the next hour, raids there land with extra squads and {CyberWarsWarRoom.StrikeOre:N0} ore credits.",
+                CyberWarsWorld.SectorRoute(strike.Province, sector), "Open the map", CyberWarsCardKinds.Note, strike.Province, sector, alliance.Id), ct);
+        return new StrikeDto(strike.Province, sector, voters.Count, needed, approved);
+    }
+
+    // ---- The war room's tab in Ndeipi Chat ----
+
+    public async Task<int> SectorsHeldAsync(Guid allianceId, CancellationToken ct) =>
+        (await SectorsAsync(null, ct)).Count(s => s.AllianceId == allianceId);
+
+    /// <summary>The alliance at a glance for its members: home, sectors held, recent pings, and links into the game.</summary>
+    public async Task<WarRoomDto> RoomAsync(User user, Guid allianceId, CancellationToken ct)
+    {
+        await MemberAllianceAsync(user, allianceId, ct);
+        var alliance = (await AllianceAsync(allianceId, ct))!;
+        var leaderId = alliance.Members.FirstOrDefault(m => m.Leader)?.UserId;
+        var homes = await db.CyberWarsBases.Where(b => b.UserId == leaderId || b.UserId == user.Id).ToListAsync(ct);
+        var leaderHome = homes.FirstOrDefault(b => b.UserId == leaderId);
+        var myHome = homes.FirstOrDefault(b => b.UserId == user.Id);
+
+        var names = alliance.Members.ToDictionary(m => m.UserId, m => m.Name);
+        var recent = await db.Messages.AsNoTracking()
+            .Where(m => m.ConversationId == alliance.ConversationId && m.Kind == MessageKinds.CyberWarsCard)
+            .OrderByDescending(m => m.Seq).Take(40)
+            .Select(m => new { m.SenderId, m.PayloadJson, m.SentAt })
+            .ToListAsync(ct);
+        var pings = recent
+            .Select(m => (Message: m, Card: ContractJson.Read<CyberWarsCardPayload>(m.PayloadJson)))
+            .Where(x => x.Card is { Kind: CyberWarsCardKinds.Ping, Province: not null, Sector: not null })
+            .Take(5)
+            .Select(x => new WarRoomPingDto(CyberWarsWorld.SectorName(x.Card!.Province!.Value, x.Card.Sector!.Value), x.Card.Text,
+                names.GetValueOrDefault(x.Message.SenderId) ?? "A former member", x.Message.SentAt, x.Card.Route))
+            .ToList();
+
+        static string? Name(CyberWarsBase? b) => b is null ? null : CyberWarsWorld.SectorName(b.Province, new HexCell(b.SectorQ, b.SectorR));
+        static string? Route(CyberWarsBase? b) => b is null ? null : CyberWarsWorld.SectorRoute(b.Province, new HexCell(b.SectorQ, b.SectorR));
+        return new WarRoomDto(alliance, Name(leaderHome), Route(leaderHome) ?? $"apps/{CyberWarsContract.AppId}", await SectorsHeldAsync(allianceId, ct),
+            pings, Name(myHome), Route(myHome));
     }
 
     // ---- Raids (FR-2.3, FR-2.3a) ----
@@ -393,13 +514,13 @@ public sealed class CyberWarsCards(IServiceProvider services)
 
     public static bool IsPosting => Posting.Value;
 
-    public async Task PostAsync(User sender, Guid conversationId, CyberWarsCardPayload card, CancellationToken ct)
+    public async Task<MessageDto> PostAsync(User sender, Guid conversationId, CyberWarsCardPayload card, CancellationToken ct)
     {
         Posting.Value = true;
         try
         {
             // Resolved here, not injected: the message pipeline reaches back to the war room's commands.
-            await services.GetRequiredService<MessageService>().SendAsync(sender,
+            return await services.GetRequiredService<MessageService>().SendAsync(sender,
                 new SendMessageRequest(conversationId, MessageKinds.CyberWarsCard, ContractJson.ToElement(card), Guid.NewGuid()), ct);
         }
         finally

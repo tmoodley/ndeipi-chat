@@ -1,0 +1,371 @@
+@* A group's right-hand pane: its members by role with who's online, a profile card for each with
+   what an admin can do, the group's app (a war room's map, strike and pings), and its info. Every
+   action is checked again on the server; the buttons here only follow what the server allows. *@
+@inject ChatApi Api
+@inject ChatSession Session
+@inject LauncherViewModel Launcher
+@inject NavigationManager Navigation
+@inject TimeProvider Clock
+
+<aside class="exchange group-panel @CssClass">
+    <div class="exchange-head">
+        <div class="grow-min">
+            <div class="title">@(Tab == "app" && Group.Tab is { } app ? app.Title : Tab == "about" ? "About" : "Members")</div>
+            <div class="muted small">@Group.Members.Count @(Group.Members.Count == 1 ? "member" : "members") · @Group.OnlineCount online</div>
+        </div>
+        <button class="icon-button" title="Close" @onclick="OnClose">✕</button>
+    </div>
+
+    <div class="segmented" style="grid-template-columns: repeat(@(Group.Tab is null ? 2 : 3), 1fr)">
+        <button class="@(Tab == "members" ? "on" : "")" @onclick='() => SetTab("members")'>Members</button>
+        @if (Group.Tab is { } tab)
+        {
+            <button class="@(Tab == "app" ? "on" : "")" @onclick='() => SetTab("app")'>@tab.Title</button>
+        }
+        <button class="@(Tab == "about" ? "on" : "")" @onclick='() => SetTab("about")'>About</button>
+    </div>
+
+    @if (_error is not null)
+    {
+        <p class="error small" role="alert">@_error</p>
+    }
+
+    @switch (Tab)
+    {
+        case "app" when Group is { AppId: CyberWarsContract.AppId, AppRef: { } allianceId }:
+            <WarRoomTab AllianceId="allianceId" ConversationId="Group.ConversationId" Version="Version" />
+            break;
+
+        case "about":
+            <div class="group-about">
+                <div class="group-identity">
+                    <span class="group-icon">@Group.Icon</span>
+                    <div class="grow-min">
+                        <strong>@Group.Title</strong>
+                        <div class="muted small">You're @(Article(RoleName(Me)))</div>
+                    </div>
+                </div>
+                <p class="@(Group.Description is null ? "muted small" : "group-description")">@(Group.Description ?? "No description yet.")</p>
+                @if (Group.Facts.Count > 0)
+                {
+                    <dl class="group-facts">
+                        @foreach (var fact in Group.Facts)
+                        {
+                            <dt>@fact.Label</dt><dd>@fact.Value</dd>
+                        }
+                    </dl>
+                }
+                @if (Group.JoinHint is { } hint)
+                {
+                    <p class="muted small">@hint</p>
+                }
+
+                @if (Group.CanEdit)
+                {
+                    <form class="form group-edit" @onsubmit="SaveInfoAsync">
+                        <div class="group-edit-row">
+                            <label class="field icon-field"><span class="label">Icon</span><input id="group-icon" @bind="_icon" maxlength="@GroupContract.MaxIcon" /></label>
+                            <label class="field grow-min"><span class="label">Name</span><input id="group-name" @bind="_name" maxlength="100" /></label>
+                        </div>
+                        <label class="field"><span class="label">Description</span>
+                            <textarea id="group-description" @bind="_description" maxlength="@GroupContract.MaxDescription" rows="3" placeholder="What's this group for?"></textarea>
+                        </label>
+                        <button type="submit" class="primary" disabled="@_busy">Save</button>
+                    </form>
+                }
+
+                @if (Group.CanAdd)
+                {
+                    <div class="field">
+                        <span class="label">Add people</span>
+                        <input id="group-add-search" type="search" placeholder="Search by name" @bind="_query" @bind:event="oninput" @bind:after="SearchAsync" autocomplete="off" />
+                    </div>
+                    @foreach (var found in _found.Where(p => Group.Members.All(m => m.UserId != p.Id)))
+                    {
+                        <div class="member-row static" @key="found.Id">
+                            <Avatar Url="@found.AvatarUrl" Initials="@Display.Initials(found.DisplayName)" Size="36" />
+                            <div class="grow-min"><div class="member-name">@found.DisplayName</div></div>
+                            <button class="small primary" disabled="@_busy" @onclick="() => AddAsync(found)">Add</button>
+                        </div>
+                    }
+                }
+
+                <button class="secondary danger-text" disabled="@_busy" @onclick="() => ConfirmAsync(Session.MyUserId, LeaveAsync)">
+                    @(Confirming(Session.MyUserId) ? "Tap again to leave" : Group.Kind == GroupKinds.Alliance ? "Leave the alliance" : "Leave the group")
+                </button>
+            </div>
+            break;
+
+        default:
+            @if (Group.Members.Count > 8)
+            {
+                <input id="group-member-filter" type="search" placeholder="Find a member" @bind="_filter" @bind:event="oninput" autocomplete="off" />
+            }
+            <div class="member-list">
+                @foreach (var section in Sections())
+                {
+                    <div class="member-section">@section.Title · @section.Members.Count</div>
+                    @foreach (var member in section.Members)
+                    {
+                        <button class="member-row @(member.Online ? "" : "offline") @(_selected == member.UserId ? "selected" : "")" @key="member.UserId" @onclick="() => Select(member.UserId)">
+                            <span class="presence-wrap">
+                                <Avatar Url="@member.AvatarUrl" Initials="@Display.Initials(member.DisplayName)" Size="36" />
+                                <span class="presence @(member.Online ? "on" : "")" title="@(member.Online ? "Online" : "Offline")"></span>
+                            </span>
+                            <span class="grow-min">
+                                <span class="member-name">@member.DisplayName @if (member.Rank is { } rank) {<span class="rank-badge @RankTone(member)">@rank</span>}</span>
+                                <span class="member-status">@StatusLine(member)</span>
+                            </span>
+                        </button>
+                    }
+                }
+            </div>
+            break;
+    }
+
+    @if (Selected is { } person)
+    {
+        <div class="profile-sheet-scrim" @onclick="() => _selected = null"></div>
+        <div class="profile-sheet" role="dialog" aria-label="@person.DisplayName">
+            <div class="profile-sheet-cover tone-@(Group.Kind == GroupKinds.Alliance ? "red" : "blue")"></div>
+            <div class="profile-sheet-body">
+                <span class="presence-wrap big">
+                    <Avatar Url="@person.AvatarUrl" Initials="@Display.Initials(person.DisplayName)" Size="64" />
+                    <span class="presence @(person.Online ? "on" : "")"></span>
+                </span>
+                <div>
+                    <strong class="profile-sheet-name">@person.DisplayName</strong>
+                    @if (person.Rank is { } rank)
+                    {
+                        <span class="rank-badge @RankTone(person)">@rank</span>
+                    }
+                    <div class="muted small">@(person.Username is { } u ? $"@{u} · " : "")@StatusLine(person)</div>
+                </div>
+                <dl class="group-facts">
+                    <dt>Role</dt><dd>@ChatRoles.Name(person.Role)</dd>
+                    <dt>Joined</dt><dd>@person.JoinedAt.ToLocalTime().ToString("d MMM yyyy")</dd>
+                    @if (person.MutedUntil is { } muted)
+                    {
+                        <dt>Muted</dt><dd>until @muted.ToLocalTime().ToString("d MMM, HH:mm")</dd>
+                    }
+                </dl>
+
+                @if (person.UserId != Session.MyUserId)
+                {
+                    <div class="profile-actions">
+                        <button class="primary small" disabled="@_busy" @onclick="() => MessageAsync(person)">Message</button>
+                        <a class="button secondary small" href="chat/@Group.ConversationId/transfer?to=@person.UserId">Send money</a>
+                        @if (person.Route is { } route)
+                        {
+                            <a class="button secondary small" href="@route">See base</a>
+                        }
+                        @if (Launcher.Allows(BuiltInApps.Feed))
+                        {
+                            <a class="button secondary small" href="u/@person.UserId">Profile</a>
+                        }
+                    </div>
+
+                    @if (Group.CanSetRoles || ChatPermissions.CanModerate(Group.MyRole, person.Role))
+                    {
+                        <div class="profile-admin">
+                            <span class="label">Admin</span>
+                            <div class="profile-actions">
+                                @if (Group.CanSetRoles)
+                                {
+                                    @if (person.Role == ChatRoles.Member)
+                                    {
+                                        <button class="secondary small" disabled="@_busy" @onclick="() => SetRoleAsync(person, ChatRoles.Admin)">Make admin</button>
+                                    }
+                                    else if (person.Role == ChatRoles.Admin)
+                                    {
+                                        <button class="secondary small" disabled="@_busy" @onclick="() => SetRoleAsync(person, ChatRoles.Member)">Remove admin</button>
+                                    }
+                                    <button class="secondary small" disabled="@_busy" @onclick="() => ConfirmAsync(person.UserId, () => SetRoleAsync(person, ChatRoles.Owner), ChatRoles.Owner)">
+                                        @(Confirming(person.UserId, ChatRoles.Owner) ? "Tap again to hand over" : Group.Kind == GroupKinds.Alliance ? "Make leader" : "Make owner")
+                                    </button>
+                                }
+                                @if (ChatPermissions.CanModerate(Group.MyRole, person.Role))
+                                {
+                                    <button class="secondary small" disabled="@_busy" @onclick="() => MuteAsync(person)">@(person.MutedUntil is null ? "Mute 1 hour" : "Unmute")</button>
+                                    <button class="secondary small danger-text" disabled="@_busy" @onclick="() => ConfirmAsync(person.UserId, () => RemoveAsync(person))">
+                                        @(Confirming(person.UserId) ? "Tap again to remove" : "Remove")
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                <button class="link" @onclick="() => _selected = null">Close</button>
+            </div>
+        </div>
+    }
+</aside>
+
+@code {
+    [Parameter, EditorRequired] public GroupDto Group { get; set; } = null!;
+    [Parameter] public string Tab { get; set; } = "members";
+    [Parameter] public EventCallback<string> TabChanged { get; set; }
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>A newer copy of the group from an admin action here.</summary>
+    [Parameter] public EventCallback<GroupDto> OnChanged { get; set; }
+
+    /// <summary>Bumped by the page when the group changes, so the app tab reloads.</summary>
+    [Parameter] public int Version { get; set; }
+
+    Guid? _selected;
+    string? _error, _filter, _query;
+    string _icon = "", _name = "", _description = "";
+    bool _busy;
+    Guid? _infoFor;
+    List<UserDto> _found = [];
+    (Guid UserId, string? What)? _confirming;
+
+    GroupMemberDto? Selected => _selected is { } id ? Group.Members.FirstOrDefault(m => m.UserId == id) : null;
+
+    GroupMemberDto? Me => Group.Members.FirstOrDefault(m => m.UserId == Session.MyUserId);
+
+    protected override void OnParametersSet()
+    {
+        // The edit form starts from the group as it is, once per group.
+        if (_infoFor == Group.ConversationId)
+            return;
+        (_infoFor, _icon, _name, _description, _selected, _found) = (Group.ConversationId, Group.Icon, Group.Title, Group.Description ?? "", null, []);
+    }
+
+    Task SetTab(string tab)
+    {
+        (_selected, _error) = (null, null);
+        return TabChanged.InvokeAsync(tab);
+    }
+
+    void Select(Guid userId) => (_selected, _confirming, _error) = (userId, null, null);
+
+    /// <summary>Online members by their role or rank; everyone offline together at the end.</summary>
+    IEnumerable<(string Title, List<GroupMemberDto> Members)> Sections()
+    {
+        var shown = Group.Members.Where(m => string.IsNullOrWhiteSpace(_filter) || m.DisplayName.Contains(_filter.Trim(), StringComparison.CurrentCultureIgnoreCase)).ToList();
+        foreach (var section in shown.Where(m => m.Online).GroupBy(m => (m.SectionOrder, m.Section)).OrderBy(g => g.Key.SectionOrder))
+            yield return (section.Key.Section, section.ToList());
+        if (shown.Where(m => !m.Online).ToList() is { Count: > 0 } offline)
+            yield return ("Offline", offline);
+    }
+
+    string StatusLine(GroupMemberDto m)
+    {
+        if (m.MutedUntil is { } muted)
+            return $"Muted until {muted.ToLocalTime():HH:mm}";
+        if (m.Status is { } status)
+            return status;
+        if (m.Online)
+            return "Online";
+        return m.LastSeenAt is { } seen ? $"Last seen {Ago(seen)}" : "Offline";
+    }
+
+    string Ago(DateTimeOffset at)
+    {
+        var gone = Clock.GetUtcNow() - at;
+        return gone.TotalMinutes < 1 ? "just now"
+            : gone.TotalHours < 1 ? $"{(int)gone.TotalMinutes} min ago"
+            : gone.TotalDays < 1 ? $"{(int)gone.TotalHours} h ago"
+            : gone.TotalDays < 2 ? "yesterday"
+            : at.ToLocalTime().ToString("d MMM");
+    }
+
+    static string RankTone(GroupMemberDto m) => m.Rank switch
+    {
+        "Owner" or "Leader" => "gold",
+        "Admin" or "Sovereign" or "Commander" => "brand",
+        _ => ""
+    };
+
+    string RoleName(GroupMemberDto? me) => Group.Kind == GroupKinds.Alliance && me?.Rank is { } rank ? rank.ToLowerInvariant() : ChatRoles.Name(me?.Role).ToLowerInvariant();
+
+    static string Article(string word) => ("aeiou".Contains(word[0]) ? "an " : "a ") + word;
+
+    bool Confirming(Guid userId, string? what = null) => _confirming is { } c && c.UserId == userId && c.What == what;
+
+    /// <summary>Hard-to-undo actions take a second tap.</summary>
+    async Task ConfirmAsync(Guid userId, Func<Task> action, string? what = null)
+    {
+        if (!Confirming(userId, what))
+        {
+            _confirming = (userId, what);
+            return;
+        }
+        _confirming = null;
+        await action();
+    }
+
+    async Task Run(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    Task Changed(GroupDto group) => OnChanged.InvokeAsync(group);
+
+    Task SaveInfoAsync() => Run(async () =>
+        await Changed(await Api.SaveGroupInfoAsync(Group.ConversationId, new SaveGroupInfoRequest(_name, _description, _icon))));
+
+    async Task SearchAsync()
+    {
+        var q = _query?.Trim() ?? "";
+        if (q.Length < 2)
+        {
+            _found = [];
+            return;
+        }
+        try
+        {
+            _found = await Api.SearchUsersAsync(q);
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    Task AddAsync(UserDto person) => Run(async () =>
+    {
+        await Changed(await Api.AddGroupMembersAsync(Group.ConversationId, [person.Id]));
+        _found.Remove(person);
+    });
+
+    Task SetRoleAsync(GroupMemberDto person, string role) => Run(async () =>
+        await Changed(await Api.SetGroupRoleAsync(Group.ConversationId, person.UserId, role)));
+
+    Task MuteAsync(GroupMemberDto person) => Run(async () =>
+        await Changed(await Api.MuteGroupMemberAsync(Group.ConversationId, person.UserId, person.MutedUntil is null ? 60 : 0)));
+
+    Task RemoveAsync(GroupMemberDto person) => Run(async () =>
+    {
+        await Api.RemoveGroupMemberAsync(Group.ConversationId, person.UserId);
+        _selected = null;
+        await Changed(await Api.GetGroupAsync(Group.ConversationId));
+    });
+
+    Task LeaveAsync() => Run(async () =>
+    {
+        await Api.RemoveGroupMemberAsync(Group.ConversationId, Session.MyUserId);
+        Navigation.NavigateTo("chats");
+    });
+
+    Task MessageAsync(GroupMemberDto person) => Run(async () =>
+    {
+        var chat = await Api.CreateConversationAsync(new CreateConversationRequest(ConversationType.Direct, [person.UserId], null));
+        Navigation.NavigateTo($"chat/{chat.Id}");
+    });
+}

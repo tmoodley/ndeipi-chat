@@ -1,4 +1,6 @@
 @inject ChatApi Api
+@inject ChatSession Session
+@inject TimeProvider Clock
 
 @* One message, drawn by kind. A kind this build doesn't know shows as a placeholder. Texts, galleries
    and listings can be forwarded (the ↪ beside them); hashtags open the Market at that tag. *@
@@ -51,6 +53,67 @@
                     {
                         <div class="media-caption">@Parts(media.CaptionParts)</div>
                     }
+                </div>
+                break;
+
+            case CyberWarsCardMessageViewModel { IsPing: true } ping:
+                var fresh = ping.IsFresh(Clock.GetUtcNow());
+                <div class="cw-card ping">
+                    <div class="cw-card-top">📍 Ping<span class="cw-card-state @(fresh ? "live" : "")">@(fresh ? "Live" : ping.SentAt.ToLocalTime().ToString("HH:mm"))</span></div>
+                    <div class="cw-card-body">
+                        @HexMap
+                        <div class="cw-card-text">
+                            <strong>@ping.Title</strong>
+                            <span>@ping.Text</span>
+                            <span class="muted small">Sector @ping.Card.Sector!.Value.Q,@ping.Card.Sector.Value.R</span>
+                        </div>
+                    </div>
+                    <div class="cw-card-actions"><a class="button primary small" href="@ping.Route">@ping.Action ›</a></div>
+                </div>
+                break;
+
+            case CyberWarsCardMessageViewModel { IsStrike: true } strike:
+                var votes = strike.Strike;
+                var approved = strike.IsApproved(Clock.GetUtcNow());
+                var voted = votes?.VoterIds.Contains(Session.MyUserId) == true;
+                <div class="cw-card strike @(approved ? "approved" : strike.IsClosed ? "closed" : "")">
+                    <div class="cw-card-top">🗳️ Strike vote<span class="cw-card-state">@(approved ? "Approved" : strike.IsClosed ? "Closed" : "Open")</span></div>
+                    <div class="cw-card-body">
+                        <div class="cw-card-text">
+                            <strong>@strike.Title</strong>
+                            @if (strike.IsClosed)
+                            {
+                                <span class="muted small">A newer strike vote replaced this one.</span>
+                            }
+                            else
+                            {
+                                <span class="muted small">@strike.Text</span>
+                                @if (votes is not null)
+                                {
+                                    <div class="vote-meter"><div class="vote-bar"><i style="width: @(votes.Needed <= 0 ? 0 : Math.Min(100, votes.Votes * 100 / votes.Needed))%"></i></div><b>@votes.Votes / @votes.Needed</b></div>
+                                    @if (votes.Voters.Count > 0)
+                                    {
+                                        <span class="muted small">Voted: @string.Join(", ", votes.Voters)</span>
+                                    }
+                                }
+                                @if (approved)
+                                {
+                                    <span class="small approved-text">Raids there get the bonus until @votes!.ApprovedUntil!.Value.ToLocalTime().ToString("HH:mm").</span>
+                                }
+                            }
+                        </div>
+                    </div>
+                    @if (_error is not null && _erroredOn == strike.Id)
+                    {
+                        <p class="error small">@_error</p>
+                    }
+                    <div class="cw-card-actions">
+                        @if (!strike.IsClosed && !approved)
+                        {
+                            <button class="small war-button" disabled="@(_busy || voted)" @onclick="() => VoteAsync(strike)">@(voted ? "You voted" : "Vote to strike")</button>
+                        }
+                        <a class="button secondary small" href="@strike.Route">@strike.Action</a>
+                    </div>
                 </div>
                 break;
 
@@ -247,6 +310,43 @@
             }
         }
     };
+
+    Guid? _erroredOn;
+
+    /// <summary>The pinged sector and its six neighbours, the middle one marked.</summary>
+    static readonly RenderFragment HexMap = __builder =>
+    {
+        <svg class="cw-hexmap" viewBox="0 0 84 78" aria-hidden="true">
+            <g>
+                <polygon class="h1" points="28,4 40,11 40,25 28,32 16,25 16,11" />
+                <polygon class="h2" points="52,4 64,11 64,25 52,32 40,25 40,11" />
+                <polygon class="h2" points="16,25 28,32 28,46 16,53 4,46 4,32" />
+                <polygon class="target" points="40,25 52,32 52,46 40,53 28,46 28,32" />
+                <polygon class="h1" points="64,25 76,32 76,46 64,53 52,46 52,32" />
+                <polygon class="h1" points="28,46 40,53 40,67 28,74 16,67 16,53" />
+                <polygon class="h2" points="52,46 64,53 64,67 52,74 40,67 40,53" />
+            </g>
+            <circle cx="40" cy="39" r="5" />
+        </svg>
+    };
+
+    /// <summary>Votes for the strike on this card; the card itself updates for everyone when the server records it.</summary>
+    async Task VoteAsync(CyberWarsCardMessageViewModel card)
+    {
+        (_busy, _error, _erroredOn) = (true, null, null);
+        try
+        {
+            await Api.SendJsonAsync<StrikeDto>(HttpMethod.Post, $"{CyberWarsContract.BasePath}/alliances/{card.Card.AllianceId}/strike/vote");
+        }
+        catch (ApiException ex)
+        {
+            (_error, _erroredOn) = (ex.Message, card.Id);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     async Task AnswerAsync(OfferMessageViewModel offer, string answer)
     {

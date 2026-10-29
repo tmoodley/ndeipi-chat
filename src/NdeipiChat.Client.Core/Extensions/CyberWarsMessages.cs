@@ -19,6 +19,27 @@ public sealed class CyberWarsCardMessageViewModel(MessageDto message, MessageRen
     public string Route => Card.Route;
 
     public override string Preview => $"{Icon} {Title}";
+
+    public bool IsPing => Card.Kind == CyberWarsCardKinds.Ping && Card.Sector is not null;
+    public bool IsStrike => Card.Kind == CyberWarsCardKinds.Strike && Card.AllianceId is not null;
+
+    /// <summary>A ping is live for a few minutes after it's sent, then shows as earlier news.</summary>
+    public bool IsFresh(DateTimeOffset now) => now - SentAt < CyberWarsCardKinds.PingFresh;
+
+    /// <summary>A strike card's votes, updated as members vote; null until the first state arrives.</summary>
+    public StrikeCardState? Strike { get; private set; }
+
+    public bool IsApproved(DateTimeOffset now) => Strike?.ApprovedUntil > now;
+
+    public bool IsClosed => Strike?.Closed == true;
+
+    public override void ApplyState(JsonElement state)
+    {
+        if (!IsStrike)
+            return;
+        Strike = ContractJson.Read<StrikeCardState>(state);
+        OnPropertyChanged(nameof(Strike));
+    }
 }
 
 public sealed class CyberWarsCardRenderer : IMessageRenderer

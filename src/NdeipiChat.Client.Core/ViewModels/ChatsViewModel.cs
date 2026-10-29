@@ -23,6 +23,7 @@ public sealed partial class ChatsViewModel : ObservableObject
         (_api, _session, _extensions, _navigator, _ui, _dialogs, _clock) = (api, session, extensions, navigator, ui, dialogs, clock);
         _session.MessageArrived += m => _ui.Post(() => OnMessage(m));
         _session.Connection.ConversationUpdated += c => _ui.Post(() => Upsert(c));
+        _session.Connection.ConversationRemoved += id => _ui.Post(() => Remove(id));
         _session.Connection.ReadReceipt += r => _ui.Post(() => OnReadReceipt(r));
         _session.Connection.Reconnected += () => _ui.Post(() => _ = RefreshAsync());
     }
@@ -115,6 +116,13 @@ public sealed partial class ChatsViewModel : ObservableObject
             var index = Conversations.TakeWhile(c => c.Conversation.LastActivityAt > conversation.LastActivityAt).Count();
             Conversations.Insert(index, new ConversationItemViewModel(conversation, PreviewOf(conversation), _clock));
         }
+        Changed();
+    }
+
+    void Remove(Guid conversationId)
+    {
+        if (Conversations.FirstOrDefault(c => c.Id == conversationId) is { } gone)
+            Conversations.Remove(gone);
         Changed();
     }
 

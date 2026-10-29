@@ -11,6 +11,9 @@ public static class CyberWarsContract
     public const string AppId = "cyberwars";
     public const string BasePath = "api/cyberwars";
 
+    /// <summary>The token /send-coop and the war room fill in: Coop Coin, moved only by the wallet.</summary>
+    public const string CoopSymbol = "COOP";
+
     /// <summary>One authoritative step (NFR-1).</summary>
     public const int TickMilliseconds = 100;
 
@@ -436,4 +439,34 @@ public sealed record MapEventDto(string Kind, ZambianProvince Province, HexCell 
 /// or a /send-coop request that opens the wallet's own confirm screen. Opening it never moves value.
 /// </summary>
 /// <param name="Route">Where tapping it goes: the game (apps/cyberwars?...) or the chat's transfer screen.</param>
-public sealed record CyberWarsCardPayload(string Icon, string Title, string Text, string Route, string Action);
+/// <param name="Kind">A <see cref="CyberWarsCardKinds"/> value; older cards have none and show as a note.</param>
+/// <param name="Province">The pinged or voted sector's province, for the card's little map.</param>
+/// <param name="AllianceId">A strike card's alliance, which its Vote button votes in.</param>
+public sealed record CyberWarsCardPayload(
+    string Icon, string Title, string Text, string Route, string Action,
+    string? Kind = null, ZambianProvince? Province = null, HexCell? Sector = null, Guid? AllianceId = null);
+
+public static class CyberWarsCardKinds
+{
+    public const string Note = "note";
+    public const string Ping = "ping";
+    public const string Strike = "strike";
+
+    /// <summary>A ping shows as live for this long after it's sent.</summary>
+    public static readonly TimeSpan PingFresh = TimeSpan.FromMinutes(15);
+}
+
+/// <summary>
+/// A strike card's state, updated in place for everyone as members vote. <see cref="Closed"/>: a
+/// newer vote replaced it, or the alliance is gone.
+/// </summary>
+public sealed record StrikeCardState(
+    int Votes, int Needed, IReadOnlyList<string> Voters, IReadOnlyList<Guid> VoterIds, DateTimeOffset? ApprovedUntil, bool Closed);
+
+/// <summary>The war room's tab in Ndeipi Chat: the alliance at a glance, with ways back into the game.</summary>
+/// <param name="HomeSector">The leader's home sector, e.g. "Lusaka 1,-1".</param>
+public sealed record WarRoomDto(
+    AllianceDto Alliance, string? HomeSector, string MapRoute, int SectorsHeld, IReadOnlyList<WarRoomPingDto> Pings,
+    string? MyBaseSector, string? MyBaseRoute);
+
+public sealed record WarRoomPingDto(string Place, string Text, string From, DateTimeOffset At, string Route);

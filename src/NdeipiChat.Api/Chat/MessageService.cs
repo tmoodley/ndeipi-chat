@@ -31,6 +31,8 @@ public sealed class MessageService(
             .FirstOrDefaultAsync(c => c.Id == request.ConversationId, ct);
         if (conversation is null || conversation.Members.All(m => m.UserId != sender.Id))
             throw new ChatRejectedException("You aren't a member of this conversation.");
+        if (conversation.Members.Single(m => m.UserId == sender.Id).MutedUntil is { } muted && muted > clock.GetUtcNow())
+            throw new ChatRejectedException($"An admin muted you in this group until {muted.UtcDateTime:d MMM, HH:mm} UTC.");
 
         var context = new MessageContext(sender, conversation, conversation.Members.Select(m => m.User).ToList(), Guid.NewGuid());
         var prepared = await handler.PrepareAsync(context, request.Payload, ct);

@@ -20,6 +20,7 @@ public static class CyberWarsModule
         services.AddScoped<CyberWarsWorldService>();
         services.AddScoped<CyberWarsCards>();
         services.AddScoped<IChatCommandListener, CyberWarsWarRoom>();
+        services.AddScoped<IGroupApp, CyberWarsGroupApp>();
         services.AddMessageKind<CyberWarsCardHandler>();
         return services;
     }
@@ -107,6 +108,21 @@ public static class CyberWarsModule
             var me = await users.GetAsync(http.User, http.RequestAborted);
             await world.PingAsync(me, request, http.RequestAborted);
             return Results.NoContent();
+        });
+
+        // ---- The war room in Ndeipi Chat: its tab, and the Vote button on a strike card ----
+
+        api.MapGet("/alliances/{id:guid}/room", async (Guid id, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            return Results.Ok(await world.RoomAsync(me, id, http.RequestAborted));
+        });
+
+        api.MapPost("/alliances/{id:guid}/strike/vote", async (Guid id, HttpContext http, CurrentUserService users, CyberWarsWorldService world) =>
+        {
+            var me = await users.GetAsync(http.User, http.RequestAborted);
+            var alliance = await world.MemberAllianceAsync(me, id, http.RequestAborted);
+            return Results.Ok(await world.VoteStrikeAsync(me, alliance, http.RequestAborted));
         });
     }
 }

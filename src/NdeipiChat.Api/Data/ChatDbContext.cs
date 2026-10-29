@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using NdeipiChat.Contracts;
 
 namespace NdeipiChat.Api.Data;
 
@@ -10,6 +11,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<UserWallet> UserWallets => Set<UserWallet>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ConversationMember> Members => Set<ConversationMember>();
+    public DbSet<ChatGroup> ChatGroups => Set<ChatGroup>();
     public DbSet<ChatMessage> Messages => Set<ChatMessage>();
     public DbSet<TokenTransfer> TokenTransfers => Set<TokenTransfer>();
     public DbSet<BankingProfile> BankingProfiles => Set<BankingProfile>();
@@ -354,6 +356,18 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
             e.HasKey(m => new { m.ConversationId, m.UserId });
             e.HasIndex(m => m.UserId);
             e.HasOne(m => m.User).WithMany().HasForeignKey(m => m.UserId).OnDelete(DeleteBehavior.Restrict);
+            e.Property(m => m.Role).HasMaxLength(16);
+        });
+
+        model.Entity<ChatGroup>(e =>
+        {
+            e.HasKey(g => g.ConversationId);
+            e.Property(g => g.Kind).HasMaxLength(20);
+            e.Property(g => g.Icon).HasMaxLength(16);
+            e.Property(g => g.Description).HasMaxLength(GroupContract.MaxDescription);
+            e.Property(g => g.AppId).HasMaxLength(32);
+            e.HasIndex(g => new { g.AppId, g.AppRef });
+            e.HasOne<Conversation>().WithOne().HasForeignKey<ChatGroup>(g => g.ConversationId).OnDelete(DeleteBehavior.Cascade);
         });
 
         model.Entity<ChatMessage>(e =>

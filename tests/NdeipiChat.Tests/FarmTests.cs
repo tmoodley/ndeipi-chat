@@ -6,7 +6,7 @@ using NdeipiChat.Tests.Infrastructure;
 
 namespace NdeipiChat.Tests;
 
-/// <summary>Ndeipi.City, the farm game: it's in the launcher, and its engine plays and saves on the device.</summary>
+/// <summary>Moo Ville, the farm game: it's in the launcher, and its engine plays and saves on the device.</summary>
 public sealed class FarmTests(TestApp app) : IClassFixture<TestApp>
 {
     [Fact]
@@ -17,7 +17,7 @@ public sealed class FarmTests(TestApp app) : IClassFixture<TestApp>
         var manifest = await user.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
 
         var farm = manifest.Apps.Single(a => a.Id == FarmContract.AppId);
-        Assert.Equal(("Ndeipi.City", "apps/farm", "NdeipiChat.SubApps.Farm"), (farm.Title, farm.Route, farm.Assembly));
+        Assert.Equal(("Moo Ville", "apps/farm", "NdeipiChat.SubApps.Farm"), (farm.Title, farm.Route, farm.Assembly));
         Assert.StartsWith("_framework/NdeipiChat.SubApps.Farm", farm.BundleUri);
     }
 

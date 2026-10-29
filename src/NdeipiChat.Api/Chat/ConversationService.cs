@@ -49,8 +49,13 @@ public sealed class ConversationService(ChatDbContext db, ChatNotifier notifier,
         conversation.CreatedAt = now;
         conversation.LastActivityAt = now;
         foreach (var user in others.Prepend(creator))
-            conversation.Members.Add(new ConversationMember { UserId = user.Id, JoinedAt = now });
+        {
+            var role = conversation.Type == ConversationType.Group && user.Id == creator.Id ? ChatRoles.Owner : ChatRoles.Member;
+            conversation.Members.Add(new ConversationMember { UserId = user.Id, JoinedAt = now, Role = role });
+        }
         db.Conversations.Add(conversation);
+        if (conversation.Type == ConversationType.Group)
+            db.ChatGroups.Add(new ChatGroup { ConversationId = conversation.Id, CreatedAt = now });
 
         try
         {
@@ -75,15 +80,16 @@ public sealed class ConversationService(ChatDbContext db, ChatNotifier notifier,
     }
 
     /// <summary>
-    /// A group a feature owns and fills as people join (a CyberWars war room): it may start with
-    /// just its owner, unlike a group someone starts in Chats.
+    /// A group an app owns and fills as people join (a CyberWars war room): it may start with
+    /// just its owner, unlike a group someone starts in Chats. The app decides who's in it.
     /// </summary>
-    public async Task<Guid> CreateGroupForAsync(User owner, string title, CancellationToken ct)
+    public async Task<Guid> CreateGroupForAsync(User owner, string title, string kind, string icon, string appId, Guid appRef, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var conversation = new Conversation { Id = Guid.NewGuid(), Type = ConversationType.Group, Title = title[..Math.Min(title.Length, 100)], CreatedAt = now, LastActivityAt = now };
-        conversation.Members.Add(new ConversationMember { UserId = owner.Id, JoinedAt = now });
+        conversation.Members.Add(new ConversationMember { UserId = owner.Id, JoinedAt = now, Role = ChatRoles.Owner });
         db.Conversations.Add(conversation);
+        db.ChatGroups.Add(new ChatGroup { ConversationId = conversation.Id, Kind = kind, Icon = icon, AppId = appId, AppRef = appRef, CreatedAt = now });
         await db.SaveChangesAsync(ct);
         await notifier.ToUser(owner.ClerkUserId).ConversationUpdated((await ListForAsync(owner.Id, conversation.Id, ct)).Single());
         return conversation.Id;
@@ -99,11 +105,28 @@ public sealed class ConversationService(ChatDbContext db, ChatNotifier notifier,
         db.Members.Add(new ConversationMember { ConversationId = conversationId, UserId = user.Id, JoinedAt = clock.GetUtcNow() });
         await db.SaveChangesAsync(ct);
         await notifier.ToUser(user.ClerkUserId).ConversationUpdated((await ListForAsync(user.Id, conversationId, ct)).Single());
+        await notifier.PublishAsync(GroupContract.Topic(conversationId), new GroupEventDto(GroupEventKinds.Changed));
     }
 
-    /// <summary>Takes someone out of a group: they can no longer read or send in it.</summary>
-    public Task RemoveMemberAsync(Guid conversationId, User user, CancellationToken ct) =>
-        db.Members.Where(m => m.ConversationId == conversationId && m.UserId == user.Id).ExecuteDeleteAsync(ct);
+    /// <summary>Takes someone out of a group: they can no longer read or send in it, and it leaves their Chats.</summary>
+    public async Task RemoveMemberAsync(Guid conversationId, User user, CancellationToken ct)
+    {
+        if (await db.Members.Where(m => m.ConversationId == conversationId && m.UserId == user.Id).ExecuteDeleteAsync(ct) == 0)
+            return;
+        await notifier.ToUser(user.ClerkUserId).ConversationRemoved(conversationId);
+        await notifier.PublishAsync(GroupContract.Topic(conversationId), new GroupEventDto(GroupEventKinds.Changed));
+    }
+
+    /// <summary>Sets a member's role. Handing a group to someone else makes the old owner an admin.</summary>
+    public async Task SetRoleAsync(Guid conversationId, Guid userId, string role, CancellationToken ct)
+    {
+        if (role == ChatRoles.Owner)
+            await db.Members.Where(m => m.ConversationId == conversationId && m.Role == ChatRoles.Owner && m.UserId != userId)
+                .ExecuteUpdateAsync(s => s.SetProperty(m => m.Role, ChatRoles.Admin), ct);
+        await db.Members.Where(m => m.ConversationId == conversationId && m.UserId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(m => m.Role, role), ct);
+        await notifier.PublishAsync(GroupContract.Topic(conversationId), new GroupEventDto(GroupEventKinds.Changed));
+    }
 
     /// <summary>The user's conversations, most recently active first -- or just one of them.</summary>
     public async Task<IReadOnlyList<ConversationDto>> ListForAsync(Guid userId, Guid? conversationId, CancellationToken ct)

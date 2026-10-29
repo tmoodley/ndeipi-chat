@@ -306,6 +306,9 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.Property<DateTimeOffset?>("ApprovedUntil")
                         .HasColumnType("datetimeoffset");
 
+                    b.Property<Guid?>("CardMessageId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Province")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -470,6 +473,42 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.ToTable("BankingProfiles");
                 });
 
+            modelBuilder.Entity("NdeipiChat.Api.Data.ChatGroup", b =>
+                {
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AppId")
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<Guid?>("AppRef")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("Icon")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.HasKey("ConversationId");
+
+                    b.HasIndex("AppId", "AppRef");
+
+                    b.ToTable("ChatGroups");
+                });
+
             modelBuilder.Entity("NdeipiChat.Api.Data.ChatMedia", b =>
                 {
                     b.Property<Guid>("Id")
@@ -609,6 +648,14 @@ namespace NdeipiChat.Api.Data.Migrations
 
                     b.Property<long?>("LastReadSeq")
                         .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset?>("MutedUntil")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("nvarchar(16)");
 
                     b.HasKey("ConversationId", "UserId");
 
@@ -3778,6 +3825,9 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.Property<bool>("EmailVerified")
                         .HasColumnType("bit");
 
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<string>("Phone")
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
@@ -4918,6 +4968,15 @@ namespace NdeipiChat.Api.Data.Migrations
                     b.HasOne("NdeipiChat.Api.Data.User", null)
                         .WithOne()
                         .HasForeignKey("NdeipiChat.Api.Data.BankingProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NdeipiChat.Api.Data.ChatGroup", b =>
+                {
+                    b.HasOne("NdeipiChat.Api.Data.Conversation", null)
+                        .WithOne()
+                        .HasForeignKey("NdeipiChat.Api.Data.ChatGroup", "ConversationId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

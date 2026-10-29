@@ -30,6 +30,10 @@ public interface IChatClient
     Task MessageStateChanged(MessageStateDto state);
 
     Task ConversationUpdated(ConversationDto conversation);
+
+    /// <summary>You left a group or were removed from it: take it out of your chats.</summary>
+    Task ConversationRemoved(Guid conversationId);
+
     Task Typing(TypingDto typing);
     Task ReadReceipt(ReadReceiptDto receipt);
     Task BankingStatusChanged(BankingStatusDto status);

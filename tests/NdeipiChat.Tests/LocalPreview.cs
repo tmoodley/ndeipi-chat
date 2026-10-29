@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NdeipiChat.Client;
 using NdeipiChat.Client.Auth;
 using NdeipiChat.Contracts;
@@ -265,6 +267,38 @@ public sealed class LocalPreview
         await rudo.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-1, 1)));
         var lions = await me.PostAsync<AllianceDto>("api/cyberwars/alliances", new CreateAllianceRequest("Lusaka Lions"));
         await rudo.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });
+
+        // The war room as a community: four members by rank, a live ping, chat, and an open strike
+        // vote. Rudo stays connected, so she shows as online.
+        var chanda = await app.CreateUserAsync("Chanda Kunda", "chanda@example.test");
+        var mutale = await app.CreateUserAsync("Mutale Banda", "mutale@example.test");
+        await chanda.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(0, -1)));
+        await mutale.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-2, 1)));
+        await chanda.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });
+        await mutale.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });
+        await app.DbAsync(db => db.CyberWarsPlayers.Where(p => p.UserId == chanda.Id).ExecuteUpdateAsync(s => s.SetProperty(p => p.Rank, PlayerRank.Commander)));
+        await app.DbAsync(db => db.CyberWarsPlayers.Where(p => p.UserId == rudo.Id).ExecuteUpdateAsync(s => s.SetProperty(p => p.Rank, PlayerRank.Explorer)));
+        (await me.Http.PostAsJsonAsync("api/cyberwars/pings", new AlliancePingRequest(new NdeipiChat.Contracts.HexCell(1, 0), "Their towers are down. Go now.", ZambianProvince.Lusaka), ContractJson.Options)).EnsureSuccessStatusCode();
+        async Task SayAsync(TestUser who, Guid room, string text) =>
+            await who.PostAsync<MessageDto>($"api/conversations/{room}/messages", new SendMessageRequest(room, MessageKinds.Text, ContractJson.ToElement(new TextPayload(text)), Guid.NewGuid()));
+        await SayAsync(rudo, lions.ConversationId, "On it. Ty, send reinforcements when I'm in?");
+        await SayAsync(rudo, lions.ConversationId, "/vote-strike Lusaka 1,0");
+        await SayAsync(chanda, lions.ConversationId, "I'll hold the east side.");
+        await using var rudoOnline = new HubConnectionBuilder()
+            .WithUrl(new Uri(site, ChatHubContract.Path.TrimStart('/')), o =>
+                o.AccessTokenProvider = () => Task.FromResult<string?>(TestTokens.Create(rudo.ClerkId, rudo.SessionId)))
+            .AddJsonProtocol(o => ContractJson.Configure(o.PayloadSerializerOptions))
+            .Build();
+        await rudoOnline.StartAsync();
+
+        // An ordinary group run by Ty, with Tendai as an admin.
+        var traders = await me.PostAsync<ConversationDto>("api/conversations", new CreateConversationRequest(ConversationType.Group, [tendai.Id, rudo.Id, chanda.Id], "Mutare Market Traders"));
+        using (var info = await me.Http.PutAsJsonAsync(GroupContract.Path(traders.Id), new SaveGroupInfoRequest(null, "Prices, stock and lifts to Sakubva market. Be kind, no spam.", "🧺"), ContractJson.Options))
+            info.EnsureSuccessStatusCode();
+        using (var admin = await me.Http.PutAsJsonAsync($"api/conversations/{traders.Id}/members/{tendai.Id}/role", new SetGroupRoleRequest(ChatRoles.Admin), ContractJson.Options))
+            admin.EnsureSuccessStatusCode();
+        await SayAsync(rudo, traders.Id, "Tomatoes are $2 a crate at Sakubva this week.");
+        await SayAsync(tendai, traders.Id, "Anyone driving down on Saturday? I can share fuel.");
 
         // Ndeipi RWA (simulated): Ty holds a peak week still in its cooling-off, and a condo month
         // already in the Year 1 vault, whose NAV the oracle (Ty, an admin) has since raised 4%.
