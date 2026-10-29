@@ -17,8 +17,22 @@ public interface ITopicPolicy
 }
 
 [Authorize]
-public sealed class ChatHub(CurrentUserService users, MessageService messages, ConversationService conversations, IEnumerable<ITopicPolicy> topics) : Hub<IChatClient>
+public sealed class ChatHub(CurrentUserService users, MessageService messages, ConversationService conversations, GroupPresence presence, IEnumerable<ITopicPolicy> topics) : Hub<IChatClient>
 {
+    /// <summary>Their groups see them come online with their first connection, and go offline with their last.</summary>
+    public override async Task OnConnectedAsync()
+    {
+        await presence.ConnectedAsync(await CurrentUserAsync(), Context.ConnectionAborted);
+        await base.OnConnectedAsync();
+    }
+
+    public override async Task OnDisconnectedAsync(Exception? exception)
+    {
+        // The connection is already closed, so its token is cancelled; this must still finish.
+        await presence.DisconnectedAsync(await users.GetAsync(Context.User!, CancellationToken.None), CancellationToken.None);
+        await base.OnDisconnectedAsync(exception);
+    }
+
     /// <summary>Starts sending this connection <see cref="IChatClient.TopicMessage"/> for the topic, if its policy allows.</summary>
     public async Task Subscribe(string topic)
     {

@@ -11,14 +11,18 @@ namespace NdeipiChat.Api.CyberWars;
 /// and units only. /send-coop moves nothing: it answers with a card that opens the chat's own
 /// transfer screen, filled in, where the player checks and confirms it themselves.
 /// </summary>
-public sealed class CyberWarsWarRoom(ChatDbContext db, CyberWarsMatches matches, CyberWarsCards cards, TimeProvider clock) : IChatCommandListener
+public sealed class CyberWarsWarRoom(ChatDbContext db, CyberWarsMatches matches, CyberWarsCards cards, CyberWarsWorldService world, TimeProvider clock) : IChatCommandListener
 {
     public static readonly TimeSpan ReinforceEvery = TimeSpan.FromMinutes(5);
     public static readonly TimeSpan StrikeLasts = TimeSpan.FromHours(1);
     public const int ReinforcementSquads = 2;
 
+    /// <summary>What an approved strike adds to raids on its sector (MatchEngine.NewRaid), as the cards describe it.</summary>
+    public const int StrikeSquads = 2;
+    public const int StrikeOre = 1000;
+
     /// <summary>The token /send-coop fills in: Coop Coin, moved only by the wallet.</summary>
-    public const string CoopSymbol = "COOP";
+    public const string CoopSymbol = CyberWarsContract.CoopSymbol;
 
     public async Task OnCommandAsync(MessageContext context, string command, string arguments, CancellationToken ct)
     {
@@ -34,10 +38,11 @@ public sealed class CyberWarsWarRoom(ChatDbContext db, CyberWarsMatches matches,
         var answer = command switch
         {
             "/reinforce" => await ReinforceAsync(context, members, arguments, ct),
-            "/vote-strike" => await VoteStrikeAsync(context, alliance, members, arguments, ct),
+            "/vote-strike" => await VoteStrikeAsync(context, alliance, arguments, ct),
             _ => SendCoop(context, members, arguments),
         };
-        await cards.PostAsync(context.Sender, context.Conversation.Id, answer, ct);
+        if (answer is not null)
+            await cards.PostAsync(context.Sender, context.Conversation.Id, answer, ct);
     }
 
     static CyberWarsCardPayload Note(string icon, string title, string text) =>
@@ -89,45 +94,23 @@ public sealed class CyberWarsWarRoom(ChatDbContext db, CyberWarsMatches matches,
     /// <summary>
     /// /vote-strike Province q,r opens a vote on a sector; /vote-strike on its own votes for it. With
     /// more than half the alliance behind it, members' raids there land with extra squads and credits
-    /// for an hour.
+    /// for an hour. Either way the answer is the vote's own card, updated in place; a new card only
+    /// says what went wrong.
     /// </summary>
-    async Task<CyberWarsCardPayload> VoteStrikeAsync(MessageContext context, CyberWarsAlliance alliance, List<CyberWarsAllianceMember> members, string arguments, CancellationToken ct)
+    async Task<CyberWarsCardPayload?> VoteStrikeAsync(MessageContext context, CyberWarsAlliance alliance, string arguments, CancellationToken ct)
     {
-        var now = clock.GetUtcNow();
-        var strike = await db.CyberWarsStrikes.FirstOrDefaultAsync(s => s.AllianceId == alliance.Id, ct);
         if (arguments.Length > 0)
         {
             var parts = arguments.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries);
             if (parts is not [var p, var q, var r] || !CyberWarsWorld.TryParseSector($"{p}:{q}:{r}", out var province, out var sector))
                 return Note("❔", "Which sector?", "Try /vote-strike Lusaka 1,-1 to open a vote, or /vote-strike to vote for the open one.");
-            if (strike is not null)
-            {
-                await db.CyberWarsStrikeBallots.Where(b => b.AllianceId == alliance.Id).ExecuteDeleteAsync(ct);
-                db.CyberWarsStrikes.Remove(strike);
-                await db.SaveChangesAsync(ct);
-            }
-            strike = new CyberWarsStrike { AllianceId = alliance.Id, Province = province, SectorQ = sector.Q, SectorR = sector.R, StartedAt = now };
-            db.CyberWarsStrikes.Add(strike);
-            await db.SaveChangesAsync(ct);
+            await world.OpenStrikeAsync(context.Sender, alliance, province, sector, ct);
+            return null;
         }
-        else if (strike is null)
+        if (!await db.CyberWarsStrikes.AnyAsync(s => s.AllianceId == alliance.Id, ct))
             return Note("❔", "No strike vote is open", "Open one with /vote-strike Lusaka 1,-1.");
-
-        if (!await db.CyberWarsStrikeBallots.AnyAsync(b => b.AllianceId == alliance.Id && b.UserId == context.Sender.Id, ct))
-            db.CyberWarsStrikeBallots.Add(new CyberWarsStrikeBallot { AllianceId = alliance.Id, UserId = context.Sender.Id });
-        await db.SaveChangesAsync(ct);
-        var votes = await db.CyberWarsStrikeBallots.CountAsync(b => b.AllianceId == alliance.Id, ct);
-        var needed = members.Count / 2 + 1;
-        var place = CyberWarsWorld.SectorName(strike.Province, new HexCell(strike.SectorQ, strike.SectorR));
-        var route = CyberWarsWorld.SectorRoute(strike.Province, new HexCell(strike.SectorQ, strike.SectorR));
-        if (votes >= needed && strike.ApprovedUntil is null)
-        {
-            strike.ApprovedUntil = now + StrikeLasts;
-            await db.SaveChangesAsync(ct);
-        }
-        if (strike.ApprovedUntil > now)
-            return new("🎯", $"Strike approved on {place}", $"{votes} of {members.Count} voted. For the next hour, raids there land with extra squads and 1,000 ore credits.", route, "Open the map");
-        return new("🗳️", $"Strike vote on {place}", $"{votes} of {needed} votes needed. Reply /vote-strike to add yours.", route, "Open the map");
+        await world.VoteStrikeAsync(context.Sender, alliance, ct);
+        return null;
     }
 
     /// <summary>

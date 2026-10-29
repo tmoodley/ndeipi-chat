@@ -157,6 +157,27 @@ public sealed class ChatApi(HttpClient http)
     public Task DeletePostAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<object>(HttpMethod.Delete, $"api/posts/{id}", null, ct);
 
+    // ---- Group chats as communities ----
+
+    public Task<GroupDto> GetGroupAsync(Guid conversationId, CancellationToken ct = default) =>
+        GetAsync<GroupDto>(GroupContract.Path(conversationId), ct);
+
+    public Task<GroupDto> SaveGroupInfoAsync(Guid conversationId, SaveGroupInfoRequest request, CancellationToken ct = default) =>
+        SendAsync<GroupDto>(HttpMethod.Put, GroupContract.Path(conversationId), request, ct);
+
+    public Task<GroupDto> AddGroupMembersAsync(Guid conversationId, IReadOnlyList<Guid> userIds, CancellationToken ct = default) =>
+        SendAsync<GroupDto>(HttpMethod.Post, $"api/conversations/{conversationId}/members", new AddGroupMembersRequest(userIds), ct);
+
+    /// <summary>Removes someone, or with your own id, leaves the group.</summary>
+    public Task RemoveGroupMemberAsync(Guid conversationId, Guid userId, CancellationToken ct = default) =>
+        SendAsync<object>(HttpMethod.Delete, $"api/conversations/{conversationId}/members/{userId}", null, ct);
+
+    public Task<GroupDto> SetGroupRoleAsync(Guid conversationId, Guid userId, string role, CancellationToken ct = default) =>
+        SendAsync<GroupDto>(HttpMethod.Put, $"api/conversations/{conversationId}/members/{userId}/role", new SetGroupRoleRequest(role), ct);
+
+    public Task<GroupDto> MuteGroupMemberAsync(Guid conversationId, Guid userId, int minutes, CancellationToken ct = default) =>
+        SendAsync<GroupDto>(HttpMethod.Put, $"api/conversations/{conversationId}/members/{userId}/mute", new MuteGroupMemberRequest(minutes), ct);
+
     /// <summary>For pages without a dedicated method here (Social's profiles and groups).</summary>
     public Task<T> GetJsonAsync<T>(string path, CancellationToken ct = default) => GetAsync<T>(path, ct);
 

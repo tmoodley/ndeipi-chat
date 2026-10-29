@@ -19,6 +19,7 @@ public static class ChatModule
         services.AddScoped<MessageStateService>();
         services.AddScoped<ConversationService>();
         services.AddMessageKind<TextMessageHandler>();
+        services.AddGroups();
         services.AddExceptionHandler<ApiExceptionHandler>();
         return services;
     }
@@ -31,6 +32,7 @@ public static class ChatModule
     public static void MapChat(this IEndpointRouteBuilder app)
     {
         app.MapHub<ChatHub>(ChatHubContract.Path);
+        app.MapGroups();
 
         var api = app.MapGroup("/api").RequireAuthorization();
 

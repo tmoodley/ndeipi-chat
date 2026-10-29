@@ -100,6 +100,9 @@ public sealed class CyberWarsStrike
     public int SectorR { get; set; }
     public DateTimeOffset StartedAt { get; set; }
     public DateTimeOffset? ApprovedUntil { get; set; }
+
+    /// <summary>The vote's card in the war room, updated in place as members vote.</summary>
+    public Guid? CardMessageId { get; set; }
 }
 
 public sealed class CyberWarsStrikeBallot

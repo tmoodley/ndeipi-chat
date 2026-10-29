@@ -8,7 +8,9 @@
 @inject ChatsViewModel Chats
 
 @* The messenger: your chats, this conversation, and the exchange panel for sending money and
-   tokens here. On a phone, one pane at a time; the exchange panel slides over the conversation. *@
+   tokens here. A group's pane shows its members, its app (a war room's) and its info instead,
+   with the exchange one tap away. On a phone, one pane at a time; the side pane slides over the
+   conversation. *@
 
 <PageTitle>@(string.IsNullOrEmpty(Vm.Title) ? "Chat" : Vm.Title) · Ndeipi</PageTitle>
 
@@ -24,23 +26,50 @@
                     <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
                 </a>
             }
+            else if (_group is { } g)
+            {
+                <button class="group-avatar @(g.Kind == GroupKinds.Alliance ? "alliance" : "")" title="About this group" @onclick='() => OpenPanel("about")'>@g.Icon</button>
+            }
             else
             {
                 <Avatar Url="@Vm.Conversation?.AvatarUrl" Initials="@Display.Initials(Vm.Title)" Size="46" />
             }
             <div class="who">
-                <strong>@Vm.Title @if (Other is { } person) {<TrustBadge UserId="person.Id" />}</strong>
+                <strong>@(_group?.Title ?? Vm.Title) @if (Other is { } person) {<TrustBadge UserId="person.Id" />}
+                    @if (_group is { Kind: GroupKinds.Alliance })
+                    {
+                        <span class="kind-chip">Alliance</span>
+                    }
+                </strong>
                 @if (Vm.TypingText is not null)
                 {
                     <span class="typing" style="padding: 0">@Vm.TypingText</span>
+                }
+                else if (_group is { } group)
+                {
+                    <span class="group-facts-line">
+                        @foreach (var fact in group.Facts)
+                        {
+                            <span>@fact.Label <b>@fact.Value</b></span>
+                        }
+                        <span><i class="online-dot"></i>@group.Members.Count @(group.Members.Count == 1 ? "member" : "members") · @group.OnlineCount online</span>
+                    </span>
                 }
                 else
                 {
                     <span class="pill">@(Vm.Conversation?.Type == ConversationType.Group ? $"Group · {Vm.Conversation.Members.Count}" : "Direct")</span>
                 }
             </div>
-            <button class="icon-button brand" title="Send money or tokens" @onclick='() => OpenPanel(_tab == "history" ? DefaultTab : _tab)'>💸</button>
-            <button class="icon-button" title="Transfers in this chat" @onclick='() => OpenPanel("history")'>🧾</button>
+            @if (_group?.Link is { } link)
+            {
+                <a class="icon-button button brand hide-narrow" href="@link.Route" title="@link.Label" aria-label="@link.Label">🗺️</a>
+            }
+            @if (_group is not null)
+            {
+                <button class="icon-button @(Showing("members") ? "on" : "")" title="Members" @onclick='() => OpenPanel("members")'>👥</button>
+            }
+            <button class="icon-button brand" title="Send money or tokens" @onclick='() => OpenPanel(_tab is "send-money" or "transfer" ? _tab : DefaultTab)'>💸</button>
+            <button class="icon-button @(_group is null ? "" : "hide-narrow")" title="Transfers in this chat" @onclick='() => OpenPanel("history")'>🧾</button>
         </header>
 
         <div class="messages" @ref="_scroller">
@@ -109,10 +138,26 @@
         </div>
     }
 
-    <ExchangePanel ConversationId="Id" Messages="Vm.Messages" @bind-Tab="_tab"
-                   CssClass="@((_open ? "open" : "") + (_hidden ? " hidden" : ""))" OnClose="ClosePanel" />
+    @if (_group is not null && IsGroupTab(_tab))
+    {
+        <GroupPanel Group="_group" @bind-Tab="_tab" Version="_version" OnChanged="g => _group = g"
+                    CssClass="@((_open ? "open" : "") + (_hidden ? " hidden" : ""))" OnClose="ClosePanel" />
+    }
+    else
+    {
+        <ExchangePanel ConversationId="Id" Messages="Vm.Messages" @bind-Tab="_tab"
+                       CssClass="@((_open ? "open" : "") + (_hidden ? " hidden" : ""))" OnClose="ClosePanel" />
+    }
 
     <nav class="app-rail" aria-label="Chat apps">
+        @if (_group is { } rail)
+        {
+            <button class="@(Showing("members") ? "on" : "")" @onclick='() => OpenPanel("members")'><span class="tile-icon tone-purple">👥</span>Members</button>
+            @if (rail.Tab is { } app)
+            {
+                <button class="@(Showing("app") ? "on" : "")" @onclick='() => OpenPanel("app")'><span class="tile-icon tone-red">@app.Icon</span>@app.Title</button>
+            }
+        }
         @if (Launcher.Allows(BuiltInApps.Wallet))
         {
             <button class="@(Showing("send-money") ? "on" : "")" @onclick='() => OpenPanel("send-money")'><span class="tile-icon tone-green">$</span>Money</button>
@@ -144,13 +189,100 @@
 
     bool Showing(string tab) => _tab == tab && (_open || !_hidden);
 
+    static bool IsGroupTab(string tab) => tab is "members" or "app" or "about";
+
+    // ---- The group as a community: its members, roles and presence, live ----
+
+    GroupDto? _group;
+    Guid? _groupTopicFor;
+    int _version;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Session.Connection.TopicMessageReceived += OnTopic;
+        Session.Connection.ConversationRemoved += OnRemoved;
+    }
+
     protected override async Task OnParametersSetAsync()
     {
         _tab = Panel is "send-money" or "transfer" or "history" ? Panel : DefaultTab;
         _open = Panel is not null;
         await Vm.OnNavigatedToAsync(new Dictionary<string, object> { [Routes.ConversationIdParameter] = Id });
         Vm.Activate();
+        await LoadGroupAsync();
     }
+
+    /// <summary>A group opens on its members; its updates arrive on group:{id} while it's on screen.</summary>
+    async Task LoadGroupAsync()
+    {
+        if (_groupTopicFor is { } previous && previous != Id)
+        {
+            _groupTopicFor = null;
+            await Unsubscribe(previous);
+        }
+        if (Vm.Conversation is not { Type: ConversationType.Group } || Vm.ConversationId != Id)
+        {
+            _group = null;
+            return;
+        }
+        try
+        {
+            _group = await Api.GetGroupAsync(Id);
+            if (Panel is null)
+                _tab = "members";
+            if (_groupTopicFor != Id)
+            {
+                await Session.Connection.SubscribeAsync(GroupContract.Topic(Id));
+                _groupTopicFor = Id;
+            }
+        }
+        catch (Exception ex) when (ex is ApiException or Microsoft.AspNetCore.SignalR.HubException)
+        {
+            // The chat still works without its members pane.
+        }
+    }
+
+    void OnTopic(TopicMessageDto message)
+    {
+        if (_group is not { } group || message.Topic != GroupContract.Topic(group.ConversationId))
+            return;
+        var e = ContractJson.Read<GroupEventDto>(message.Payload);
+        if (e is { Kind: GroupEventKinds.Presence, UserId: { } userId, Online: { } online })
+        {
+            _group = group with
+            {
+                Members = group.Members.Select(m => m.UserId == userId ? m with { Online = online, LastSeenAt = e.LastSeenAt ?? m.LastSeenAt } : m).ToList()
+            };
+            _ = InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            _ = InvokeAsync(ReloadGroupAsync);
+        }
+    }
+
+    async Task ReloadGroupAsync()
+    {
+        try
+        {
+            _group = await Api.GetGroupAsync(Id);
+            _version++;
+            StateHasChanged();
+        }
+        catch (ApiException)
+        {
+            // Removed from it a moment ago; ConversationRemoved takes them out.
+        }
+    }
+
+    void OnRemoved(Guid conversationId)
+    {
+        if (conversationId == Id)
+            _ = InvokeAsync(() => Navigation.NavigateTo("chats"));
+    }
+
+    Task Unsubscribe(Guid conversationId) => Session.Connection.UnsubscribeAsync(GroupContract.Topic(conversationId));
 
     /// <summary>On wide screens the panel is a column that can be hidden; on narrow ones it slides over the chat.</summary>
     async Task OpenPanel(string tab)
@@ -291,6 +423,10 @@
 
     public override void Dispose()
     {
+        Session.Connection.TopicMessageReceived -= OnTopic;
+        Session.Connection.ConversationRemoved -= OnRemoved;
+        if (_groupTopicFor is { } topic)
+            _ = Unsubscribe(topic);
         Vm.Deactivate();
         Vm.Dispose();
         base.Dispose();

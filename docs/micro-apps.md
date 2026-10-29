@@ -115,6 +115,13 @@ public static void MapPos(this WebApplication app)
   (`PosSale`, `PosStock`).
 - **Reusing platform features** means calling the platform services directly. POS sends receipts
   into a chat through `ConversationService` and `MessageService`.
+- **Owning a group chat.** An app can own groups, as CyberWars owns each alliance's war room:
+  create it with `ConversationService.CreateGroupForAsync` (your app id and your own id for it),
+  and register an `IGroupApp`. Its `DescribeAsync` adds facts to the group's header, ranks and a
+  status line to its members, and a tab beside Money, Tokens and History. The app decides who's
+  in the group, so leaving it or being removed from it goes through your `RemoveMemberAsync`.
+  Roles (owner, admin, member) and their permissions are checked by `GroupService`, not by you.
+  See `CyberWarsGroupApp`.
 
 ## Phone and desktop
 

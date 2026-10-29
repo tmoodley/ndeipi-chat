@@ -79,6 +79,20 @@
 
     string _query = "";
     bool _groups;
+    Guid? _followed;
+
+    /// <summary>Opening a group shows the group list, so the open chat is always in the list beside it.</summary>
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (_followed == ActiveId || Vm.Conversations.FirstOrDefault(c => c.Id == ActiveId) is not { } active)
+            return;
+        _followed = ActiveId;
+        if (_groups != active.IsGroup)
+        {
+            _groups = active.IsGroup;
+            StateHasChanged();
+        }
+    }
 
     IEnumerable<ConversationItemViewModel> Visible => Vm.Conversations
         .Where(c => c.IsGroup == _groups)

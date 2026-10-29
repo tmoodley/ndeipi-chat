@@ -32,6 +32,7 @@ public sealed class ChatConnection : IAsyncDisposable
         _hub.On<MessageDto>(nameof(IChatClient.MessageReceived), m => MessageReceived?.Invoke(m));
         _hub.On<MessageStateDto>(nameof(IChatClient.MessageStateChanged), s => MessageStateChanged?.Invoke(s));
         _hub.On<ConversationDto>(nameof(IChatClient.ConversationUpdated), c => ConversationUpdated?.Invoke(c));
+        _hub.On<Guid>(nameof(IChatClient.ConversationRemoved), id => ConversationRemoved?.Invoke(id));
         _hub.On<TypingDto>(nameof(IChatClient.Typing), t => Typing?.Invoke(t));
         _hub.On<ReadReceiptDto>(nameof(IChatClient.ReadReceipt), r => ReadReceipt?.Invoke(r));
         _hub.On<BankingStatusDto>(nameof(IChatClient.BankingStatusChanged), b => BankingStatusChanged?.Invoke(b));
@@ -53,6 +54,9 @@ public sealed class ChatConnection : IAsyncDisposable
     public event Action<MessageDto>? MessageReceived;
     public event Action<MessageStateDto>? MessageStateChanged;
     public event Action<ConversationDto>? ConversationUpdated;
+
+    /// <summary>You left a group or were removed from it.</summary>
+    public event Action<Guid>? ConversationRemoved;
     public event Action<TypingDto>? Typing;
     public event Action<ReadReceiptDto>? ReadReceipt;
     public event Action<BankingStatusDto>? BankingStatusChanged;

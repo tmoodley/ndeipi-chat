@@ -1,0 +1,130 @@
+@* A CyberWars war room's tab: the alliance at a glance, its open strike vote, the latest pings,
+   and links back into the game. Sending Coop Coin only opens the wallet's confirm screen. *@
+@inject ChatApi Api
+@inject TimeProvider Clock
+
+@if (_room is null)
+{
+    <p class="@(_error is null ? "muted" : "error") small">@(_error ?? "Loading the war room…")</p>
+}
+else
+{
+    var alliance = _room.Alliance;
+    <div class="war-room">
+        <section class="war-card">
+            <div class="war-card-head">
+                <span class="group-icon">⚔️</span>
+                <div class="grow-min">
+                    <strong>@alliance.Name</strong>
+                    <div class="muted small">Led by @(alliance.Members.FirstOrDefault(m => m.Leader)?.Name ?? "nobody yet")</div>
+                </div>
+            </div>
+            <div class="war-stats">
+                <div><b>@alliance.Members.Count</b><span>Members</span></div>
+                <div><b>@_room.SectorsHeld</b><span>Sectors</span></div>
+                <div><b>@CyberWarsWorld.ProvinceName(alliance.Province)</b><span>Province</span></div>
+            </div>
+            @if (_room.HomeSector is { } home)
+            {
+                <div class="muted small">Home sector @home</div>
+            }
+        </section>
+
+        @if (alliance.Strike is { } strike)
+        {
+            var approved = strike.ApprovedUntil > Clock.GetUtcNow();
+            <section class="war-card">
+                <div class="war-card-row">
+                    <strong>Strike on @CyberWarsWorld.SectorName(strike.Province, strike.Sector)</strong>
+                    <span class="state-chip @(approved ? "done" : "open")">@(approved ? "Approved" : "Open")</span>
+                </div>
+                <div class="vote-meter"><div class="vote-bar"><i style="width: @Percent(strike.Votes, strike.Needed)%"></i></div><b>@strike.Votes / @strike.Needed</b></div>
+                @if (approved)
+                {
+                    <span class="muted small">Raids there land with extra squads until @strike.ApprovedUntil!.Value.ToLocalTime().ToString("HH:mm").</span>
+                }
+                else
+                {
+                    <button class="war-button" disabled="@_busy" @onclick="VoteAsync">Vote to strike</button>
+                }
+            </section>
+        }
+
+        <section class="war-card">
+            <strong>Recent pings</strong>
+            @if (_room.Pings.Count == 0)
+            {
+                <span class="muted small">No pings yet. Ping a sector from the CyberWars map.</span>
+            }
+            @foreach (var ping in _room.Pings)
+            {
+                <a class="war-ping" href="@ping.Route">
+                    <span>📍</span>
+                    <span class="grow-min"><span class="member-name">@ping.Place</span><span class="member-status">@ping.From · @ping.At.ToLocalTime().ToString("HH:mm") · @ping.Text</span></span>
+                    <span class="open">Open ›</span>
+                </a>
+            }
+        </section>
+
+        <div class="war-links">
+            <a href="@_room.MapRoute"><span>🗺️ World map</span><small>@CyberWarsWorld.ProvinceName(alliance.Province)</small></a>
+            <a href="@(_room.MyBaseRoute ?? $"apps/{CyberWarsContract.AppId}")"><span>🏠 My base</span><small>@(_room.MyBaseSector ?? "Pick your home")</small></a>
+            <a href="apps/@CyberWarsContract.AppId"><span>⚔️ Raid</span><small>Contested sectors</small></a>
+            <a href="chat/@ConversationId/transfer?symbol=@CyberWarsContract.CoopSymbol"><span>🪙 Send Coop</span><small>Opens the wallet</small></a>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public Guid AllianceId { get; set; }
+    [Parameter, EditorRequired] public Guid ConversationId { get; set; }
+
+    /// <summary>Changes when the war room does, to load it again.</summary>
+    [Parameter] public int Version { get; set; }
+
+    WarRoomDto? _room;
+    string? _error;
+    bool _busy;
+    (Guid, int)? _loaded;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded == (AllianceId, Version))
+            return;
+        _loaded = (AllianceId, Version);
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        try
+        {
+            _room = await Api.GetJsonAsync<WarRoomDto>($"{CyberWarsContract.BasePath}/alliances/{AllianceId}/room");
+            _error = null;
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.StatusCode == System.Net.HttpStatusCode.Forbidden ? "Open CyberWars from the launcher to use the war room." : ex.Message;
+        }
+    }
+
+    async Task VoteAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Api.SendJsonAsync<StrikeDto>(HttpMethod.Post, $"{CyberWarsContract.BasePath}/alliances/{AllianceId}/strike/vote");
+            await LoadAsync();
+        }
+        catch (ApiException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    static int Percent(int votes, int needed) => needed <= 0 ? 0 : Math.Min(100, votes * 100 / needed);
+}
