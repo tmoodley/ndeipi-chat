@@ -195,6 +195,32 @@ public sealed partial class LendingService
         Notice(inspector, id, $"{deal.Name}: the developer asks you to inspect tranche {r.DrawNumber}, {draw.Milestone}.");
     }, ct);
 
+    // ------------------------------------------------------------------ self-declaring (simulated only)
+
+    /// <summary>
+    /// Lets someone try lending without waiting for Compliance. The gate means this only works while
+    /// simulated: a real offering must verify this (PLT-ID-04). It can't approve KYB or lift a freeze.
+    /// </summary>
+    public async Task<LendingMeDto> DeclareAsync(User me, LendingDeclareRequest r, CancellationToken ct)
+    {
+        Gate();
+        if (!LendingInvestorClasses.IsValid(r.InvestorClass))
+            throw new ChatRejectedException("Choose an investor class.");
+        var jurisdiction = r.Jurisdiction?.Trim().ToUpperInvariant() ?? "";
+        if (jurisdiction.Length != 2 || !jurisdiction.All(char.IsAsciiLetterUpper))
+            throw new ChatRejectedException("Give a two-letter country code.");
+        var profile = await db.LendingProfiles.FirstOrDefaultAsync(p => p.UserId == me.Id, ct);
+        if (profile?.Frozen == true)
+            throw new ChatRejectedException("Compliance has frozen your account.");
+        var before = profile is null ? null : Describe(profile);
+        if (profile is null)
+            db.LendingProfiles.Add(profile = new LendingProfile { UserId = me.Id, InvestorClass = r.InvestorClass, Jurisdiction = jurisdiction });
+        (profile.InvestorClass, profile.Jurisdiction, profile.Reason, profile.UpdatedAt) = (r.InvestorClass, jurisdiction, "Self-declared (simulated)", Now);
+        Audit(null, me, "investor.declare", before, Describe(profile), "Self-declared (simulated)");
+        await db.SaveChangesAsync(ct);
+        return await MeAsync(me, ct);
+    }
+
     // ------------------------------------------------------------------ notices (PLT-NTF-01, in-app)
 
     public async Task<IReadOnlyList<LendingNoticeDto>> NoticesAsync(User me, CancellationToken ct) =>

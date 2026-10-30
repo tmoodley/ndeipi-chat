@@ -341,7 +341,7 @@ public sealed class LendingTests(TestApp app) : IClassFixture<TestApp>
         using var overLimit = await Try(lender, deal.Id, "deposits", new LendingDepositRequest(LendingTranches.Senior, 2_000m, Guid.NewGuid()));
 
         Assert.Contains("Verify your identity", await ProblemAsync(noKyc));
-        Assert.Contains("classified", await ProblemAsync(noClass));
+        Assert.Contains("investor class", await ProblemAsync(noClass));
         Assert.Contains("doesn't admit", await ProblemAsync(wrongClass));
         Assert.Contains("your country", await ProblemAsync(blocked));
         Assert.Contains("frozen", await ProblemAsync(isFrozen));
@@ -677,7 +677,7 @@ public sealed class LendingTests(TestApp app) : IClassFixture<TestApp>
         var newcomer = await PersonAsync("Newcomer");
 
         var before = await newcomer.GetAsync<LenderPortfolioDto>($"{Base}/lender/portfolio");
-        Assert.Contains("classified", before.OpenPools.Single(p => p.Deal.Id == deal.Id).CanLend);
+        Assert.Contains("investor class", before.OpenPools.Single(p => p.Deal.Id == deal.Id).CanLend);
         await Profile(cast.Platform, newcomer);
         await Act(newcomer, deal.Id, "deposits", new LendingDepositRequest(LendingTranches.Junior, 2_000m, Guid.NewGuid()));
 
@@ -793,5 +793,50 @@ public sealed class LendingTests(TestApp app) : IClassFixture<TestApp>
         using var read = await senior.Http.PostAsJsonAsync($"{Base}/notices/read", new { }, ContractJson.Options);
         read.EnsureSuccessStatusCode();
         Assert.All(await senior.GetAsync<List<LendingNoticeDto>>($"{Base}/notices"), n => Assert.True(n.Read));
+    }
+
+    [Fact]
+    public async Task While_simulated_someone_can_declare_their_own_investor_class_and_then_lend()
+    {
+        var (cast, deal) = await OpenAsync();
+        var lender = await PersonAsync("Declares");
+        using var noClass = await Try(lender, deal.Id, "deposits", new LendingDepositRequest(LendingTranches.Junior, 1_000m, Guid.NewGuid()));
+        using var wrongClass = await lender.Http.PutAsJsonAsync($"{Base}/me/investor", new LendingDeclareRequest("king", "CA"), ContractJson.Options);
+        using var wrongCountry = await lender.Http.PutAsJsonAsync($"{Base}/me/investor", new LendingDeclareRequest(LendingInvestorClasses.RegS, "12"), ContractJson.Options);
+
+        using var declared = await lender.Http.PutAsJsonAsync($"{Base}/me/investor", new LendingDeclareRequest(LendingInvestorClasses.RegS, "ca"), ContractJson.Options);
+        var me = await lender.GetAsync<LendingMeDto>($"{Base}/me");
+        var lent = await Act(lender, deal.Id, "deposits", new LendingDepositRequest(LendingTranches.Junior, 1_000m, Guid.NewGuid()));
+
+        Assert.Contains("investor class", await ProblemAsync(noClass));
+        Assert.Contains("investor class", await ProblemAsync(wrongClass));
+        Assert.Contains("country", await ProblemAsync(wrongCountry));
+        Assert.True(declared.IsSuccessStatusCode);
+        Assert.Equal((LendingInvestorClasses.RegS, "CA", false), (me.InvestorClass, me.Jurisdiction, me.KybApproved));
+        Assert.Equal(1_000m, lent.MyPositions.Single().DepositedUsd);
+        Assert.Contains(await app.DbAsync(db => db.LendingAuditEvents.Where(e => e.ActorId == lender.Id).Select(e => e.Action).ToListAsync()), a => a == "investor.declare");
+    }
+
+    [Fact]
+    public async Task Declaring_cannot_lift_a_freeze_or_touch_KYB_and_stops_with_the_gate()
+    {
+        var (cast, _) = await DraftAsync();
+        await Profile(cast.Platform, cast.Developer, kyb: true);
+        var frozen = await PersonAsync("Frozen Declarer");
+        await Profile(cast.Platform, frozen, frozen: true);
+
+        using var keepsKyb = await cast.Developer.Http.PutAsJsonAsync($"{Base}/me/investor", new LendingDeclareRequest(LendingInvestorClasses.Accredited, "JM"), ContractJson.Options);
+        using var refused = await frozen.Http.PutAsJsonAsync($"{Base}/me/investor", new LendingDeclareRequest(LendingInvestorClasses.Accredited, "JM"), ContractJson.Options);
+
+        Assert.True((await cast.Developer.GetAsync<LendingMeDto>($"{Base}/me")).KybApproved);
+        Assert.Contains("frozen", await ProblemAsync(refused));
+        Assert.True((await frozen.GetAsync<LendingMeDto>($"{Base}/me")).Frozen);
+
+        await using var scope = app.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ChatDbContext>();
+        var user = await db.Users.SingleAsync(u => u.Id == frozen.Id);
+        var off = new LendingService(db, scope.ServiceProvider.GetRequiredService<RwaService>(), Options.Create(new LendingOptions()), TimeProvider.System);
+        var gated = await Assert.ThrowsAsync<NdeipiChat.Api.Chat.ChatRejectedException>(() => off.DeclareAsync(user, new LendingDeclareRequest(LendingInvestorClasses.Accredited, "JM"), CancellationToken.None));
+        Assert.Contains("switched off", gated.Message);
     }
 }

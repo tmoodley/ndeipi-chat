@@ -508,3 +508,6 @@ public sealed record LendingRepayRequest(decimal AmountUsd);
 public sealed record LendingInspectionRequest(int DrawNumber);
 
 public sealed record LendingNoticeDto(long Id, Guid? DealId, string Text, DateTimeOffset At, bool Read);
+
+/// <summary>While simulated, someone says for themselves what kind of investor they are, in place of Compliance.</summary>
+public sealed record LendingDeclareRequest(string InvestorClass, string Jurisdiction);

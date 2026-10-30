@@ -595,7 +595,7 @@ public sealed partial class LendingService(ChatDbContext db, RwaService rwa, IOp
             return "Verify your identity in your Wallet first.";
         var profile = await db.LendingProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.UserId == me.Id, ct);
         if (profile is null)
-            return "Compliance hasn't classified you as an investor yet.";
+            return "Choose your investor class in the Lender Portal first.";
         if (profile.Frozen)
             return "Compliance has frozen your account.";
         if (!LendingOfferingBases.Admits(deal.OfferingBasis, profile.InvestorClass))

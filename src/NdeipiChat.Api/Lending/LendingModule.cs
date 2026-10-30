@@ -21,6 +21,8 @@ public static class LendingModule
 
         api.MapGet("/me", async (HttpContext http, CurrentUserService users, LendingService lending) =>
             Results.Ok(await lending.MeAsync(await Me(http, users), http.RequestAborted)));
+        api.MapPut("/me/investor", async (LendingDeclareRequest request, HttpContext http, CurrentUserService users, LendingService lending) =>
+            Results.Ok(await lending.DeclareAsync(await Me(http, users), request, http.RequestAborted)));
         api.MapGet("/deals", async (HttpContext http, CurrentUserService users, LendingService lending) =>
             Results.Ok(await lending.DealsAsync(await Me(http, users), http.RequestAborted)));
         api.MapPost("/deals", async (LendingTermsRequest request, HttpContext http, CurrentUserService users, LendingService lending) =>
