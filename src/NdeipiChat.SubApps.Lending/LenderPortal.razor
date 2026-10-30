@@ -1,0 +1,87 @@
+@* The Lender Portal's home (LND-FR-01, LND-FR-02, LND-FR-05): what you hold, and what's open. Drafted, not from the SRS. *@
+
+@if (_portfolio is not { } p)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading your portfolio…")</p>
+}
+else
+{
+    <h2>Your portfolio</h2>
+    <div class="card">
+        <div class="ld-kv">
+            <div><span>Still at work</span><b class="num">@LendingContract.Money(p.ValueUsd)</b></div>
+            <div><span>Deposited</span><b class="num">@LendingContract.Money(p.DepositedUsd)</b></div>
+            <div><span>Interest received</span><b class="num good">@LendingContract.Money(p.InterestPaidUsd)</b></div>
+            <div><span>Principal back</span><b class="num">@LendingContract.Money(p.PrincipalPaidUsd)</b></div>
+            <div><span>Lost</span><b class="num @(p.LossUsd > 0 ? "bad" : "")">@LendingContract.Money(p.LossUsd)</b></div>
+        </div>
+    </div>
+
+    @if (p.Positions.Count > 0)
+    {
+        <div class="ld-grid">
+            @foreach (var x in p.Positions)
+            {
+                <button class="card ld-deal" @onclick="() => App.Open(x.DealId)">
+                    <span class="ld-chip @x.State">@LendingStates.Label(x.State)</span>
+                    <h3>@x.DealName</h3>
+                    <span class="small muted">@(x.Tranche == LendingTranches.Senior ? "Senior tranche" : "Junior tranche (first loss)")</span>
+                    <div class="ld-kv">
+                        <div><span>Deposited</span><b class="num">@LendingContract.Money(x.DepositedUsd)</b></div>
+                        <div><span>Interest</span><b class="num">@LendingContract.Money(x.InterestPaidUsd)</b></div>
+                        <div><span>Share price</span><b class="num @(x.SharePrice < 1m ? "bad" : "")">@x.SharePrice.ToString("0.0000", CultureInfo.InvariantCulture)</b></div>
+                    </div>
+                </button>
+            }
+        </div>
+    }
+
+    <h2>Open pools</h2>
+    @if (p.OpenPools.Count == 0)
+    {
+        <div class="card"><h3>No pools are open</h3><span class="muted small">A deal appears here once it's been approved and the land charge is registered.</span></div>
+    }
+    <div class="ld-grid">
+        @foreach (var pool in p.OpenPools)
+        {
+            var d = pool.Deal;
+            <button class="card ld-deal" @onclick="() => App.Open(d.Id)">
+                <h3>@d.Name</h3>
+                <span class="muted small">@d.Location · @LendingOfferingBases.Label(d.OfferingBasis)</span>
+                <div class="ld-fill senior"><div style="width:@(Pct(d.SeniorFundedUsd, d.SeniorTargetUsd))%"></div></div>
+                <span class="small num">Senior @LendingContract.Percent(pool.SeniorAprBps): @LendingContract.Money(d.SeniorFundedUsd) of @LendingContract.Money(d.SeniorTargetUsd)</span>
+                <div class="ld-fill junior"><div style="width:@(Pct(d.JuniorFundedUsd, d.JuniorTargetUsd))%"></div></div>
+                <span class="small num">Junior @LendingContract.Percent(pool.JuniorAprBps): @LendingContract.Money(d.JuniorFundedUsd) of @LendingContract.Money(d.JuniorTargetUsd)</span>
+                @if (pool.CanLend is { } why)
+                {
+                    <span class="small" style="color:var(--ld-bad)">@why</span>
+                }
+                else
+                {
+                    <span class="small" style="color:var(--ld-good)">You can lend to this deal.</span>
+                }
+            </button>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public LendingShell App { get; set; } = null!;
+
+    LenderPortfolioDto? _portfolio;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _portfolio = await App.Api.PortfolioAsync();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    static string Pct(decimal part, decimal whole) => whole <= 0 ? "0" : Math.Min(part / whole * 100m, 100m).ToString("0.#", CultureInfo.InvariantCulture);
+}

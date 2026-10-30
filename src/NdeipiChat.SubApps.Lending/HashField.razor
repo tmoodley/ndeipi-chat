@@ -1,0 +1,35 @@
+@* A SHA-256 hash: paste it, or pick a file and the hash is worked out here. The file never leaves the device. *@
+@using System.Security.Cryptography
+@using Microsoft.AspNetCore.Components.Forms
+
+<div class="ld-row">
+    <input placeholder="SHA-256 hash" aria-label="SHA-256 hash" value="@Value" @onchange="e => ChangedAsync(e.Value?.ToString())" />
+    <InputFile OnChange="PickAsync" aria-label="Choose a file to hash" />
+</div>
+<span class="muted small">@(_note ?? "Only the hash is recorded. The file stays on your device.")</span>
+
+@code {
+    const long MaxBytes = 100 * 1024 * 1024;
+
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    string? _note;
+
+    Task ChangedAsync(string? text) => ValueChanged.InvokeAsync(text?.Trim().ToLowerInvariant() ?? "");
+
+    async Task PickAsync(InputFileChangeEventArgs e)
+    {
+        if (e.File.Size > MaxBytes)
+        {
+            _note = "That file is over 100 MB.";
+            return;
+        }
+        _note = "Working out the hash…";
+        using var memory = new MemoryStream();
+        await using (var stream = e.File.OpenReadStream(MaxBytes))
+            await stream.CopyToAsync(memory);
+        _note = $"Hash of {e.File.Name}.";
+        await ChangedAsync(Convert.ToHexStringLower(SHA256.HashData(memory.ToArray())));
+    }
+}

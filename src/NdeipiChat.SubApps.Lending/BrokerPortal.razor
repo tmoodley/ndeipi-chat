@@ -1,0 +1,206 @@
+@* The Broker Portal's home (BRK-FR-01, BRK-FR-05, BRK-FR-07, BRK-FR-08): the pipeline, fees, starting a
+   deal, and for platform staff the underwriting queue and Compliance. Drafted, not from the SRS. *@
+
+<div class="ld-note">Broker pay tied to capital raised needs a broker-dealer review before it can go live (REG-04). Fees here are simulated.</div>
+
+@if (_pipeline is null)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading your pipeline…")</p>
+}
+else
+{
+    @if (_error is not null)
+    {
+        <div class="err" role="alert">@_error</div>
+    }
+
+    <div class="ld-row" style="justify-content:space-between">
+        <h2>Your pipeline</h2>
+        <span class="small muted">Fees earned <b class="num">@LendingContract.Money(_pipeline.FeesEarnedUsd)</b></span>
+    </div>
+
+    @if (_pipeline.Deals.Count == 0)
+    {
+        <div class="card"><h3>No deals yet</h3><span class="muted small">Start a deal below, then invite the developer and fill its data room.</span></div>
+    }
+    <div class="ld-grid">
+        @foreach (var row in _pipeline.Deals)
+        {
+            var d = row.Deal;
+            <button class="card ld-deal" @onclick="() => App.Open(d.Id)">
+                <span class="ld-chip @d.State">@LendingStates.Label(d.State)</span>
+                <h3>@d.Name</h3>
+                <span class="muted small">@d.Code · @d.Location</span>
+                @if (row.ReturnReason is { } why)
+                {
+                    <span class="small" style="color:var(--ld-bad)">Returned: @why</span>
+                }
+                <ul class="ld-check">
+                    @foreach (var item in row.Checklist)
+                    {
+                        <li class="@(item.Done ? "done" : "")"><span aria-hidden="true">@(item.Done ? "✓" : "○")</span> @item.Label<span class="sr-only">@(item.Done ? " (done)" : " (to do)")</span></li>
+                    }
+                </ul>
+                @if (row.FeePerDraw.Count > 0)
+                {
+                    <span class="small num">Fees: @string.Join(" + ", row.FeePerDraw.Select(LendingContract.Money)) = @LendingContract.Money(row.FeesEarnedUsd)</span>
+                }
+            </button>
+        }
+    </div>
+
+    @if (App.Me!.IsUnderwriter && _pipeline.Queue.Count > 0)
+    {
+        <h2>Waiting for underwriting</h2>
+        <div class="ld-grid">
+            @foreach (var d in _pipeline.Queue)
+            {
+                <button class="card ld-deal" @onclick="() => App.Open(d.Id)">
+                    <h3>@d.Name</h3>
+                    <span class="muted small">@d.Code · @d.Location · @LendingOfferingBases.Label(d.OfferingBasis)</span>
+                </button>
+            }
+        </div>
+    }
+}
+
+<div class="ld-row">
+    @if (App.Me!.IsUnderwriter)
+    {
+        <button class="ghost" disabled="@_busy" @onclick="ReferenceAsync">Open the Green Island reference deal</button>
+    }
+    <button class="ghost" @onclick="() => _creating = !_creating">@(_creating ? "Close the form" : "Start a deal")</button>
+</div>
+
+@if (_creating)
+{
+    <div class="card">
+        <h3>Start a deal</h3>
+        <div class="ld-form">
+            <label class="field wide">Name<input @bind="_name" /></label>
+            <label class="field wide">Location<input @bind="_location" /></label>
+            <label class="field wide">Offering basis
+                <select @bind="_basis">
+                    @foreach (var b in LendingOfferingBases.All)
+                    {
+                        <option value="@b.Code">@b.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Senior target ($)<input type="number" min="0" @bind="_seniorTarget" /></label>
+            <label class="field">Junior target ($)<input type="number" min="0" @bind="_juniorTarget" /></label>
+            <label class="field">Senior APR (%)<input type="number" min="0" step="0.01" @bind="_seniorApr" /></label>
+            <label class="field">Junior APR (%)<input type="number" min="0" step="0.01" @bind="_juniorApr" /></label>
+            <label class="field">Fees APR (%)<input type="number" min="0" step="0.01" @bind="_feesApr" /></label>
+            <label class="field">Max LTV (%)<input type="number" min="0" step="0.01" @bind="_maxLtv" /></label>
+            <label class="field">Broker fee (%)<input type="number" min="0" step="0.01" @bind="_brokerFee" /></label>
+            <label class="field">Platform fee (%)<input type="number" min="0" step="0.01" @bind="_platformFee" /></label>
+            <label class="field">Reserve target ($)<input type="number" min="0" @bind="_reserve" /></label>
+            <label class="field">Senior principal per payment ($)<input type="number" min="0" @bind="_scheduled" /></label>
+            <label class="field wide">First drawdown ($)<input type="number" min="0" @bind="_drawAmount" /></label>
+            <label class="field wide">First drawdown's milestone<input @bind="_drawMilestone" /></label>
+        </div>
+        <button class="primary" disabled="@_busy" @onclick="CreateAsync">Create as Draft</button>
+    </div>
+}
+
+@if (App.Me!.IsCompliance)
+{
+    <div class="card">
+        <h3>Compliance</h3>
+        <span class="muted small">Stands in for a KYB and sanctions provider. Every change is logged with its reason.</span>
+        <div class="ld-form">
+            <label class="field wide">Their email<input type="email" @bind="_who" /></label>
+            <label class="field">Investor class
+                <select @bind="_class">
+                    @foreach (var c in LendingInvestorClasses.All)
+                    {
+                        <option value="@c.Code">@c.Label</option>
+                    }
+                </select>
+            </label>
+            <label class="field">Country (2 letters)<input maxlength="2" @bind="_country" /></label>
+            <label class="field"><span><input type="checkbox" style="width:auto" @bind="_kyb" /> KYB approved</span></label>
+            <label class="field"><span><input type="checkbox" style="width:auto" @bind="_frozen" /> Frozen</span></label>
+            <label class="field wide">Reason<input @bind="_reason" /></label>
+        </div>
+        <button class="ghost" disabled="@_busy" @onclick="SaveProfileAsync">Save</button>
+        <div class="ld-row">
+            <input type="number" min="0" placeholder="Test money ($)" aria-label="Test money" @bind="_topUp" />
+            <button class="ghost" disabled="@_busy" @onclick="TopUpAsync">Add test money</button>
+        </div>
+        @if (_saved is not null)
+        {
+            <div class="ok">@_saved</div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public LendingShell App { get; set; } = null!;
+
+    BrokerPipelineDto? _pipeline;
+    string? _error, _saved;
+    bool _busy, _creating;
+
+    string _name = "", _location = "", _basis = LendingOfferingBases.RegS, _drawMilestone = "";
+    decimal _seniorTarget = 800_000m, _juniorTarget = 200_000m, _seniorApr = 8m, _juniorApr = 14m, _feesApr = 1m, _maxLtv = 60m, _brokerFee = 1.5m, _platformFee = 1m, _reserve, _scheduled, _drawAmount;
+
+    string _who = "", _class = LendingInvestorClasses.Accredited, _country = "", _reason = "";
+    bool _kyb, _frozen;
+    decimal _topUp;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _pipeline = await App.Api.PipelineAsync();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error, _saved) = (true, null, null);
+        try
+        {
+            await work();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    Task ReferenceAsync() => RunAsync(async () => App.Open((await App.Api.ReferenceAsync()).Id));
+
+    Task CreateAsync() => RunAsync(async () =>
+    {
+        var deal = await App.Api.CreateAsync(new LendingTermsRequest(_name, _location, _basis, _seniorTarget, _juniorTarget, Bps(_seniorApr), Bps(_juniorApr), Bps(_feesApr), Bps(_maxLtv), Bps(_brokerFee), Bps(_platformFee),
+            _reserve, _scheduled, null, null, null, [new LendingDrawPlan(_drawAmount, _drawMilestone)]));
+        App.Open(deal.Id);
+    });
+
+    Task SaveProfileAsync() => RunAsync(async () =>
+    {
+        await App.Api.SetProfileAsync(new LendingProfileRequest(_who, _class, _country, _kyb, _frozen, _reason));
+        _saved = "Saved.";
+        await App.RefreshMeAsync();
+    });
+
+    Task TopUpAsync() => RunAsync(async () =>
+    {
+        await App.Api.TopUpAsync(new LendingTopUpRequest(_who, _topUp));
+        _saved = $"Added {LendingContract.Money(_topUp)} of test money.";
+        await App.RefreshMeAsync();
+    });
+
+    static int Bps(decimal percent) => (int)Math.Round(percent * 100m);
+}

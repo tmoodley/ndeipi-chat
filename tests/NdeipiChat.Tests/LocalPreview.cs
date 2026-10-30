@@ -33,8 +33,8 @@ public sealed class LocalPreview
         app.StartServer();
         var site = new Uri($"http://localhost:{Port}/");
 
-        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole]);
-        var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test");
+        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [LendingContract.PreviewRole, EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole]);
+        var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test", roles: [LendingContract.PreviewRole]);
         var rudo = await app.CreateUserAsync("Rudo Moyo", "rudo@example.test");
 
         foreach (var (friend, email) in new[] { (tendai, "tendai@example.test"), (rudo, "rudo@example.test") })
@@ -270,8 +270,8 @@ public sealed class LocalPreview
 
         // The war room as a community: four members by rank, a live ping, chat, and an open strike
         // vote. Rudo stays connected, so she shows as online.
-        var chanda = await app.CreateUserAsync("Chanda Kunda", "chanda@example.test");
-        var mutale = await app.CreateUserAsync("Mutale Banda", "mutale@example.test");
+        var chanda = await app.CreateUserAsync("Chanda Kunda", "chanda@example.test", roles: [LendingContract.PreviewRole]);
+        var mutale = await app.CreateUserAsync("Mutale Banda", "mutale@example.test", roles: [LendingContract.PreviewRole]);
         await chanda.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(0, -1)));
         await mutale.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-2, 1)));
         await chanda.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });
@@ -308,6 +308,33 @@ public sealed class LocalPreview
             .ExecuteUpdateAsync(s => s.SetProperty(h => h.CoolingOffEndsAt, DateTimeOffset.UtcNow.AddDays(-30)).SetProperty(h => h.PurchasedAt, DateTimeOffset.UtcNow.AddDays(-37))));
         await me.GetAsync<RwaPortfolioDto>($"{RwaContract.BasePath}/portfolio");
         await me.PostAsync<RwaAssetDto>($"{RwaContract.BasePath}/admin/nav", new RwaNavUpdateRequest("GI-CONDO-01", 1.04m, "Preview valuation"));
+
+        // Ndeipi Lending (simulated): Ty brokers Green Island and lends both tranches; Tendai is its developer,
+        // with tranche 1 drawn and tranche 2 waiting on a milestone. Chanda is trustee, Mutale inspector, and
+        // Ty also has a fresh draft to work on in the Broker Portal.
+        async Task<LendingDealDto> LendAsync(TestUser who, Guid deal, string action, object body) => await who.PostAsync<LendingDealDto>($"{LendingContract.BasePath}/deals/{deal}/{action}", body);
+        var hash = new string('a', 64);
+        var green = await me.PostAsync<LendingDealDto>($"{LendingContract.BasePath}/deals/reference", new { });
+        foreach (var (role, email) in new[] { (LendingRoles.Developer, "tendai@example.test"), (LendingRoles.Trustee, "chanda@example.test"), (LendingRoles.Servicer, "ty.preview@example.test"), (LendingRoles.Inspector, "mutale@example.test"), (LendingRoles.Valuer, "ty.preview@example.test") })
+            await LendAsync(me, green.Id, "roles", new LendingAppointRequest(role, email));
+        foreach (var (email, investor) in new[] { ("tendai@example.test", LendingInvestorClasses.Accredited), ("ty.preview@example.test", LendingInvestorClasses.JamaicanSophisticated) })
+            using (var profile = await me.Http.PutAsJsonAsync($"{LendingContract.BasePath}/compliance/profiles", new LendingProfileRequest(email, investor, "JM", true, false, "Preview"), ContractJson.Options))
+                profile.EnsureSuccessStatusCode();
+        using (var money = await me.Http.PostAsJsonAsync($"{LendingContract.BasePath}/compliance/top-up", new LendingTopUpRequest("ty.preview@example.test", 1_100_000m), ContractJson.Options))
+            money.EnsureSuccessStatusCode();
+        await LendAsync(me, green.Id, "documents", new LendingDocumentRequest("Title deed", LendingDocumentKinds.TitleDeed, hash));
+        await LendAsync(me, green.Id, "submit", new { });
+        await LendAsync(me, green.Id, "transition", new LendingTransitionRequest(LendingStates.Approved, null));
+        await LendAsync(chanda, green.Id, "attestations", new LendingAttestationRequest(LendingAttestationKinds.LandCharge, hash, null, null));
+        await LendAsync(me, green.Id, "transition", new LendingTransitionRequest(LendingStates.Funding, null));
+        await LendAsync(me, green.Id, "deposits", new LendingDepositRequest(LendingTranches.Senior, 800_000m, Guid.NewGuid()));
+        await LendAsync(me, green.Id, "deposits", new LendingDepositRequest(LendingTranches.Junior, 200_000m, Guid.NewGuid()));
+        await LendAsync(me, green.Id, "transition", new LendingTransitionRequest(LendingStates.Active, null));
+        await LendAsync(tendai, green.Id, "collateral/lock", new { });
+        await LendAsync(me, green.Id, "documents", new LendingDocumentRequest("Loan agreement", LendingDocumentKinds.SignedLoanAgreement, hash));
+        await LendAsync(me, green.Id, "attestations", new LendingAttestationRequest(LendingAttestationKinds.Valuation, hash, 2_000_000m, null));
+        await LendAsync(tendai, green.Id, "draws", new { });
+        await me.PostAsync<LendingDealDto>($"{LendingContract.BasePath}/deals", new LendingTermsRequest("Negril Garden Suites", "Negril, Jamaica", LendingOfferingBases.RegS, 400_000m, 100_000m, 800, 1400, 100, 6000, 150, 100, 10_000m, 50_000m, null, null, null, [new LendingDrawPlan(300_000m, "Land and permits")]));
 
         // Sign in as the phone app and the web do, for tokens the browser can use and refresh.
         var options = new ClientOptions { ApiBaseUrl = site, RedirectUri = TestApp.RedirectUri };

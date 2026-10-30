@@ -117,6 +117,10 @@ else
                 <div class="rw-row"><span>Then</span><span>Year 1 vault at NAV @a.AssetsPerShare.ToString("0.0000", CultureInfo.InvariantCulture)</span></div>
                 <div class="rw-row"><span>Pay with</span><span>Simulated balance</span></div>
                 <div class="rw-row"><span>Your test balance</span><span class="num">@RwaContract.Money(App.Me!.SimBalanceUsd)</span></div>
+                @if (_detail.RanksBelowLenders)
+                {
+                    <div class="rw-sim" role="note"><span>Fractional shares in this villa rank <b>below all lenders</b> on its Ndeipi Lending deal. If the loan defaults, lenders are paid first.</span></div>
+                }
                 <label class="rw-check">
                     <input type="checkbox" @bind="_agreed" />
                     <span>I understand this is a simulated preview, not an offer, and that I can cancel within @App.Me!.CoolingOffDays days.</span>

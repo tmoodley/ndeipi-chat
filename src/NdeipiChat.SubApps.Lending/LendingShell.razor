@@ -1,0 +1,231 @@
+@* What the Broker, Lender and Borrower portals share (RWA Lending Platform Portal SRS): the header, the
+   simulation banner, notices and the deal page. Each portal has its own tile and home screen. The portal
+   requirements are drafted, because the SRS tabs for them do not exist. Opened at a deal with "deal={id}". *@
+
+<style>
+    .content.embedded header.ld-bar { display: none; }
+    .ld { --ld-solid: #fff; --ld-ink: #1E3A5F; --ld-senior: #1D4ED8; --ld-junior: #C2410C; --ld-good: #05603A; --ld-bad: #B42318; }
+    :root[data-theme="dark"] .ld { --ld-solid: #1C2134; --ld-ink: #93B4E0; --ld-senior: #7EA6F8; --ld-junior: #FB9A63; --ld-good: #6CE9A6; --ld-bad: #FDA29B; }
+    @@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ld { --ld-solid: #1C2134; --ld-ink: #93B4E0; --ld-senior: #7EA6F8; --ld-junior: #FB9A63; --ld-good: #6CE9A6; --ld-bad: #FDA29B; } }
+    .ld .page { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; padding-bottom: 40px; }
+    .ld h2 { font-size: 22px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .ld h3 { font-size: 16px; font-weight: 800; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+    .ld .muted { color: var(--muted); }
+    .ld .small { font-size: 13px; }
+    .ld .num { font-variant-numeric: tabular-nums; }
+    .ld .card { background: var(--ld-solid); border: 1px solid var(--divider); border-radius: 16px; padding: 16px; box-shadow: 0 1px 2px rgba(16, 24, 40, .05); display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .ld .err { background: #FEE4E2; color: #912018; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+    .ld .ok { background: #D1FADF; color: #05603A; border-radius: 12px; padding: 10px 14px; font-size: 14px; }
+    .ld .primary { background: var(--ld-ink); color: var(--ld-solid); border-radius: 12px; padding: 10px 16px; font-weight: 700; }
+    .ld .danger { background: var(--ld-bad); color: var(--ld-solid); border-radius: 12px; padding: 10px 16px; font-weight: 700; }
+    .ld .ghost { background: var(--secondary); color: var(--text); border-radius: 12px; padding: 10px 14px; font-weight: 600; box-shadow: none; }
+    .ld input, .ld select { width: 100%; min-width: 0; box-sizing: border-box; }
+    .ld label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); min-width: 0; }
+
+    .ld-sim { display: flex; gap: 10px; align-items: flex-start; border-radius: 12px; padding: 10px 14px; background: #FEF0C7; color: #7A2E0E; font-size: 13.5px; line-height: 1.4; border: 1px solid #FEC84B; }
+    .ld-sim b { font-weight: 800; }
+    .ld-note { border-radius: 12px; padding: 10px 14px; background: var(--secondary); color: var(--text); font-size: 13.5px; line-height: 1.4; }
+    .ld-check { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+    .ld-check li.done { color: var(--ld-good); }
+    .ld .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .ld-sim .tag { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; background: #7A2E0E; color: #FEF0C7; border-radius: 6px; padding: 3px 7px; margin-top: 1px; }
+
+    .ld-nav { display: flex; align-items: center; gap: 10px; padding: 4px 2px 6px; border-bottom: 1px solid var(--divider); }
+    .ld-nav .brand { font-size: 19px; font-weight: 800; color: var(--text); display: flex; align-items: center; gap: 8px; margin-right: auto; }
+    .ld-nav .brand i { width: 30px; height: 30px; border-radius: 9px; background: var(--ld-ink); color: var(--ld-solid); display: grid; place-items: center; font-style: normal; font-size: 16px; }
+    .ld-balance { font-size: 13px; color: var(--muted); white-space: nowrap; }
+
+    .ld-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    .ld-deal { align-items: stretch; justify-content: flex-start; text-align: left; font-weight: 400; color: var(--text); cursor: pointer; }
+    .ld-deal:hover { border-color: var(--ld-ink); }
+    .ld-chip { align-self: flex-start; font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; background: var(--secondary); color: var(--text); }
+    .ld-chip.funding, .ld-chip.approved { background: #DBEAFE; color: #1E40AF; }
+    .ld-chip.active, .ld-chip.repaid { background: #D1FADF; color: #05603A; }
+    .ld-chip.grace { background: #FEF0C7; color: #93370D; }
+    .ld-chip.default, .ld-chip.recovery, .ld-chip.written_off, .ld-chip.rejected { background: #FEE4E2; color: #912018; }
+    .ld-fill { height: 7px; border-radius: 4px; background: var(--secondary); overflow: hidden; }
+    .ld-fill div { height: 100%; background: var(--ld-ink); }
+    .ld-fill.senior div { background: var(--ld-senior); }
+    .ld-fill.junior div { background: var(--ld-junior); }
+
+    .ld-steps { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+    .ld-steps span { flex: 1 0 auto; text-align: center; font-size: 12px; font-weight: 600; padding: 7px 10px; border-radius: 8px; background: var(--secondary); color: var(--muted); }
+    .ld-steps span.done { background: var(--ld-ink); color: var(--ld-solid); opacity: .55; }
+    .ld-steps span.now { background: var(--ld-ink); color: var(--ld-solid); }
+    .ld-steps span.off { background: var(--ld-bad); color: var(--ld-solid); }
+
+    .ld-kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+    .ld-kv div { background: var(--secondary); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .ld-kv span { font-size: 11.5px; color: var(--muted); }
+    .ld-kv b { font-size: 15px; overflow-wrap: anywhere; }
+    .ld-kv b.bad { color: var(--ld-bad); }
+    .ld-kv b.good { color: var(--ld-good); }
+    .ld-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+    .ld-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .ld-form .wide { grid-column: 1 / -1; }
+    .ld-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .ld-row > input, .ld-row > select { flex: 1 1 160px; width: auto; }
+    .ld-list { display: flex; flex-direction: column; gap: 8px; font-size: 13.5px; }
+    .ld-list > div { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border-top: 1px solid var(--divider); padding-top: 8px; min-width: 0; }
+    .ld-list > div:first-child { border-top: 0; padding-top: 0; }
+    .ld-list .what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .ld-hash { font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+    .ld-why { margin: 0; padding-left: 18px; font-size: 13px; color: var(--ld-bad); }
+    .ld-falls { margin: 0; padding-left: 20px; font-size: 13.5px; display: flex; flex-direction: column; gap: 3px; }
+    .ld-falls li span { float: right; font-variant-numeric: tabular-nums; }
+    @@media (max-width: 760px) { .ld-two { grid-template-columns: 1fr; } }
+    @@media (max-width: 480px) { .ld-nav .brand span { display: none; } }
+</style>
+
+<div class="ld">
+    <header class="bar ld-bar">
+        <button class="bar-back link" title="Back" @onclick="BackAsync">‹</button>
+        <h1>@PortalTitle</h1>
+    </header>
+
+    <div class="page">
+        <div class="ld-nav">
+            <span class="brand"><i aria-hidden="true">@PortalIcon</i><span>@PortalTitle</span></span>
+            @if (Me is not null)
+            {
+                <span class="ld-balance">Test balance <b class="num">@LendingContract.Money(Me.SimBalanceUsd)</b></span>
+            }
+        </div>
+
+        <div class="ld-sim" role="note">
+            <span class="tag">@(Me?.Mode == LendingModes.Off ? "PAUSED" : "SIMULATED")</span>
+            <span>
+                @if (Me?.Mode == LendingModes.Off)
+                {
+                    <b>Ndeipi Lending is switched off.</b> <text> You can look around, but nothing can change.</text>
+                }
+                else
+                {
+                    <b>Preview only.</b> <text> Not an offer of securities or a loan. Money here is a test balance, no contract is deployed and nothing is lent. The portal requirements are drafted by Claude and are yours to correct.</text>
+                }
+            </span>
+        </div>
+
+        @if (_error is not null)
+        {
+            <div class="err">@_error</div>
+        }
+
+        @if (Me is not null)
+        {
+            <CascadingValue Value="this" IsFixed="true">
+                @if (_deal is { } id)
+                {
+                    <DealPage @key="id" Id="id" />
+                }
+                else
+                {
+                    @if (_notices is { Count: > 0 })
+                    {
+                        <div class="card">
+                            <div class="ld-row" style="justify-content:space-between">
+                                <h3>Notices@(_notices.Any(n => !n.Read) ? $" ({_notices.Count(n => !n.Read)} new)" : "")</h3>
+                                @if (_notices.Any(n => !n.Read))
+                                {
+                                    <button class="ghost" @onclick="MarkReadAsync">Mark read</button>
+                                }
+                            </div>
+                            <div class="ld-list">
+                                @foreach (var n in _notices.Take(5))
+                                {
+                                    <div><span class="@(n.Read ? "muted" : "")">@n.Text</span><span class="muted small" style="flex:none">@n.At.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)</span></div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    @if (Portal == LendingContract.LenderAppId)
+                    {
+                        <LenderPortal />
+                    }
+                    else if (Portal == LendingContract.BorrowerAppId)
+                    {
+                        <BorrowerPortal />
+                    }
+                    else
+                    {
+                        <BrokerPortal />
+                    }
+                }
+            </CascadingValue>
+        }
+        else if (_error is null)
+        {
+            <p class="muted">Loading…</p>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public SubAppContext Context { get; set; } = null!;
+
+    /// <summary>Which portal this tile opens: one of the LendingContract app ids.</summary>
+    [Parameter] public string Portal { get; set; } = LendingContract.BrokerAppId;
+
+    string PortalTitle => Portal == LendingContract.LenderAppId ? "Lender Portal" : Portal == LendingContract.BorrowerAppId ? "Borrower Portal" : "Broker Portal";
+
+    string PortalIcon => Portal == LendingContract.LenderAppId ? "🏦" : Portal == LendingContract.BorrowerAppId ? "🏗" : "📑";
+
+    List<LendingNoticeDto>? _notices;
+
+    public LendingApi Api { get; private set; } = null!;
+    public LendingMeDto? Me { get; private set; }
+
+    Guid? _deal;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Api = new LendingApi(Context.Api);
+        var query = Context.Query.Split('&').Select(p => p.Split('=', 2)).FirstOrDefault(p => p.Length == 2 && p[0] == "deal");
+        if (query is not null && Guid.TryParse(query[1], out var id))
+            _deal = id;
+        await RefreshMeAsync();
+    }
+
+    public async Task RefreshMeAsync()
+    {
+        try
+        {
+            Me = await Api.MeAsync();
+            _notices = await Api.NoticesAsync();
+            _error = null;
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+        StateHasChanged();
+    }
+
+    async Task MarkReadAsync()
+    {
+        try
+        {
+            await Api.MarkNoticesReadAsync();
+            _notices = await Api.NoticesAsync();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+    }
+
+    public void Open(Guid? deal)
+    {
+        _deal = deal;
+        StateHasChanged();
+    }
+
+    Task BackAsync()
+    {
+        if (_deal is null)
+            return Context.NavigateToLauncher();
+        Open(null);
+        return Task.CompletedTask;
+    }
+}

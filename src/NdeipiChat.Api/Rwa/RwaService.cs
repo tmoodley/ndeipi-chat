@@ -85,7 +85,8 @@ public sealed class RwaService(ChatDbContext db, IOptions<RwaOptions> options, T
         }).ToList();
 
         return new RwaAssetDetailDto(ToDto(asset, taken.Count), asset.Highlights.Split('\n', StringSplitOptions.RemoveEmptyEntries), weeks, months,
-            RwaPricing.Price(asset.UnitPriceUsd, RwaIntervals.FullYear, 1), taken.Count == 0);
+            RwaPricing.Price(asset.UnitPriceUsd, RwaIntervals.FullYear, 1), taken.Count == 0,
+            await db.LendingDeals.AsNoTracking().AnyAsync(d => d.RwaAssetId == asset.Id && d.State != LendingStates.Rejected, ct));
     }
 
     // ------------------------------------------------------------------ pre-sale (FR-1.2, FR-1.3, FR-2.1)
@@ -275,23 +276,26 @@ public sealed class RwaService(ChatDbContext db, IOptions<RwaOptions> options, T
     async Task<bool> KycVerifiedAsync(User me, CancellationToken ct) =>
         await db.BankingProfiles.AsNoTracking().Where(p => p.UserId == me.Id).Select(p => p.KycStatus).FirstOrDefaultAsync(ct) == BankingProfile.Approved;
 
-    async Task<RwaSimAccount> AccountAsync(User me, CancellationToken ct)
+    Task<RwaSimAccount> AccountAsync(User me, CancellationToken ct) => EnsureAccountAsync(me.Id, ct);
+
+    /// <summary>Someone's test balance, made with the starting amount the first time. Ndeipi Lending settles against the same one.</summary>
+    public async Task<RwaSimAccount> EnsureAccountAsync(Guid userId, CancellationToken ct)
     {
-        if (await db.RwaSimAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.UserId == me.Id, ct) is { } account)
+        if (await db.RwaSimAccounts.AsNoTracking().FirstOrDefaultAsync(a => a.UserId == userId, ct) is { } account)
             return account;
         try
         {
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO [RwaSimAccounts] ([UserId], [BalanceUsd], [CreatedAt])
-                SELECT {me.Id}, {Options.SimStartingBalanceUsd}, {Now}
-                WHERE NOT EXISTS (SELECT 1 FROM [RwaSimAccounts] WITH (UPDLOCK, HOLDLOCK) WHERE [UserId] = {me.Id})
+                SELECT {userId}, {Options.SimStartingBalanceUsd}, {Now}
+                WHERE NOT EXISTS (SELECT 1 FROM [RwaSimAccounts] WITH (UPDLOCK, HOLDLOCK) WHERE [UserId] = {userId})
                 """, ct);
         }
         catch (SqlException e) when (e.Number is 2627 or 2601 or 1205)
         {
             // Another request made it first.
         }
-        return await db.RwaSimAccounts.AsNoTracking().FirstAsync(a => a.UserId == me.Id, ct);
+        return await db.RwaSimAccounts.AsNoTracking().FirstAsync(a => a.UserId == userId, ct);
     }
 
     void Audit(string kind, Guid? userId, Guid? assetId, Guid? holdingId, string detail) =>
