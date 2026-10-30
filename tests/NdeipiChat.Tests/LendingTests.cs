@@ -35,7 +35,7 @@ public sealed class LendingTests(TestApp app) : IClassFixture<TestApp>
     async Task<TestUser> PersonAsync(string role, bool kyc = true, params string[] roles)
     {
         var name = $"{role} {Guid.NewGuid():N}"[..(role.Length + 9)];
-        var user = await app.CreateUserAsync(name, $"{name.Replace(" ", ".").ToLowerInvariant()}@example.test", roles: [LendingContract.PreviewRole, .. roles]);
+        var user = await app.CreateUserAsync(name, $"{name.Replace(" ", ".").ToLowerInvariant()}@example.test", roles: roles);
         if (kyc)
             await app.DbAsync(db =>
             {
@@ -204,20 +204,31 @@ public sealed class LendingTests(TestApp app) : IClassFixture<TestApp>
     // ------------------------------------------------------------------ access and the gates
 
     [Fact]
-    public async Task Only_people_with_the_preview_role_can_see_or_call_it()
+    public async Task Anyone_signed_in_can_open_it_and_money_stays_simulated()
     {
-        var outsider = await app.CreateUserAsync("Lending Outsider");
-        var insider = await PersonAsync("Insider");
+        var anyone = await app.CreateUserAsync("Lending Member");
 
-        using var refused = await outsider.Http.GetAsync($"{Base}/me");
-        var theirs = await outsider.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
-        var ours = await insider.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
+        var me = await anyone.GetAsync<LendingMeDto>($"{Base}/me");
+        var manifest = await anyone.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
+        var deals = await anyone.GetAsync<List<LendingDealSummaryDto>>($"{Base}/deals");
+        using var signedOut = await app.CreateClient().GetAsync($"{Base}/me");
 
-        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
-        Assert.DoesNotContain(theirs.Apps, a => a.Id == LendingContract.BrokerAppId);
-        Assert.Contains(ours.Apps, a => a.Id == LendingContract.BrokerAppId);
-        var me = await insider.GetAsync<LendingMeDto>($"{Base}/me");
-        Assert.Equal((LendingModes.Simulated, LendingInvestorClasses.Unclassified), (me.Mode, me.InvestorClass));
+        Assert.Contains(manifest.Apps, a => a.Id == LendingContract.BrokerAppId);
+        Assert.Equal((LendingModes.Simulated, LendingContract.SimulatedNotice, LendingInvestorClasses.Unclassified), (me.Mode, me.Notice, me.InvestorClass));
+        Assert.DoesNotContain(deals, d => d.State == LendingStates.Draft);
+        Assert.Equal(HttpStatusCode.Unauthorized, signedOut.StatusCode);
+    }
+
+    [Fact]
+    public async Task People_can_only_be_appointed_by_an_email_they_have_verified()
+    {
+        var (cast, deal) = await DraftAsync();
+        var unverified = await app.CreateUserAsync("Unverified Email", "unverified.email@example.test", verified: false);
+
+        using var refused = await Try(cast.Broker, deal.Id, "roles", new LendingAppointRequest(LendingRoles.Valuer, "unverified.email@example.test"));
+
+        Assert.Contains("No one", await ProblemAsync(refused));
+        Assert.DoesNotContain((await cast.Broker.GetAsync<LendingDealDto>($"{Base}/deals/{deal.Id}")).Participants, p => p.UserId == unverified.Id);
     }
 
     [Fact]
@@ -610,15 +621,12 @@ public sealed class LendingTests(TestApp app) : IClassFixture<TestApp>
     [Fact]
     public async Task Each_portal_is_its_own_tile_from_one_bundle()
     {
-        var insider = await PersonAsync("Tiles");
-        var outsider = await app.CreateUserAsync("No Tiles");
+        var anyone = await app.CreateUserAsync("Any Tile");
 
-        var ours = await insider.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
-        var theirs = await outsider.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
+        var manifest = await anyone.GetAsync<LauncherManifestDto>(LauncherContract.ManifestPath);
 
         string[] tiles = [LendingContract.BrokerAppId, LendingContract.LenderAppId, LendingContract.BorrowerAppId];
-        Assert.All(tiles, id => Assert.Equal("NdeipiChat.SubApps.Lending", ours.Apps.Single(a => a.Id == id).Assembly));
-        Assert.DoesNotContain(theirs.Apps, a => tiles.Contains(a.Id));
+        Assert.All(tiles, id => Assert.Equal("NdeipiChat.SubApps.Lending", manifest.Apps.Single(a => a.Id == id).Assembly));
     }
 
     [Fact]

@@ -5,7 +5,7 @@ using NdeipiChat.Contracts;
 
 namespace NdeipiChat.Api.Lending;
 
-/// <summary>Ndeipi Lending's API (RWA Lending Platform Portal SRS, Platform &amp; Shared tab), behind the launcher sub-app check. The three portals share it, and their entries require one role, so checking one covers all three.</summary>
+/// <summary>Ndeipi Lending's API (RWA Lending Platform Portal SRS, Platform &amp; Shared tab), behind the launcher sub-app check. The three portals share it, so checking one of their launcher entries covers all three.</summary>
 public static class LendingModule
 {
     public static IServiceCollection AddLending(this IServiceCollection services, IConfiguration configuration)

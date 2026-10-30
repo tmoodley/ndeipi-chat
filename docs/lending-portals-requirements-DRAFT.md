@@ -6,7 +6,7 @@ these BRK-, LND- and BOR- requirements are worked out from the shared tab's role
 functions and waterfall. Please correct anything here; the code follows this document.
 
 Everything is **simulated**: money is a test balance, no contract is deployed and nothing is lent. All
-three portals sit behind the `lending-preview` role and the `Lending:Mode` gate.
+three portals are public, like Ndeipi RWA, and stay simulated through the `Lending:Mode` gate.
 
 "Shall" means built in this PR. "Later" means drafted but not built, with the reason.
 

@@ -628,7 +628,7 @@ public sealed partial class LendingService(ChatDbContext db, RwaService rwa, IOp
     async Task<User> UserByEmailAsync(string? email, CancellationToken ct)
     {
         var address = email?.Trim();
-        return (string.IsNullOrEmpty(address) ? null : await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == address, ct))
+        return (string.IsNullOrEmpty(address) ? null : await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Email == address && u.EmailVerified, ct))
             ?? throw new ChatRejectedException("No one on Ndeipi has that email address.");
     }
 
