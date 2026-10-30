@@ -72,6 +72,19 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
     public DbSet<Rwa.RwaWeekSlot> RwaWeekSlots => Set<Rwa.RwaWeekSlot>();
     public DbSet<Rwa.RwaSimAccount> RwaSimAccounts => Set<Rwa.RwaSimAccount>();
     public DbSet<Rwa.RwaAuditEvent> RwaAuditEvents => Set<Rwa.RwaAuditEvent>();
+    public DbSet<Lending.LendingDeal> LendingDeals => Set<Lending.LendingDeal>();
+    public DbSet<Lending.LendingDraw> LendingDraws => Set<Lending.LendingDraw>();
+    public DbSet<Lending.LendingDealRole> LendingDealRoles => Set<Lending.LendingDealRole>();
+    public DbSet<Lending.LendingPosition> LendingPositions => Set<Lending.LendingPosition>();
+    public DbSet<Lending.LendingDeposit> LendingDeposits => Set<Lending.LendingDeposit>();
+    public DbSet<Lending.LendingDocument> LendingDocuments => Set<Lending.LendingDocument>();
+    public DbSet<Lending.LendingAttestation> LendingAttestations => Set<Lending.LendingAttestation>();
+    public DbSet<Lending.LendingPayment> LendingPayments => Set<Lending.LendingPayment>();
+    public DbSet<Lending.LendingDefaultVote> LendingDefaultVotes => Set<Lending.LendingDefaultVote>();
+    public DbSet<Lending.LendingProfile> LendingProfiles => Set<Lending.LendingProfile>();
+    public DbSet<Lending.LendingAuditEvent> LendingAuditEvents => Set<Lending.LendingAuditEvent>();
+    public DbSet<Lending.LendingRedemption> LendingRedemptions => Set<Lending.LendingRedemption>();
+    public DbSet<Lending.LendingNotice> LendingNotices => Set<Lending.LendingNotice>();
     public DbSet<CreatorProfile> CreatorProfiles => Set<CreatorProfile>();
     public DbSet<CreatorTier> CreatorTiers => Set<CreatorTier>();
     public DbSet<CreatorPost> CreatorPosts => Set<CreatorPost>();
@@ -302,6 +315,7 @@ public sealed class ChatDbContext(DbContextOptions<ChatDbContext> options) : DbC
         NdeipiChat.Api.Travel.TravelModel.Configure(model);
         NdeipiChat.Api.CyberWars.CyberWarsModel.Configure(model);
         NdeipiChat.Api.Rwa.RwaModel.Configure(model);
+        NdeipiChat.Api.Lending.LendingModel.Configure(model);
         NdeipiChat.Api.Market.MarketModel.Configure(model);
         NdeipiChat.Api.Finance.FinanceModel.Configure(model);
         NdeipiChat.Api.Trust.TrustModel.Configure(model);

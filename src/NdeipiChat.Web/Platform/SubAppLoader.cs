@@ -23,6 +23,7 @@ public sealed class SubAppLoadException(string message, bool outdated = false) :
 public sealed class SubAppLoader(LazyAssemblyLoader lazyLoader, SubAppVerifier verifier, NavigationManager navigation, ILogger<SubAppLoader> log)
 {
     readonly Dictionary<string, Type> _loaded = [];
+    readonly Dictionary<string, List<System.Reflection.Assembly>> _assemblies = [];
     readonly SemaphoreSlim _gate = new(1, 1);
 
     public bool IsLoaded(SubAppDto app) => _loaded.ContainsKey(Key(app));
@@ -72,7 +73,12 @@ public sealed class SubAppLoader(LazyAssemblyLoader lazyLoader, SubAppVerifier v
             IEnumerable<System.Reflection.Assembly> assemblies;
             try
             {
-                assemblies = await lazyLoader.LoadAssembliesAsync([app.Assembly + ".wasm"]);
+                // Several tiles can share one bundle, and the lazy loader returns nothing for an assembly
+                // it has already loaded, so the assemblies are kept for the tiles that open later.
+                var bundleKey = $"{app.Assembly}:{app.Sha256}";
+                if (!_assemblies.TryGetValue(bundleKey, out var loaded))
+                    _assemblies[bundleKey] = loaded = (await lazyLoader.LoadAssembliesAsync([app.Assembly + ".wasm"])).ToList();
+                assemblies = loaded;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

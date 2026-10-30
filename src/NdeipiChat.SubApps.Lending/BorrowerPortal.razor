@@ -1,0 +1,71 @@
+@* The Borrower Portal's home (BOR-FR-01, BOR-FR-02, BOR-FR-08): your loans and what each needs next. Drafted, not from the SRS. *@
+
+@if (_loans is not { } l)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading your loans…")</p>
+}
+else
+{
+    <h2>Your loans</h2>
+
+    @if (!l.KybApproved)
+    {
+        <div class="ld-note">Compliance hasn't approved your KYB yet, so an underwriter can't approve a loan for you. Your broker can tell you what's needed.</div>
+    }
+
+    @if (l.Loans.Count == 0)
+    {
+        <div class="card"><h3>No loans yet</h3><span class="muted small">A broker invites you to a deal by your email address, and it appears here.</span></div>
+    }
+    <div class="ld-grid">
+        @foreach (var loan in l.Loans)
+        {
+            <button class="card ld-deal" @onclick="() => App.Open(loan.Deal.Id)">
+                <span class="ld-chip @loan.Deal.State">@LendingStates.Label(loan.Deal.State)</span>
+                <h3>@loan.Deal.Name</h3>
+                <span class="muted small">@loan.Deal.Code · @loan.Deal.Location</span>
+                <div class="ld-kv">
+                    <div><span>Drawn</span><b class="num">@LendingContract.Money(loan.DrawnPrincipalUsd)</b></div>
+                    <div><span>Due now</span><b class="num">@LendingContract.Money(loan.DueNowUsd)</b></div>
+                    <div><span>Health</span><b class="num @(loan.MarginEvent ? "bad" : loan.HealthFactor is null ? "" : "good")">@(loan.HealthFactor is { } h ? h.ToString("0.00", CultureInfo.InvariantCulture) : "–")</b></div>
+                </div>
+                @if (loan.MarginEvent)
+                {
+                    <span class="small" style="color:var(--ld-bad)">Margin event: your drawn principal is past the allowed LTV.</span>
+                }
+                @if (loan.NextDraw is { } next)
+                {
+                    <span class="small">Next: tranche @next.Number, @LendingContract.Money(next.AmountUsd) (@next.Milestone)</span>
+                    @if (next.Blockers.Count > 0)
+                    {
+                        <span class="small muted">@next.Blockers[0]</span>
+                    }
+                }
+            </button>
+        }
+    </div>
+
+    <div class="card">
+        <h3>Borrowing against fractional tokens</h3>
+        <span class="muted small">Not in this phase. The spec leaves it open until a secondary market exists, so fractional holders can't borrow yet.</span>
+    </div>
+}
+
+@code {
+    [CascadingParameter] public LendingShell App { get; set; } = null!;
+
+    BorrowerLoansDto? _loans;
+    string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _loans = await App.Api.LoansAsync();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+    }
+}

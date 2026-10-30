@@ -207,13 +207,15 @@ public sealed record RwaWeekDto(int Week, string Season, decimal SeasonWeight, d
 
 public sealed record RwaMonthDto(int Month, int FirstWeek, int LastWeek, decimal PriceUsd, bool Available);
 
+/// <param name="RanksBelowLenders">A lending deal is secured on this villa, so its fractional holders rank below all lenders (SRS section 4), which must be disclosed before purchase.</param>
 public sealed record RwaAssetDetailDto(
     RwaAssetDto Asset,
     IReadOnlyList<string> Highlights,
     IReadOnlyList<RwaWeekDto> Weeks,
     IReadOnlyList<RwaMonthDto> Months,
     decimal FullYearPriceUsd,
-    bool FullYearAvailable);
+    bool FullYearAvailable,
+    bool RanksBelowLenders = false);
 
 /// <summary>FR-2.1 (POST presale/mint). The buyer is whoever is signed in, never a user id in the body.</summary>
 /// <param name="RequestId">Picked by the app once per purchase, so a retried request can't buy twice.</param>

@@ -1,0 +1,490 @@
+@* One deal: where it stands, its tranches, and what you can do given your roles on it. All three portals open it. *@
+
+@if (_deal is not { } d)
+{
+    <p class="@(_error is null ? "muted" : "err")">@(_error ?? "Loading the deal…")</p>
+}
+else
+{
+    <div>
+        <h2>@d.Name</h2>
+        <span class="muted small">@d.Code · @d.Location · @LendingOfferingBases.Label(d.OfferingBasis)</span>
+    </div>
+
+    <div class="ld-steps" aria-label="Loan state">
+        @foreach (var s in LendingStates.Path)
+        {
+            var at = LendingStates.Path.ToList().IndexOf(s);
+            <span class="@(s == d.State ? "now" : at < Reached(d.State) ? "done" : "")">@LendingStates.Label(s)</span>
+        }
+        @if (!LendingStates.Path.Contains(d.State))
+        {
+            <span class="off">@LendingStates.Label(d.State)</span>
+        }
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="err" role="alert">@_error</div>
+    }
+
+    @if (d.MarginEvent)
+    {
+        <div class="err" role="alert"><b>Margin event.</b> Health factor is below 1: drawn principal is past the allowed LTV.</div>
+    }
+    @if (d.ValuationStale)
+    {
+        <div class="err" role="alert">The valuation is more than 12 months old, so new borrowing is blocked until the valuer signs a new one.</div>
+    }
+
+    <div class="card">
+        <div class="ld-kv">
+            <div><span>Drawn principal</span><b class="num">@LendingContract.Money(d.DrawnPrincipalUsd)</b></div>
+            <div><span>Valuation</span><b class="num">@(d.ValuationUsd is { } v ? LendingContract.Money(v) : "None yet")</b></div>
+            <div><span>LTV (max @LendingContract.Percent(d.Terms.MaxLtvBps))</span><b class="num">@(d.Ltv is { } l ? l.ToString("0.0%", CultureInfo.InvariantCulture) : "–")</b></div>
+            <div><span>Health factor</span><b class="num @(d.MarginEvent ? "bad" : d.HealthFactor is null ? "" : "good")">@(d.HealthFactor is { } h ? h.ToString("0.00", CultureInfo.InvariantCulture) : "–")</b></div>
+            <div><span>Fees due</span><b class="num">@LendingContract.Money(d.FeesDueUsd)</b></div>
+            <div><span>Reserve (target @LendingContract.Money(d.Terms.ReserveTargetUsd))</span><b class="num">@LendingContract.Money(d.ReserveUsd)</b></div>
+            <div><span>Collateral</span><b>@(d.CollateralFrozen ? "Frozen" : d.CollateralLocked ? "Locked" : "Not locked")</b></div>
+            <div><span>Land charge</span><b>@(d.LandChargeRegistered ? "Registered" : "Not attested")</b></div>
+        </div>
+    </div>
+
+    <div class="ld-two">
+        @foreach (var t in d.Tranches)
+        {
+            var mine = d.MyPositions.FirstOrDefault(p => p.Tranche == t.Tranche);
+            <div class="card">
+                <h3>@(t.Tranche == LendingTranches.Senior ? "Senior tranche" : "Junior tranche (first loss)")</h3>
+                <div class="ld-fill @t.Tranche"><div style="width:@(Pct(t.FundedUsd, t.TargetUsd))%"></div></div>
+                <span class="small num">@LendingContract.Money(t.FundedUsd) of @LendingContract.Money(t.TargetUsd) · @LendingContract.Percent(t.AprBps) APR</span>
+                <div class="ld-kv">
+                    <div><span>Principal out</span><b class="num">@LendingContract.Money(t.PrincipalOutstandingUsd)</b></div>
+                    <div><span>Interest due</span><b class="num">@LendingContract.Money(t.InterestDueUsd)</b></div>
+                    <div><span>Share price</span><b class="num @(t.SharePrice < 1m ? "bad" : "")">@t.SharePrice.ToString("0.0000", CultureInfo.InvariantCulture)</b></div>
+                </div>
+                @if (t.LossUsd > 0)
+                {
+                    <span class="small" style="color:var(--ld-bad)">Lost @LendingContract.Money(t.LossUsd)</span>
+                }
+                @if (mine is not null)
+                {
+                    <span class="small">You: @LendingContract.Money(mine.DepositedUsd) deposited, @LendingContract.Money(mine.InterestPaidUsd) interest and @LendingContract.Money(mine.PrincipalPaidUsd) principal back@(mine.LossUsd > 0 ? $", {LendingContract.Money(mine.LossUsd)} lost" : "").</span>
+                }
+            </div>
+        }
+    </div>
+
+    @* What you can do, by your roles. *@
+    @if (d.ReturnReason is { } returned)
+    {
+        <div class="err" role="alert"><b>The underwriter returned this deal.</b> @returned</div>
+    }
+    @if (d.State == LendingStates.Draft && d.SubmittedAt is null && Has(LendingRoles.Broker))
+    {
+        <div class="card">
+            <h3>Submit to the underwriter</h3>
+            <span class="muted small">You can't change the terms after this, unless the underwriter returns it.</span>
+            <button class="primary" disabled="@_busy" @onclick="SubmitAsync">Submit the deal</button>
+        </div>
+    }
+    @if (d.State == LendingStates.Draft && d.SubmittedAt is not null && Has(LendingRoles.Underwriter))
+    {
+        <div class="card">
+            <h3>Return to the broker</h3>
+            <input placeholder="What needs changing" aria-label="Return reason" @bind="_returnReason" />
+            <button class="ghost" disabled="@_busy" @onclick="ReturnAsync">Return the deal</button>
+        </div>
+    }
+    @if (d.State == LendingStates.Funding)
+    {
+        <div class="card">
+            <h3>Lend</h3>
+            @if (d.CanLend is { } why)
+            {
+                <span class="small muted">@why</span>
+            }
+            else
+            {
+                <span class="small muted">You can't withdraw early in this preview. Your money comes back through the waterfall. Junior takes losses first.</span>
+                <div class="ld-row">
+                    <select @bind="_tranche" aria-label="Tranche">
+                        <option value="@LendingTranches.Senior">Senior (@LendingContract.Percent(d.Terms.SeniorAprBps))</option>
+                        <option value="@LendingTranches.Junior">Junior (@LendingContract.Percent(d.Terms.JuniorAprBps))</option>
+                    </select>
+                    <input type="number" min="0" placeholder="Amount ($)" aria-label="Amount" @bind="_amount" />
+                    <button class="primary" disabled="@_busy" @onclick="DepositAsync">Deposit</button>
+                </div>
+            }
+        </div>
+    }
+
+    @if (d.MyPositions.Count > 0 && d.State == LendingStates.Active)
+    {
+        <div class="card">
+            <h3>Redeem</h3>
+            <span class="muted small">No instant withdrawal. A window opens @LendingRedemptions.NoticeDays days after you ask and stays open @LendingRedemptions.WindowDays days. It pays only from money the drawdown plan doesn't need.</span>
+            <div class="ld-row">
+                <select @bind="_tranche" aria-label="Tranche to redeem">
+                    @foreach (var x in d.MyPositions)
+                    {
+                        <option value="@x.Tranche">@x.Tranche (@LendingContract.Money(x.DepositedUsd - x.RedeemedUsd))</option>
+                    }
+                </select>
+                <input type="number" min="0" placeholder="Amount ($)" aria-label="Amount to redeem" @bind="_redeemAmount" />
+                <button class="ghost" disabled="@_busy" @onclick="RequestRedemptionAsync">Request</button>
+            </div>
+            @foreach (var x in d.MyRedemptions ?? [])
+            {
+                <div class="ld-row" style="justify-content:space-between">
+                    <span class="small">@LendingContract.Money(x.AmountUsd) @x.Tranche: @(x.RedeemedAt is not null ? "paid" : $"window {x.WindowOpensAt.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)} to {x.WindowClosesAt.ToLocalTime().ToString("d MMM", CultureInfo.InvariantCulture)}")</span>
+                    @if (x.RedeemedAt is null)
+                    {
+                        <button class="ghost" disabled="@(_busy || DateTimeOffset.UtcNow < x.WindowOpensAt || DateTimeOffset.UtcNow > x.WindowClosesAt)" @onclick="() => RedeemAsync(x.Id)">Redeem</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (d.NextStates.Any(n => n != LendingStates.Approved || d.SubmittedAt is not null))
+    {
+        <div class="card">
+            <h3>Move the deal</h3>
+            <input placeholder="Reason" aria-label="Reason" @bind="_reason" />
+            <div class="ld-row">
+                @foreach (var to in d.NextStates.Where(n => n != LendingStates.Approved || d.SubmittedAt is not null))
+                {
+                    <button class="@(to is LendingStates.Rejected or LendingStates.Grace ? "ghost" : "primary")" disabled="@_busy" @onclick="() => MoveAsync(to)">@MoveLabel(to)</button>
+                }
+            </div>
+        </div>
+    }
+
+    @if (Has(LendingRoles.Broker, LendingRoles.Underwriter) && d.State is LendingStates.Draft or LendingStates.Approved)
+    {
+        <div class="card">
+            <h3>Appoint</h3>
+            <div class="ld-row">
+                <select @bind="_role" aria-label="Role">
+                    @foreach (var r in LendingRoles.Appointed)
+                    {
+                        <option value="@r">@LendingRoles.Label(r)</option>
+                    }
+                </select>
+                <input type="email" placeholder="Their email" aria-label="Their email" @bind="_email" />
+                <button class="ghost" disabled="@_busy" @onclick="AppointAsync">Appoint</button>
+            </div>
+        </div>
+    }
+
+    @if (Has(LendingRoles.Developer) && d.State == LendingStates.Active)
+    {
+        <div class="card">
+            <h3>Borrow</h3>
+            @if (!d.CollateralLocked)
+            {
+                <button class="primary" disabled="@_busy" @onclick="LockAsync">Lock the collateral</button>
+            }
+            @if (d.Draws.FirstOrDefault(x => x.DrawnAt is null) is { } next)
+            {
+                <span class="small">Next: tranche @next.Number, @LendingContract.Money(next.AmountUsd) (@next.Milestone)</span>
+                @if (next.Blockers.Count > 0)
+                {
+                    <ul class="ld-why">
+                        @foreach (var b in next.Blockers)
+                        {
+                            <li>@b</li>
+                        }
+                    </ul>
+                }
+                <button class="primary" disabled="@(_busy || next.Blockers.Count > 0)" @onclick="DrawAsync">Draw @LendingContract.Money(next.AmountUsd)</button>
+                @if (next.Number >= 2 && !next.MilestoneAttested)
+                {
+                    <button class="ghost" disabled="@_busy" @onclick="() => RequestInspectionAsync(next.Number)">Ask the inspector to attest</button>
+                }
+            }
+        </div>
+    }
+
+    @if (Has(LendingRoles.Developer) && LendingStates.IsOpen(d.State))
+    {
+        <div class="card">
+            <h3>Repay</h3>
+            <span class="muted small">From your balance, through the same payment order as everything else.</span>
+            <div class="ld-row">
+                <input type="number" min="0" placeholder="Amount ($)" aria-label="Amount to repay" @bind="_repay" />
+                <button class="primary" disabled="@_busy" @onclick="RepayAsync">Repay</button>
+            </div>
+        </div>
+    }
+
+    @if (Has(LendingRoles.Servicer) && LendingStates.IsOpen(d.State))
+    {
+        <div class="card">
+            <h3>Record a payment</h3>
+            <span class="muted small">Cash that reached the collection account goes through the waterfall, once per reference.</span>
+            <div class="ld-row">
+                <input placeholder="Transfer reference" aria-label="Transfer reference" @bind="_paymentRef" />
+                <input type="number" min="0" placeholder="Amount ($)" aria-label="Amount received" @bind="_payment" />
+                <button class="primary" disabled="@_busy" @onclick="PayAsync">Run the waterfall</button>
+            </div>
+        </div>
+    }
+
+    @if (Has(LendingRoles.Servicer, LendingRoles.Trustee) && d.State == LendingStates.Grace)
+    {
+        <div class="card">
+            <h3>Mark a default</h3>
+            <span class="muted small">Takes both the servicer and the security trustee. Then draws and collateral freeze and inflows sweep to senior principal.</span>
+            @foreach (var vote in d.DefaultVotes)
+            {
+                <span class="small">@LendingRoles.Label(vote.Role) (@vote.Name) signed: @vote.Reason</span>
+            }
+            <input placeholder="Reason" aria-label="Default reason" @bind="_reason" />
+            <button class="danger" disabled="@_busy" @onclick="VoteDefaultAsync">Sign the default</button>
+        </div>
+    }
+
+    @if (Has(LendingRoles.Trustee) && d.State == LendingStates.Recovery)
+    {
+        <div class="card">
+            <h3>Write off</h3>
+            <span class="muted small">The reserve goes to senior. What's left outstanding is lost, junior first.</span>
+            <input placeholder="Reason" aria-label="Write-off reason" @bind="_reason" />
+            <button class="danger" disabled="@_busy" @onclick="WriteOffAsync">Write off the loan</button>
+        </div>
+    }
+
+    @if (AttestKinds.Count > 0)
+    {
+        <div class="card">
+            <h3>Sign an attestation</h3>
+            <div class="ld-row">
+                <select @bind="_attestKind" aria-label="Attestation kind">
+                    @foreach (var k in AttestKinds)
+                    {
+                        <option value="@k">@LendingAttestationKinds.Label(k)</option>
+                    }
+                </select>
+                @if (_attestKind == LendingAttestationKinds.Valuation)
+                {
+                    <input type="number" min="0" placeholder="Appraised value ($)" aria-label="Appraised value" @bind="_attestValue" />
+                }
+                @if (_attestKind == LendingAttestationKinds.Milestone)
+                {
+                    <select @bind="_attestDraw" aria-label="Drawdown released">
+                        @foreach (var x in d.Draws)
+                        {
+                            <option value="@x.Number">Tranche @x.Number: @x.Milestone</option>
+                        }
+                    </select>
+                }
+            </div>
+            <HashField @bind-Value="_attestHash" />
+            <button class="ghost" disabled="@_busy" @onclick="AttestAsync">Sign</button>
+        </div>
+    }
+
+    <div class="ld-two">
+        <div class="card">
+            <h3>Drawdowns</h3>
+            <div class="ld-list">
+                @foreach (var x in d.Draws)
+                {
+                    <div>
+                        <span class="what"><b>Tranche @x.Number: @x.Milestone</b>
+                            <span class="muted small">@(x.DrawnAt is { } at ? $"Drawn {at.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture)}: {LendingContract.Money(x.NetUsd ?? 0)} net of {LendingContract.Money((x.BrokerFeeUsd ?? 0) + (x.PlatformFeeUsd ?? 0))} fees" : x.MilestoneAttested ? "Milestone attested" : "Not drawn")</span></span>
+                        <span class="num">@LendingContract.Money(x.AmountUsd)</span>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>People on this deal</h3>
+            <div class="ld-list">
+                @foreach (var p in d.Participants)
+                {
+                    <div><span class="muted">@LendingRoles.Label(p.Role)</span><span>@p.Name</span></div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>Payment order</h3>
+        @{ var last = d.Payments.FirstOrDefault(); }
+        <span class="muted small">@(last is null ? "How incoming cash is paid out. No payment yet." : $"The last payment: {LendingContract.Money(last.AmountUsd)}, reference {last.Reference}.")</span>
+        <ol class="ld-falls">
+            <li>Servicer, trustee and platform fees<span>@Paid(last?.Paid.Fees)</span></li>
+            <li>Senior interest<span>@Paid(last?.Paid.SeniorInterest)</span></li>
+            <li>Senior principal, scheduled<span>@Paid(last?.Paid.SeniorPrincipal)</span></li>
+            <li>Junior interest<span>@Paid(last?.Paid.JuniorInterest)</span></li>
+            <li>Junior principal (in default, senior principal first@(last?.Paid.SeniorPrincipalSweep > 0 ? $": {LendingContract.Money(last.Paid.SeniorPrincipalSweep)}" : ""))<span>@Paid(last?.Paid.JuniorPrincipal)</span></li>
+            <li>Reserve top-up<span>@Paid(last?.Paid.Reserve)</span></li>
+            <li>Residual to the borrower<span>@Paid(last?.Paid.Residual)</span></li>
+        </ol>
+        <span class="muted small">Fractional token holders rank below all lenders.</span>
+    </div>
+
+    <div class="ld-two">
+        <div class="card">
+            <h3>Data room</h3>
+            @if (d.MyRoles.Count > 0)
+            {
+                <div class="ld-row">
+                    <input placeholder="Document name" aria-label="Document name" @bind="_docName" />
+                    <select @bind="_docKind" aria-label="Document kind">
+                        @foreach (var k in LendingDocumentKinds.All)
+                        {
+                            <option value="@k.Code">@k.Label</option>
+                        }
+                    </select>
+                </div>
+                <HashField @bind-Value="_docHash" />
+                <button class="ghost" disabled="@_busy" @onclick="AddDocumentAsync">Record the hash</button>
+            }
+            <div class="ld-list">
+                @foreach (var x in d.Documents)
+                {
+                    <div><span class="what"><b>@x.Name, version @x.Version</b><span class="muted small">@LendingDocumentKinds.Label(x.Kind) · @x.UploadedBy</span><span class="ld-hash">@x.Sha256</span></span></div>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Attestations</h3>
+            <div class="ld-list">
+                @foreach (var x in d.Attestations)
+                {
+                    <div><span class="what"><b>@LendingAttestationKinds.Label(x.Kind)@(x.ValueUsd is { } value ? $": {LendingContract.Money(value)}" : x.DrawNumber is { } n ? $": tranche {n}" : "")</b><span class="muted small">@x.Attestor · @x.At.ToLocalTime().ToString("d MMM yyyy", CultureInfo.InvariantCulture)</span><span class="ld-hash">@x.ReportSha256</span></span></div>
+                }
+                @if (d.Attestations.Count == 0)
+                {
+                    <div><span class="muted small">None yet.</span></div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="ld-row" style="justify-content:space-between">
+            <h3>Audit log</h3>
+            <button class="ghost" disabled="@_busy" @onclick="LoadAuditAsync">@(_audit is null ? "Show" : "Refresh")</button>
+        </div>
+        @if (_audit is not null)
+        {
+            <div class="ld-list">
+                @foreach (var e in _audit)
+                {
+                    <div><span class="what"><b>@e.Action@(e.After is null ? "" : $": {e.Before} → {e.After}")</b><span class="muted small">@e.Actor · @e.At.ToLocalTime().ToString("d MMM yyyy HH:mm", CultureInfo.InvariantCulture)@(e.Reason is null ? "" : $" · {e.Reason}")</span></span></div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [CascadingParameter] public LendingShell App { get; set; } = null!;
+    [Parameter] public Guid Id { get; set; }
+
+    LendingDealDto? _deal;
+    List<LendingAuditDto>? _audit;
+    string? _error;
+    bool _busy;
+
+    string _tranche = LendingTranches.Senior, _reason = "", _role = LendingRoles.Developer, _email = "", _paymentRef = "";
+    string _attestKind = "", _attestHash = "", _docName = "", _docKind = LendingDocumentKinds.SignedLoanAgreement, _docHash = "";
+    decimal _amount, _payment, _attestValue, _redeemAmount, _repay;
+    string _returnReason = "";
+    int _attestDraw = 1;
+
+    IReadOnlyList<string> AttestKinds => _deal is null ? [] : new[] { LendingAttestationKinds.LandCharge, LendingAttestationKinds.Valuation, LendingAttestationKinds.Milestone }
+        .Where(k => _deal.MyRoles.Contains(LendingAttestationKinds.AttestorRole(k)!)).ToList();
+
+    bool Has(params string[] roles) => _deal is not null && roles.Any(_deal.MyRoles.Contains);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RunAsync(async () => Show(await App.Api.DealAsync(Id)));
+    }
+
+    void Show(LendingDealDto deal)
+    {
+        _deal = deal;
+        if (!AttestKinds.Contains(_attestKind))
+            _attestKind = AttestKinds.FirstOrDefault() ?? "";
+    }
+
+    async Task RunAsync(Func<Task> work)
+    {
+        (_busy, _error) = (true, null);
+        try
+        {
+            await work();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>A change to the deal: shows the deal as it now stands and refreshes the balance, which most changes move.</summary>
+    Task ActAsync(string action, object? body = null) => RunAsync(async () =>
+    {
+        Show(await App.Api.ActAsync(Id, action, body));
+        _reason = "";
+        if (_audit is not null)
+            _audit = await App.Api.AuditAsync(Id);
+        await App.RefreshMeAsync();
+    });
+
+    Task SubmitAsync() => ActAsync("submit");
+    Task ReturnAsync() => ActAsync("return", new LendingReasonRequest(_returnReason));
+    Task RequestRedemptionAsync() => ActAsync("redemptions", new LendingRedeemRequest(_tranche, _redeemAmount));
+    Task RedeemAsync(Guid redemption) => ActAsync($"redemptions/{redemption}/redeem");
+    Task RepayAsync() => ActAsync("repay", new LendingRepayRequest(_repay));
+    Task RequestInspectionAsync(int number) => ActAsync("inspection", new LendingInspectionRequest(number));
+    Task DepositAsync() => ActAsync("deposits", new LendingDepositRequest(_tranche, _amount, Guid.NewGuid()));
+    Task MoveAsync(string to) => ActAsync("transition", new LendingTransitionRequest(to, _reason));
+    Task AppointAsync() => ActAsync("roles", new LendingAppointRequest(_role, _email));
+    Task LockAsync() => ActAsync("collateral/lock");
+    Task DrawAsync() => ActAsync("draws");
+    Task PayAsync() => ActAsync("payments", new LendingPaymentRequest(_paymentRef, _payment));
+    Task VoteDefaultAsync() => ActAsync("default-votes", new LendingReasonRequest(_reason));
+    Task WriteOffAsync() => ActAsync("write-off", new LendingReasonRequest(_reason));
+    Task AttestAsync() => ActAsync("attestations", new LendingAttestationRequest(_attestKind, _attestHash,
+        _attestKind == LendingAttestationKinds.Valuation ? _attestValue : null, _attestKind == LendingAttestationKinds.Milestone ? _attestDraw : null));
+    Task AddDocumentAsync() => ActAsync("documents", new LendingDocumentRequest(_docName, _docKind, _docHash));
+
+    Task LoadAuditAsync() => RunAsync(async () => _audit = await App.Api.AuditAsync(Id));
+
+    static int Reached(string state) => state switch
+    {
+        LendingStates.Draft or LendingStates.Rejected => 0,
+        LendingStates.Approved => 1,
+        LendingStates.Funding => 2,
+        LendingStates.Repaid => 4,
+        _ => 3
+    };
+
+    static string MoveLabel(string to) => to switch
+    {
+        LendingStates.Approved => "Approve the terms",
+        LendingStates.Rejected => "Reject",
+        LendingStates.Funding => "Open the pool",
+        LendingStates.Active => "Activate the loan",
+        LendingStates.Grace => "Start the grace period",
+        LendingStates.Recovery => "Start recovery",
+        _ => LendingStates.Label(to)
+    };
+
+    static string Paid(decimal? amount) => amount is { } a ? LendingContract.Money(a) : "";
+
+    static string Pct(decimal part, decimal whole) => whole <= 0 ? "0" : Math.Min(part / whole * 100m, 100m).ToString("0.#", CultureInfo.InvariantCulture);
+}
