@@ -36,6 +36,8 @@ public sealed class LendingApi(HttpClient http)
 
     public async Task MarkNoticesReadAsync() => (await RawAsync(HttpMethod.Post, "notices/read", new { })).Dispose();
 
+    public async Task DeclareAsync(LendingDeclareRequest request) => (await RawAsync(HttpMethod.Put, "me/investor", request)).Dispose();
+
     public async Task SetProfileAsync(LendingProfileRequest request) => (await RawAsync(HttpMethod.Put, "compliance/profiles", request)).Dispose();
 
     public async Task TopUpAsync(LendingTopUpRequest request) => (await RawAsync(HttpMethod.Post, "compliance/top-up", request)).Dispose();

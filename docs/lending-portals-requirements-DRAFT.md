@@ -6,7 +6,7 @@ these BRK-, LND- and BOR- requirements are worked out from the shared tab's role
 functions and waterfall. Please correct anything here; the code follows this document.
 
 Everything is **simulated**: money is a test balance, no contract is deployed and nothing is lent. All
-three portals sit behind the `lending-preview` role and the `Lending:Mode` gate.
+three portals are public, like Ndeipi RWA, and stay simulated through the `Lending:Mode` gate.
 
 "Shall" means built in this PR. "Later" means drafted but not built, with the reason.
 
@@ -39,6 +39,7 @@ Who: Senior and Junior lenders. Derived from lifecycle step 4, SC-VLT-01, SC-VLT
 | LND-FR-06 | A lender shall see a deal's risk: LTV, health factor, attestations, document hashes, payments and audit log. | All show on the deal page; a margin event and a stale valuation show as warnings. |
 | LND-FR-07 | A lender shall request a redemption and redeem it in a window (SC-VLT-01). No instant withdrawal. | The window opens 7 days after the request and closes 14 days later. It pays only from money the drawdown plan doesn't need, and never in default. |
 | LND-FR-08 | A lender shall get an in-app notice of each change affecting them (PLT-NTF-01). | Pool active, draws, payments, grace and default each post a notice. Email is Later. |
+| LND-FR-09 | While simulated, a lender shall declare their own investor class and country. | They can lend once a deal admits their class. It can't approve KYB or lift a freeze, stops with the gate, and is logged. A real offering must verify this instead (PLT-ID-04). |
 
 ## Borrower Portal (`apps/lending-borrower`)
 

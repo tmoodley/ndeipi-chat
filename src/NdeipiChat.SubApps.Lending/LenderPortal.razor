@@ -36,6 +36,29 @@ else
         </div>
     }
 
+    <div class="card">
+        <h3>About you</h3>
+        <span class="muted small">While this is simulated, you say this yourself. A real offering would verify it. Each deal only admits some investor classes.</span>
+        <div class="ld-row">
+            <select @bind="_class" aria-label="Investor class">
+                @foreach (var c in LendingInvestorClasses.All)
+                {
+                    <option value="@c.Code">@c.Label</option>
+                }
+            </select>
+            <input maxlength="2" placeholder="Country (2 letters)" aria-label="Country" @bind="_country" />
+            <button class="ghost" disabled="@_busy" @onclick="DeclareAsync">Save</button>
+        </div>
+        @if (_saved)
+        {
+            <div class="ok" role="status">Saved.</div>
+        }
+        @if (_error is not null)
+        {
+            <div class="err" role="alert">@_error</div>
+        }
+    </div>
+
     <h2>Open pools</h2>
     @if (p.OpenPools.Count == 0)
     {
@@ -69,13 +92,37 @@ else
     [CascadingParameter] public LendingShell App { get; set; } = null!;
 
     LenderPortfolioDto? _portfolio;
+    string _class = LendingInvestorClasses.Accredited, _country = "";
+    bool _busy, _saved;
     string? _error;
+
+    async Task DeclareAsync()
+    {
+        (_busy, _error, _saved) = (true, null, false);
+        try
+        {
+            await App.Api.DeclareAsync(new LendingDeclareRequest(_class, _country));
+            _saved = true;
+            _portfolio = await App.Api.PortfolioAsync();
+            await App.RefreshMeAsync();
+        }
+        catch (LendingException e)
+        {
+            _error = e.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
             _portfolio = await App.Api.PortfolioAsync();
+            if (App.Me!.InvestorClass != LendingInvestorClasses.Unclassified)
+                (_class, _country) = (App.Me.InvestorClass, App.Me.Jurisdiction ?? "");
         }
         catch (LendingException e)
         {

@@ -33,8 +33,8 @@ public sealed class LocalPreview
         app.StartServer();
         var site = new Uri($"http://localhost:{Port}/");
 
-        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [LendingContract.PreviewRole, EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole]);
-        var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test", roles: [LendingContract.PreviewRole]);
+        var me = await app.CreateUserAsync("Ty Preview", "ty.preview@example.test", roles: [EventsContract.OrganizerRole, DonationsContract.VerifierRole, FinanceContract.AdminRole]);
+        var tendai = await app.CreateUserAsync("Tendai Chikwanha", "tendai@example.test");
         var rudo = await app.CreateUserAsync("Rudo Moyo", "rudo@example.test");
 
         foreach (var (friend, email) in new[] { (tendai, "tendai@example.test"), (rudo, "rudo@example.test") })
@@ -270,8 +270,8 @@ public sealed class LocalPreview
 
         // The war room as a community: four members by rank, a live ping, chat, and an open strike
         // vote. Rudo stays connected, so she shows as online.
-        var chanda = await app.CreateUserAsync("Chanda Kunda", "chanda@example.test", roles: [LendingContract.PreviewRole]);
-        var mutale = await app.CreateUserAsync("Mutale Banda", "mutale@example.test", roles: [LendingContract.PreviewRole]);
+        var chanda = await app.CreateUserAsync("Chanda Kunda", "chanda@example.test");
+        var mutale = await app.CreateUserAsync("Mutale Banda", "mutale@example.test");
         await chanda.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(0, -1)));
         await mutale.PostAsync<SectorDto>("api/cyberwars/home", new ClaimHomeRequest(ZambianProvince.Lusaka, new NdeipiChat.Contracts.HexCell(-2, 1)));
         await chanda.PostAsync<AllianceDto>($"api/cyberwars/alliances/{lions.Id}/join", new { });

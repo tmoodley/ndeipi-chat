@@ -9,8 +9,7 @@ namespace NdeipiChat.Contracts;
 /// attestations; repayments run through a fixed waterfall.
 ///
 /// Everything is simulated until counsel and an audit clear it (REG-01 to REG-05, SC-UPG-01,
-/// NFR-SEC-04): money is a test balance, no contract is deployed and nothing is lent. The screens are a
-/// proposal, because the SRS's Broker, Lender and Borrower portal tabs haven't been supplied yet.
+/// NFR-SEC-04): money is a test balance, no contract is deployed and nothing is lent.
 /// </summary>
 public static class LendingContract
 {
@@ -18,8 +17,6 @@ public static class LendingContract
     public const string BrokerAppId = "lending-broker", LenderAppId = "lending-lender", BorrowerAppId = "lending-borrower";
     public const string BasePath = "api/lending";
 
-    /// <summary>Who can see the app and call its API until counsel clears it.</summary>
-    public const string PreviewRole = "lending-preview";
 
     /// <summary>Platform roles (SRS section 2), held across deals. A finance admin counts as both.</summary>
     public const string UnderwriterRole = "lending-underwriter", ComplianceRole = "lending-compliance";
@@ -511,3 +508,6 @@ public sealed record LendingRepayRequest(decimal AmountUsd);
 public sealed record LendingInspectionRequest(int DrawNumber);
 
 public sealed record LendingNoticeDto(long Id, Guid? DealId, string Text, DateTimeOffset At, bool Read);
+
+/// <summary>While simulated, someone says for themselves what kind of investor they are, in place of Compliance.</summary>
+public sealed record LendingDeclareRequest(string InvestorClass, string Jurisdiction);

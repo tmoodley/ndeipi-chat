@@ -5,7 +5,7 @@ using NdeipiChat.Contracts;
 
 namespace NdeipiChat.Api.Lending;
 
-/// <summary>Ndeipi Lending's API (RWA Lending Platform Portal SRS, Platform &amp; Shared tab), behind the launcher sub-app check. The three portals share it, and their entries require one role, so checking one covers all three.</summary>
+/// <summary>Ndeipi Lending's API (RWA Lending Platform Portal SRS, Platform &amp; Shared tab), behind the launcher sub-app check. The three portals share it, so checking one of their launcher entries covers all three.</summary>
 public static class LendingModule
 {
     public static IServiceCollection AddLending(this IServiceCollection services, IConfiguration configuration)
@@ -21,6 +21,8 @@ public static class LendingModule
 
         api.MapGet("/me", async (HttpContext http, CurrentUserService users, LendingService lending) =>
             Results.Ok(await lending.MeAsync(await Me(http, users), http.RequestAborted)));
+        api.MapPut("/me/investor", async (LendingDeclareRequest request, HttpContext http, CurrentUserService users, LendingService lending) =>
+            Results.Ok(await lending.DeclareAsync(await Me(http, users), request, http.RequestAborted)));
         api.MapGet("/deals", async (HttpContext http, CurrentUserService users, LendingService lending) =>
             Results.Ok(await lending.DealsAsync(await Me(http, users), http.RequestAborted)));
         api.MapPost("/deals", async (LendingTermsRequest request, HttpContext http, CurrentUserService users, LendingService lending) =>
